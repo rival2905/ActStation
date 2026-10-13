@@ -1,0 +1,67 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Modules\Community\Http\Controllers\Panel\AthleteController;
+use App\Modules\Community\Http\Controllers\Panel\Auth\PanelAuthController;
+use App\Modules\Community\Http\Controllers\Panel\CoachController;
+use App\Modules\Community\Http\Controllers\Panel\DocumentController;
+use App\Modules\Community\Http\Controllers\Panel\InvitationController;
+use App\Modules\Community\Http\Controllers\Panel\MyRequestController;
+use App\Modules\Community\Http\Controllers\Panel\OfficialController;
+use App\Modules\Community\Http\Controllers\Panel\ProfileController;
+use Illuminate\Support\Facades\Route;
+
+// Guest auth routes
+Route::middleware('guest')->group(function (): void {
+    Route::get('login', [PanelAuthController::class, 'showLoginForm'])->name('login');
+    Route::post('login', [PanelAuthController::class, 'login'])
+        ->middleware('throttle:5,1')
+        ->name('login.attempt');
+});
+
+// Authenticated session termination
+Route::post('logout', [PanelAuthController::class, 'logout'])
+    ->middleware('auth')
+    ->name('logout');
+
+// Panel access protected routes
+Route::middleware(['auth', 'EnsurePanelAccess'])->group(function (): void {
+    // Community profile & lifecycle verification
+    Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');
+    Route::put('profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::post('verification', [ProfileController::class, 'requestVerification'])->name('verification.request');
+
+    // Community officials
+    Route::get('officials', [OfficialController::class, 'index'])->name('officials.index');
+    Route::post('officials', [OfficialController::class, 'store'])->name('officials.store');
+    Route::delete('officials/{official}', [OfficialController::class, 'destroy'])->name('officials.destroy');
+
+    // Community coaches
+    Route::get('coaches', [CoachController::class, 'index'])->name('coaches.index');
+    Route::post('coaches', [CoachController::class, 'store'])->name('coaches.store');
+    Route::delete('coaches/{coach}', [CoachController::class, 'destroy'])->name('coaches.destroy');
+
+    // Community legal documents
+    Route::get('documents', [DocumentController::class, 'index'])->name('documents.index');
+    Route::post('documents', [DocumentController::class, 'store'])->name('documents.store');
+    Route::get('documents/{document}/download', [DocumentController::class, 'download'])->name('documents.download');
+    Route::delete('documents/{document}', [DocumentController::class, 'destroy'])->name('documents.destroy');
+
+    // Community athlete roster & actions
+    Route::get('athletes', [AthleteController::class, 'index'])->name('athletes.index');
+    Route::post('athletes', [AthleteController::class, 'store'])->name('athletes.store');
+    Route::post('athletes/{athlete}/approve', [AthleteController::class, 'approve'])->name('athletes.approve');
+    Route::post('athletes/{athlete}/reject', [AthleteController::class, 'reject'])->name('athletes.reject');
+    Route::post('athletes/{athlete}/release', [AthleteController::class, 'release'])->name('athletes.release');
+    Route::post('athletes/{athlete}/resend', [AthleteController::class, 'resend'])->name('athletes.resend');
+
+    // Community invitations
+    Route::post('invitations', [InvitationController::class, 'store'])->name('invitations.store');
+    Route::delete('invitations/{invitation}', [InvitationController::class, 'revoke'])->name('invitations.revoke');
+
+    // Athlete self-serve roster requests
+    Route::get('my-requests', [MyRequestController::class, 'index'])->name('my-requests.index');
+    Route::post('my-requests/{athlete}/approve', [MyRequestController::class, 'approve'])->name('my-requests.approve');
+    Route::post('my-requests/{athlete}/reject', [MyRequestController::class, 'reject'])->name('my-requests.reject');
+});

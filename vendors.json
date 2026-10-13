@@ -1,0 +1,104 @@
+{
+  "@fortawesome/fontawesome-free": {
+    "version": "5.15.4",
+    "src": ["js/all.min.js"],
+    "dest": "fontawesome"
+  },
+  "bootstrap": {
+    "version": "5.3.8",
+    "src": ["dist/js/bootstrap.min.js", "dist/js/bootstrap.min.js.map"],
+    "dest": "bootstrap"
+  },
+  "chart.js": {
+    "version": "4.5.1",
+    "src": ["dist/chart.umd.js"],
+    "dest": "chart"
+  },
+  "choices.js": {
+    "version": "11.1.0",
+    "src": [
+      "public/assets/scripts/choices.min.js",
+      "public/assets/styles/choices.min.css",
+      "public/assets/styles/base.min.css"
+    ],
+    "dest": "choices"
+  },
+  "countup.js": {
+    "version": "2.9.0",
+    "src": ["dist/countUp.umd.js"],
+    "dest": "countup"
+  },
+  "datatables.net": {
+    "version": "2.3.4",
+    "src": ["js/dataTables.min.js"],
+    "dest": "datatables.net"
+  },
+  "datatables.net-bs5": {
+    "version": "2.3.4",
+    "src": [
+      "js/dataTables.bootstrap5.min.js",
+      "css/dataTables.bootstrap5.min.css"
+    ],
+    "dest": "datatables.net-bs5"
+  },
+  "datatables.net-fixedcolumns": {
+    "version": "5.0.5",
+    "src": ["js/dataTables.fixedColumns.min.js"],
+    "dest": "datatables.net-fixedcolumns"
+  },
+  "dayjs": {
+    "version": "1.11.18",
+    "src": ["dayjs.min.js"],
+    "dest": "dayjs"
+  },
+  "echarts": {
+    "version": "6.0.0",
+    "src": ["dist/echarts.min.js"],
+    "dest": "echarts"
+  },
+  "fullcalendar": {
+    "version": "6.1.19",
+    "src": ["index.global.min.js"],
+    "dest": "fullcalendar"
+  },
+  "glightbox": {
+    "version": "3.3.1",
+    "src": ["dist/js/glightbox.min.js", "dist/css/glightbox.min.css"],
+    "dest": "glightbox"
+  },
+  "leaflet.tilelayer.colorfilter": {
+    "version": "2.0.0",
+    "src": ["dist/leaflet-tilelayer-colorfilter-global.min.js"],
+    "dest": "leaflet.tilelayer.colorfilter"
+  },
+  "lottie-web": {
+    "version": "5.13.0",
+    "src": ["build/player/lottie.min.js"],
+    "dest": "lottie"
+  },
+  "plyr": {
+    "version": "3.8.3",
+    "src": ["dist/plyr.polyfilled.min.js", "dist/plyr.css"],
+    "dest": "plyr"
+  },
+  "prismjs": {
+    "version": "1.30.0",
+    "src": ["prism.js", "themes/prism-okaidia.css"],
+    "dest": "prism"
+  },
+  "simplebar": {
+    "version": "6.3.2",
+    "src": ["dist/simplebar.min.js", "dist/simplebar.min.css"],
+    "dest": "simplebar"
+  },
+  "swiper": {
+    "version": "12.0.3",
+    "src": ["swiper-bundle.min.js", "swiper-bundle.min.css"],
+    "dest": "swiper"
+  },
+  "tinymce": {
+    "version": "8.2.0",
+    "src": ["**/*"],
+    "dest": "tinymce"
+  }
+}
