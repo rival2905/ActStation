@@ -34,6 +34,7 @@ Route::middleware('permission:coverage.view')->group(function (): void {
     Route::get('coverage-map', [CoverageMapController::class, 'index'])->name('coverage-map.index');
     Route::get('coverage-map/markers', [CoverageMapController::class, 'markers'])->name('coverage-map.markers');
     Route::get('coverage-map/search', [CoverageMapController::class, 'search'])->name('coverage-map.search');
+    Route::get('coverage-map/details/{type}/{id}', [CoverageMapController::class, 'details'])->name('coverage-map.details');
 });
 
 // Gap Analysis

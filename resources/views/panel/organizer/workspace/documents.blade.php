@@ -44,6 +44,9 @@
     $dynamicCount = $dynamicDocs->count();
     $dynamicPublicCount = $dynamicDocs->where('is_public', true)->count();
     $totalPublicCount = $event->documents->where('is_public', true)->count();
+    $canVerifyDoc = ($workspace === 'admin') && (auth()->user()?->can('event.publish') || auth()->user()?->hasRole('superadmin'));
+    $canDeleteDoc = ($workspace === 'organizer') || ($workspace === 'admin' && (auth()->user()?->can('event.delete') || auth()->user()?->hasRole('superadmin')));
+    $canUploadDoc = ($workspace === 'organizer') || ($workspace === 'admin' && (auth()->user()?->can('event.update') || auth()->user()?->hasRole('superadmin')));
 @endphp
 @extends($workspace === 'admin' ? 'layouts.app' : 'layouts.panel')
 
@@ -171,6 +174,7 @@
 </div>
 
 <div class="row g-3">
+    @if($canUploadDoc)
     <!-- Form Upload Dokumen -->
     <div class="col-lg-5">
         <div class="card h-100">
@@ -259,6 +263,20 @@
             </div>
         </div>
     </div>
+    @else
+    <div class="col-lg-5">
+        <div class="card h-100">
+            <div class="card-header bg-body-tertiary">
+                <h6 class="mb-0 fw-bold"><span class="fas fa-info-circle me-1 text-primary"></span>Informasi Berkas Event</h6>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info fs-11 mb-0">
+                    Mode pratinjau dokumen internal. Anda tidak memiliki izin untuk mengunggah atau mengubah berkas turnamen ini.
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
 
     <!-- Tabel Dokumen Terunggah -->
     <div class="col-lg-7">
@@ -312,12 +330,14 @@
                                         @else
                                             <span class="badge bg-secondary"><span class="fas fa-lock me-1"></span>Internal</span>
                                         @endif
+                                        @if($canUploadDoc)
                                         <form action="{{ route($workspaceRoutePrefix.'documents.togglePublic', [$event->id, $doc->id]) }}" method="POST" class="d-inline">
                                             @csrf
                                             <button type="submit" class="btn btn-xs {{ $doc->is_public ? 'btn-outline-secondary' : 'btn-outline-info' }} py-0 px-1" title="{{ $doc->is_public ? 'Sembunyikan dari Publik' : 'Tampilkan di Halaman Publik' }}">
                                                 <span class="fas {{ $doc->is_public ? 'fa-eye-slash' : 'fa-eye' }}" style="font-size: 10px;"></span>
                                             </button>
                                         </form>
+                                        @endif
                                     </div>
                                 </td>
                                 <td>
@@ -334,16 +354,15 @@
                                         <a href="{{ route($workspaceRoutePrefix.'documents.download', [$event->id, $doc->id]) }}" class="btn btn-xs btn-outline-primary" target="_blank" title="Unduh Berkas">
                                             <span class="fas fa-download"></span>
                                         </a>
-                                        @if($workspace === 'admin')
-                                            @if($doc->status !== 'verified')
-                                            <form action="{{ route('admin.events.workspace.documents.verify', [$event->id, $doc->id]) }}" method="POST" class="d-inline">
-                                                @csrf
-                                                <button type="submit" class="btn btn-xs btn-success" title="Verifikasi">
-                                                    <span class="fas fa-check"></span>
-                                                </button>
-                                            </form>
-                                            @endif
+                                        @if($canVerifyDoc && $doc->status !== 'verified')
+                                        <form action="{{ route('admin.events.workspace.documents.verify', [$event->id, $doc->id]) }}" method="POST" class="d-inline">
+                                            @csrf
+                                            <button type="submit" class="btn btn-xs btn-success" title="Verifikasi">
+                                                <span class="fas fa-check"></span>
+                                            </button>
+                                        </form>
                                         @endif
+                                        @if($canDeleteDoc)
                                         <form action="{{ route($workspaceRoutePrefix.'documents.destroy', [$event->id, $doc->id]) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus dokumen [{{ $doc->name }}]?');">
                                             @csrf
                                             @method('DELETE')
@@ -351,6 +370,7 @@
                                                 <span class="fas fa-trash-alt"></span>
                                             </button>
                                         </form>
+                                        @endif
                                     </div>
                                 </td>
                             </tr>

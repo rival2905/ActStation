@@ -151,6 +151,12 @@
                                 </form>
                                 @endif
 
+                                @if(isset($participantDocuments) && isset($participantDocuments[$p->id]))
+                                <button type="button" class="btn btn-xs btn-outline-info" data-bs-toggle="modal" data-bs-target="#modalDocs-{{ $p->id }}" title="Lihat dan unduh berkas turnamen tim">
+                                    <span class="fas fa-folder-open me-1"></span>Berkas ({{ $participantDocuments[$p->id]->count() }})
+                                </button>
+                                @endif
+
                                 <button type="button" class="btn btn-xs btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalRevision-{{ $p->id }}">
                                     Minta Revisi
                                 </button>
@@ -192,6 +198,89 @@
                                     </form>
                                 </div>
                             </div>
+
+                            @if(isset($participantDocuments) && isset($participantDocuments[$p->id]))
+                                @php
+                                    $pDocs = $participantDocuments[$p->id];
+                                    $pTeamDocs = $pDocs->where('documentable_type', \App\Modules\Event\Models\EventParticipant::class);
+                                    $pAthleteDocs = $pDocs->where('documentable_type', \App\Models\User::class);
+                                    $downloadRouteName = $workspace === 'admin' ? 'admin.events.workspace.teams.documents.download' : 'panel.organizer.teams.documents.download';
+                                @endphp
+                                <!-- Modal Berkas Pendaftaran -->
+                                <div class="modal fade" id="modalDocs-{{ $p->id }}" tabindex="-1" aria-hidden="true">
+                                    <div class="modal-dialog modal-lg text-start">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h6 class="modal-title">
+                                                    <span class="fas fa-folder-open text-primary me-2"></span>Berkas Pendaftaran: {{ $p->team_name }}
+                                                </h6>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                            </div>
+                                            <div class="modal-body fs-10">
+                                                {{-- Dokumen Tim --}}
+                                                <div class="mb-3">
+                                                    <h6 class="fs-11 fw-bold text-success mb-2">
+                                                        <span class="fas fa-users-cog me-1"></span>Dokumen Tim (1x per Tim)
+                                                    </h6>
+                                                    @if($pTeamDocs->isEmpty())
+                                                        <p class="text-muted fs-11 fst-italic mb-0">Tidak ada dokumen tim yang dilampirkan.</p>
+                                                    @else
+                                                        <div class="list-group list-group-flush border rounded">
+                                                            @foreach($pTeamDocs as $td)
+                                                                <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-3">
+                                                                    <div>
+                                                                        <span class="fw-bold text-dark">{{ $td->name }}</span>
+                                                                        <span class="badge bg-100 text-dark border ms-1">{{ $td->category }}</span>
+                                                                        <small class="text-muted d-block fs-11">Diunggah: {{ $td->created_at?->format('d/m/Y H:i') ?? '-' }}</small>
+                                                                    </div>
+                                                                    <a href="{{ route($downloadRouteName, [$event->id, $p->id, $td->id]) }}" class="btn btn-xs btn-outline-primary" target="_blank">
+                                                                        <span class="fas fa-download me-1"></span>Unduh
+                                                                    </a>
+                                                                </div>
+                                                            @endforeach
+                                                        </div>
+                                                    @endif
+                                                </div>
+
+                                                {{-- Dokumen Atlet --}}
+                                                <div>
+                                                    <h6 class="fs-11 fw-bold text-primary mb-2">
+                                                        <span class="fas fa-user-check me-1"></span>Dokumen Atlet Roster
+                                                    </h6>
+                                                    @if($pAthleteDocs->isEmpty())
+                                                        <p class="text-muted fs-11 fst-italic mb-0">Tidak ada dokumen atlet yang tersaring.</p>
+                                                    @else
+                                                        <div class="list-group list-group-flush border rounded">
+                                                            @foreach($pAthleteDocs as $ad)
+                                                                @php
+                                                                    $athleteMember = $p->members->firstWhere('user_id', $ad->documentable_id);
+                                                                    $athleteName = $athleteMember?->user?->name ?? ('User #' . $ad->documentable_id);
+                                                                @endphp
+                                                                <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-3">
+                                                                    <div>
+                                                                        <span class="fw-bold text-dark">{{ $ad->name }}</span>
+                                                                        <span class="badge badge-subtle-primary ms-1">{{ $athleteName }}</span>
+                                                                        @if($athleteMember?->jersey_number !== null)
+                                                                            <span class="badge bg-200 text-dark">#{{ $athleteMember->jersey_number }}</span>
+                                                                        @endif
+                                                                        <small class="text-muted d-block fs-11">Status Vault: {{ ucfirst($ad->status) }}</small>
+                                                                    </div>
+                                                                    <a href="{{ route($downloadRouteName, [$event->id, $p->id, $ad->id]) }}" class="btn btn-xs btn-outline-primary" target="_blank">
+                                                                        <span class="fas fa-download me-1"></span>Unduh
+                                                                    </a>
+                                                                </div>
+                                                            @endforeach
+                                                        </div>
+                                                    @endif
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Tutup</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endif
                         </td>
                     </tr>
                     @empty

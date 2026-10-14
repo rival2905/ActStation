@@ -16,6 +16,7 @@ use App\Modules\Event\Models\EventParticipantMember;
 use App\Modules\Event\Services\RegistrationGuard;
 use App\Modules\Event\Services\RosterValidator;
 use App\Modules\Payment\Models\Transaction;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -54,60 +55,75 @@ class PublicRegistrationController extends Controller
 
         $validated = $request->validate([
             'registration_source' => ['nullable', 'in:individual'],
-            'event_category_id' => ['required', 'integer', 'exists:event_categories,id'],
+            'event_category_id' => ['required', 'integer'],
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
             'phone_number' => ['required', 'string', 'max:20'],
-            'identity_number' => ['required', 'string', 'max:30'],
-            'birth_date' => ['required', 'date'],
+            'identity_number' => ['required', 'string', 'digits:16'],
+            'birth_date' => ['required', 'date', 'before:today'],
             'gender' => ['required', 'in:male,female'],
             'jersey_number' => ['required', 'integer', 'between:0,99'],
         ]);
 
-        /** @var EventCategory $category */
+        /** @var ?EventCategory $category */
         $category = EventCategory::query()
             ->where('id', $validated['event_category_id'])
             ->where('event_id', $event->id)
-            ->firstOrFail();
+            ->first();
+
+        if (! $category) {
+            abort(404, 'Kategori tidak ditemukan untuk event ini.');
+        }
+
+        if (! $category->allow_individual) {
+            return back()->withInput()->with('error', 'Kategori ini tidak mengizinkan pendaftaran atlet mandiri (individu).');
+        }
 
         if ($category->registration_flow === 'by_invitation') {
             return back()->withInput()->with('error', 'Kategori undangan hanya dapat didaftarkan oleh komunitas yang menerima undangan event.');
         }
 
-        // 1. Resolve user berdasarkan identity_number (Anti-Fraud Dedup - PRD_EXTERNAL §4.3 B)
-        $user = User::query()->where('identity_number', $validated['identity_number'])->first();
-        if (! $user) {
-            $user = User::query()->where('email', $validated['email'])->first();
-        }
+        $authUser = Auth::user();
+        $isNewUser = false;
+        $userToRegister = null;
 
-        if (! $user) {
-            $user = User::create([
-                'name' => $validated['name'],
-                'email' => $validated['email'],
-                'phone_number' => $validated['phone_number'],
-                'identity_number' => $validated['identity_number'],
-                'birth_date' => $validated['birth_date'],
-                'gender' => $validated['gender'],
-                'password' => Hash::make(Str::random(16)),
-                'is_active' => true,
-            ]);
-            $user->assignRole('athlete');
-        } else {
-            // Update NIK / birth_date jika belum ada
-            if (! $user->identity_number) {
-                $user->update([
-                    'identity_number' => $validated['identity_number'],
-                    'birth_date' => $validated['birth_date'],
-                    'gender' => $validated['gender'],
-                ]);
+        if ($authUser !== null) {
+            if (strtolower((string) $authUser->email) !== strtolower((string) $validated['email'])) {
+                return back()->withInput()->with('error', 'Email pendaftaran tidak sesuai dengan akun Anda yang sedang masuk.');
             }
+
+            if ($authUser->identity_number !== null && (string) $authUser->identity_number !== (string) $validated['identity_number']) {
+                return back()->withInput()->with('error', 'NIK pendaftaran tidak sesuai dengan NIK akun Anda yang sedang masuk.');
+            }
+
+            if ($authUser->identity_number === null) {
+                $nikConflict = User::query()
+                    ->where('identity_number', $validated['identity_number'])
+                    ->where('id', '!=', $authUser->id)
+                    ->exists();
+
+                if ($nikConflict) {
+                    return back()->withInput()->with('error', 'NIK sudah terdaftar pada akun lain.');
+                }
+            }
+
+            $userToRegister = $authUser;
+        } else {
+            $existingUser = User::query()
+                ->where('email', $validated['email'])
+                ->orWhere('identity_number', $validated['identity_number'])
+                ->first();
+
+            if ($existingUser !== null) {
+                return redirect()
+                    ->route('panel.login')
+                    ->with('error', 'Akun dengan email atau NIK tersebut sudah terdaftar. Silakan masuk terlebih dahulu untuk melanjutkan pendaftaran.');
+            }
+
+            $isNewUser = true;
         }
 
-        if (! Auth::check()) {
-            Auth::login($user);
-        }
-
-        $teamName = $user->name.' (Individu)';
+        $teamName = ($authUser ? $authUser->name : $validated['name']).' (Individu)';
 
         try {
             $this->registrationGuard->validate(
@@ -116,22 +132,72 @@ class PublicRegistrationController extends Controller
                 communityId: null,
                 teamName: $teamName,
                 registrationSource: $validated['registration_source'] ?? 'individual',
+                userId: $authUser?->id,
             );
         } catch (RegistrationGuardException $e) {
             return back()->withInput()->with('error', $e->getMessage());
         }
 
+        $createdUser = null;
+
         try {
-            $participant = DB::transaction(function () use ($event, $category, $user, $teamName, $validated): EventParticipant {
+            $participant = DB::transaction(function () use (
+                $event,
+                $category,
+                $validated,
+                $teamName,
+                $isNewUser,
+                $userToRegister,
+                &$createdUser
+            ): EventParticipant {
                 Event::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
                 /** @var EventCategory $lockedCategory */
                 $lockedCategory = EventCategory::query()->whereKey($category->id)->lockForUpdate()->firstOrFail();
+
+                if (! $lockedCategory->allow_individual) {
+                    throw new RegistrationGuardException('Kategori ini tidak mengizinkan pendaftaran atlet mandiri (individu).');
+                }
+
+                if ($isNewUser) {
+                    $existsUnderLock = User::query()
+                        ->where('email', $validated['email'])
+                        ->orWhere('identity_number', $validated['identity_number'])
+                        ->exists();
+
+                    if ($existsUnderLock) {
+                        throw new RegistrationGuardException('Akun dengan email atau NIK tersebut sudah terdaftar.');
+                    }
+
+                    $user = User::create([
+                        'name' => $validated['name'],
+                        'email' => $validated['email'],
+                        'phone_number' => $validated['phone_number'],
+                        'identity_number' => $validated['identity_number'],
+                        'birth_date' => $validated['birth_date'],
+                        'gender' => $validated['gender'],
+                        'password' => Hash::make(Str::random(16)),
+                        'is_active' => true,
+                    ]);
+                    $user->assignRole('athlete');
+                    $createdUser = $user;
+                } else {
+                    $user = $userToRegister;
+                    if (! $user->identity_number) {
+                        $user->update([
+                            'identity_number' => $validated['identity_number'],
+                            'birth_date' => $validated['birth_date'],
+                            'gender' => $validated['gender'],
+                        ]);
+                    }
+                }
+
                 $this->registrationGuard->validate(
                     event: $event,
                     category: $lockedCategory,
                     communityId: null,
                     teamName: $teamName,
                     registrationSource: $validated['registration_source'] ?? 'individual',
+                    userId: $user->id,
                 );
 
                 $fee = (float) $lockedCategory->registration_fee;
@@ -188,6 +254,11 @@ class PublicRegistrationController extends Controller
             return back()->withInput()->with('error', $e->getMessage());
         } catch (RosterValidationException $e) {
             return back()->withInput()->withErrors($e->errors())->with('error', 'Validasi syarat kategori individu gagal.');
+        }
+
+        if ($isNewUser && $createdUser !== null) {
+            event(new Registered($createdUser));
+            Auth::login($createdUser);
         }
 
         if ($participant->status === 'pending_payment') {

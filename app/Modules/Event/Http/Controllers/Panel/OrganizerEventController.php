@@ -46,7 +46,7 @@ class OrganizerEventController extends Controller
         $user = Auth::user();
 
         // Just-In-Time KYC Check (PRD_EXTERNAL §2.1 & §3.1)
-        if ($user->kyc_status !== 'verified' && empty($user->bank_account_number)) {
+        if (! $user->hasRole('organizer') || $user->kyc_status !== 'verified' || empty($user->bank_account_number)) {
             return redirect()
                 ->route('panel.organizer.apply')
                 ->with('warning', 'Lengkapi profil identitas PIC & rekening payout sebelum membuat turnamen baru.');
@@ -60,6 +60,13 @@ class OrganizerEventController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        /** @var User $user */
+        $user = Auth::user();
+
+        if (! $user->hasRole('organizer') || $user->kyc_status !== 'verified' || empty($user->bank_account_number)) {
+            abort(403, 'Akses ditolak. Profil penyelenggara belum diverifikasi admin.');
+        }
+
         $validated = $request->validate([
             'sport_category_id' => ['nullable', 'integer', 'exists:sport_categories,id'],
             'title' => ['required', 'string', 'max:255'],

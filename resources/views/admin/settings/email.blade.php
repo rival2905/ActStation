@@ -39,6 +39,31 @@
         </ul>
     </div>
     <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center justify-content-between pb-3 mb-3 border-bottom gap-2">
+            <div>
+                <h6 class="mb-0 text-900 fw-semi-bold">Konfigurasi Pengiriman Email</h6>
+                <div class="fs-11 text-500">Atur kredensial SMTP backend Laravel untuk notifikasi transaksi dan verifikasi.</div>
+            </div>
+            <div>
+                <a href="{{ Route::has('admin.emails.index') ? route('admin.emails.index') : url('/admin/emails') }}" class="btn btn-sm btn-falcon-default">
+                    <span class="fas fa-paper-plane me-1 text-primary"></span> Buka Riwayat & Composer Email
+                </a>
+            </div>
+        </div>
+
+        @php
+            $isConfigured = !empty($settings['mail_host']) && $settings['mail_host'] !== 'localhost' && !empty($settings['mail_username']);
+        @endphp
+
+        @if(!$isConfigured)
+        <div class="alert alert-warning d-flex align-items-center fs-10 mb-3" role="alert">
+            <span class="fas fa-exclamation-triangle me-2 fs-9"></span>
+            <div>
+                <strong>Konfigurasi Belum Aktif:</strong> Parameter SMTP belum lengkap atau masih menggunakan konfigurasi lokal. Sistem tidak mengklaim status terhubung semu (no fake connected) hingga pengujian pengiriman email berhasil diverifikasi.
+            </div>
+        </div>
+        @endif
+
         <form method="POST" action="{{ route('admin.settings.email.update') }}">
             @csrf
             @method('PUT')

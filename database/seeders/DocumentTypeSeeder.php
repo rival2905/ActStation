@@ -111,6 +111,30 @@ class DocumentTypeSeeder extends Seeder
                 'description' => 'Surat izin resmi kepala sekolah, rektorat, pimpinan instansi, atau pengurus klub.',
                 'sort_order' => 12,
             ],
+            [
+                'code' => 'school_team_letter',
+                'name' => 'Surat Keterangan Sekolah untuk Tim',
+                'scope' => 'team',
+                'applicable_entities' => ['school'],
+                'description' => 'Satu surat sekolah yang menerangkan atau mengizinkan seluruh roster tim, bukan berkas pribadi per atlet.',
+                'sort_order' => 13,
+            ],
+            [
+                'code' => 'team_assignment_letter',
+                'name' => 'Surat Penugasan Tim',
+                'scope' => 'team',
+                'applicable_entities' => ['club', 'school', 'university', 'institution', 'free_association'],
+                'description' => 'Surat penugasan resmi untuk satu tim dari sekolah, kampus, instansi, atau pengurus.',
+                'sort_order' => 14,
+            ],
+            [
+                'code' => 'team_mandate_letter',
+                'name' => 'Surat Mandat / Perwakilan Tim',
+                'scope' => 'team',
+                'applicable_entities' => ['club', 'school', 'university', 'institution', 'free_association'],
+                'description' => 'Mandat mewakili entitas pada pendaftaran tim ini. Diunggah sekali per tim oleh PIC.',
+                'sort_order' => 15,
+            ],
         ];
 
         foreach ($types as $type) {

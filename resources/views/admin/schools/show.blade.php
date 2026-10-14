@@ -15,7 +15,10 @@
                 </ol>
             </nav>
         </div>
-        <div>
+        <div class="d-flex gap-2">
+            <a href="{{ route('admin.coverage-map.index', ['q' => $school->npsn]) }}" class="btn btn-sm btn-primary">
+                <span class="fas fa-map-marked-alt me-1"></span> Lihat di Peta Jangkauan
+            </a>
             <a href="{{ route('admin.schools.index') }}" class="btn btn-sm btn-falcon-default">
                 <span class="fas fa-arrow-left me-1"></span> Kembali ke Daftar
             </a>
@@ -79,11 +82,17 @@
                             <td class="text-800 font-monospace">:
                                 @if($school->latitude && $school->longitude)
                                     {{ $school->latitude }}, {{ $school->longitude }}
+                                    <a href="{{ route('admin.coverage-map.index', ['q' => $school->npsn]) }}" class="ms-2 badge bg-primary-subtle text-primary text-decoration-none" title="Lihat di Peta Jangkauan">
+                                        <span class="fas fa-map-marker-alt me-1"></span>Peta Jangkauan
+                                    </a>
                                     <a href="https://maps.google.com/?q={{ $school->latitude }},{{ $school->longitude }}" target="_blank" class="ms-1 fs-11" title="Buka Google Maps">
                                         <span class="fas fa-external-link-alt"></span>
                                     </a>
                                 @else
-                                    -
+                                    <span class="text-muted">-</span>
+                                    <a href="{{ route('admin.coverage-map.index', ['q' => $school->npsn]) }}" class="ms-2 badge bg-secondary-subtle text-secondary text-decoration-none" title="Cari di Peta Jangkauan">
+                                        <span class="fas fa-search me-1"></span>Cari di Peta
+                                    </a>
                                 @endif
                             </td>
                         </tr>

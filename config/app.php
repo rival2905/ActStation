@@ -15,6 +15,9 @@ return [
 
     'name' => env('APP_NAME', 'Laravel'),
 
+    // ponytail: launch phase; enable when mandatory organizer uploads return.
+    'organizer_private_documents_required' => (bool) env('ORGANIZER_PRIVATE_DOCUMENTS_REQUIRED', false),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment

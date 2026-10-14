@@ -80,6 +80,21 @@ Shape response error konsisten:
 { "message": "...", "errors": { "field": ["..."] } }
 ```
 
+## Pengiriman Email via n8n
+
+- Semua email lintas modul memakai `App\Contracts\EmailDelivery::send()`. Implementasi hidup di modul `Communication`; jangan import service Communication langsung dari modul lain.
+- Laravel memicu webhook n8n secara langsung, tanpa dispatch queue email baru atau kewajiban menjalankan `queue:work`. Bila perubahan domain berada dalam transaksi, trigger hanya setelah commit; rollback tidak boleh mengirim email.
+- Simpan riwayat di `email_messages` dengan recipient/payload terenkripsi. Kegagalan n8n tidak boleh membatalkan registrasi, pembayaran, atau perubahan domain yang sudah sah.
+- Header outbound: `X-Webhook-Token` dan `X-Webhook-Source: laravel-actstation`. Konfigurasi melalui `N8N_EMAIL_ENABLED`, `N8N_EMAIL_WEBHOOK_URL`, `N8N_EMAIL_WEBHOOK_SECRET`, `N8N_EMAIL_ALLOWED_HOST`; jangan log atau commit secret. Production memakai `/webhook/actstation-email`; `/webhook-test/` hanya saat listener pengujian aktif.
+- Antrean, bila diperlukan, dikelola di n8n, bukan Laravel. Node Wait bukan pengganti antrean andal. Workflow `n8/ActStation Email.json` merespons melalui Respond to Webhook setelah proses SMTP, bukan sukses prematur.
+- Status `submitted` berarti n8n menerima proses, bukan bukti email masuk inbox. Timeout/koneksi terputus berstatus `unknown`; jangan otomatis retry karena dapat menghasilkan email ganda. Riwayat `queued` lama berarti belum dikirim, bukan alasan mengaktifkan kembali queue baru.
+- Kirim ulang manual hanya admin/superadmin dengan `setting.email`; `submitted`/`unknown` wajib konfirmasi risiko duplikasi. Tolak pesan sedang diproses. Verifikasi email memakai resend milik pengguna dengan tautan signed baru, bukan retry tautan lama oleh admin.
+- Verifikasi email memakai autentikasi, signed URL, expiry, dan throttle Laravel. Fase awal: status/kirim ulang tersedia tanpa middleware `verified` yang memblokir akses. Perubahan email membatalkan status verifikasi lama.
+- Lampiran maksimal 3 berkas, masing-masing 5 MB, PDF/PNG/JPEG. Simpan pada private local `email-attachments`; verifikasi MIME aktual dan path, lalu unduh lewat temporary signed route. n8n remote memerlukan APP_URL HTTPS yang dapat dijangkau serta `ACTSTATION_APP_URL` sesuai origin. Jangan membuka vault/storage privat ke publik.
+- Gunakan template email inline bertema Falcon; escape konten dan jangan memasukkan NIK, dokumen atlet, token, atau data roster pribadi ke notifikasi event. Pengirim resmi: `ActStation <no-reply@actstation.net>`, sesuai izin SMTP.
+- Notifikasi event memakai `EventParticipantObserver` dan `EventRegistrationEmailService`, dengan snapshot perubahan lalu trigger setelah commit untuk perubahan bisnis penting: pendaftaran, revisi, kurasi/tagihan, konfirmasi pembayaran, konfirmasi peserta, dan pembatalan. Jangan mengirim untuk setiap render/klik/save tanpa perubahan. Detail implementasi dan acceptance dicatat di PRD.
+- Tes menggunakan `Http::fake()`/mock kontrak dan mencegah request liar. Jangan menguji email nyata atau mengirim ulang pesan historis tanpa izin pengguna.
+
 ## Flutter
 
 - Riverpod. UI → Provider → Repository → ApiClient. UI tidak pernah sentuh `http` langsung.

@@ -130,6 +130,7 @@
                                     @if($ath->status === 'active')
                                     <form method="POST" action="{{ route('panel.athletes.release', $ath) }}" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin melepas atlet ini dari klub? Riwayat keanggotaan akan diarsipkan.');">
                                         @csrf
+                                        <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
                                         <button class="btn btn-sm btn-outline-danger py-0 px-2 fs-11" type="submit">
                                             Lepas Atlet
                                         </button>
@@ -197,12 +198,14 @@
                                         <div class="d-inline-flex gap-1">
                                             <form method="POST" action="{{ route('panel.athletes.approve', $pending) }}" class="d-inline">
                                                 @csrf
+                                                <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
                                                 <button class="btn btn-sm btn-success py-0 px-2 fs-11" type="submit">
                                                     <span class="fas fa-check me-1"></span>Setujui
                                                 </button>
                                             </form>
                                             <form method="POST" action="{{ route('panel.athletes.reject', $pending) }}" class="d-inline" onsubmit="return confirm('Tolak permohonan pendaftaran atlet ini?');">
                                                 @csrf
+                                                <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
                                                 <button class="btn btn-sm btn-outline-danger py-0 px-2 fs-11" type="submit">
                                                     <span class="fas fa-times me-1"></span>Tolak
                                                 </button>
@@ -212,12 +215,14 @@
                                         <div class="d-inline-flex gap-1">
                                             <form method="POST" action="{{ route('panel.athletes.resend', $pending) }}" class="d-inline">
                                                 @csrf
+                                                <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
                                                 <button class="btn btn-sm btn-outline-primary py-0 px-2 fs-11" type="submit" data-bs-toggle="tooltip" title="Kirim Ulang Notifikasi">
                                                     <span class="fas fa-paper-plane me-1"></span>Kirim Ulang
                                                 </button>
                                             </form>
                                             <form method="POST" action="{{ route('panel.athletes.reject', $pending) }}" class="d-inline" onsubmit="return confirm('Batalkan undangan atlet ini?');">
                                                 @csrf
+                                                <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
                                                 <button class="btn btn-sm btn-outline-secondary py-0 px-2 fs-11" type="submit">
                                                     Batalkan
                                                 </button>
@@ -288,6 +293,7 @@
                                     <form method="POST" action="{{ route('panel.invitations.revoke', $inv) }}" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin mencabut tautan undangan ini?');">
                                         @csrf
                                         @method('DELETE')
+                                        <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
                                         <button class="btn btn-link p-0 text-danger" type="submit" data-bs-toggle="tooltip" title="Cabut Undangan">
                                             <span class="fas fa-ban fs-10"></span>
                                         </button>
@@ -319,6 +325,7 @@
         <div class="modal-content">
             <form method="POST" action="{{ route('panel.athletes.store') }}">
                 @csrf
+                <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalAddAthleteLabel">Tambah Atlet ke Roster</h5>
                     <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -371,6 +378,7 @@
         <div class="modal-content">
             <form method="POST" action="{{ route('panel.invitations.store') }}">
                 @csrf
+                <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalCreateInvitationLabel">Buat Tautan Undangan</h5>
                     <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>

@@ -55,14 +55,14 @@
                         <td class="align-middle fw-semi-bold">{{ $doc->name }}</td>
                         <td class="align-middle">
                             <span class="badge badge-subtle-secondary">
-                                @switch($doc->category)
-                                    @case('deed') Akta Notaris @break
-                                    @case('decree') SK Kemenkumham @break
-                                    @case('permit') Izin Operasional @break
-                                    @case('id_card') KTP Penanggung Jawab @break
-                                    @case('birth_certificate') Akta Kelahiran @break
-                                    @default Dokumen Lainnya
-                                @endswitch
+                                {{ \App\Contracts\EntityRequirements::DOCUMENT_LABELS[$doc->category] ?? match($doc->category) {
+                                    'deed' => 'Akta Notaris',
+                                    'decree' => 'SK Kemenkumham',
+                                    'permit' => 'Izin Operasional',
+                                    'id_card' => 'KTP Penanggung Jawab',
+                                    'birth_certificate' => 'Akta Kelahiran',
+                                    default => 'Dokumen Lainnya',
+                                } }}
                             </span>
                         </td>
                         <td class="align-middle">{{ $doc->document_number ?? '-' }}</td>
@@ -99,9 +99,20 @@
                                 @endcan
 
                                 @can('community-document.manage')
+                                @php
+                                    $isPendingOrVerified = in_array($community->status, ['pending', 'verified'], true);
+                                    $isStatutory = $community->isStatutoryCategory($doc->category);
+                                    $cannotDelete = $doc->status === 'verified' || ($isPendingOrVerified && $isStatutory);
+                                @endphp
+                                @if($cannotDelete)
+                                <button type="button" class="btn btn-sm btn-falcon-default text-400 disabled" title="Dokumen terkunci dan tidak dapat dihapus">
+                                    <span class="fas fa-lock"></span>
+                                </button>
+                                @else
                                 <button type="button" class="btn btn-sm btn-falcon-default text-danger" title="Hapus" data-bs-toggle="modal" data-bs-target="#deleteModal" data-action="{{ route('admin.communities.documents.destroy', [$community, $doc]) }}">
                                     <span class="fas fa-trash-alt"></span>
                                 </button>
+                                @endif
                                 @endcan
                             </div>
                         </td>
@@ -135,12 +146,20 @@
                     <div class="mb-3">
                         <label class="form-label" for="category">Kategori Dokumen <span class="text-danger">*</span></label>
                         <select class="form-select" id="category" name="category" required>
-                            <option value="deed">Akta Notaris / Pendirian</option>
-                            <option value="decree">SK Kemenkumham / Instansi</option>
-                            <option value="permit">Izin Operasional</option>
-                            <option value="id_card">KTP Penanggung Jawab</option>
-                            <option value="birth_certificate">Akta Kelahiran</option>
-                            <option value="other">Dokumen Lainnya</option>
+                            <option value="">-- Pilih Kategori Dokumen --</option>
+                            <optgroup label="Dokumen Legalitas Resmi">
+                                @foreach(\App\Contracts\EntityRequirements::DOCUMENT_LABELS as $code => $lbl)
+                                    <option value="{{ $code }}">{{ $lbl }}</option>
+                                @endforeach
+                            </optgroup>
+                            <optgroup label="Kategori Dokumen Umum">
+                                <option value="deed">Akta Notaris / Pendirian</option>
+                                <option value="decree">SK Kemenkumham / Instansi</option>
+                                <option value="permit">Izin Operasional</option>
+                                <option value="id_card">KTP Penanggung Jawab</option>
+                                <option value="birth_certificate">Akta Kelahiran</option>
+                                <option value="other">Dokumen Lainnya</option>
+                            </optgroup>
                         </select>
                     </div>
                     <div class="mb-3">

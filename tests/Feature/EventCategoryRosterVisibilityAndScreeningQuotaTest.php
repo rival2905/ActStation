@@ -173,3 +173,32 @@ test('portal publik menyembunyikan roster tim saat is_roster_public false dan me
         ->assertSee('Tim Rahasia Perkasa')
         ->assertDontSee('Daftar tim pendaftar dirahasiakan oleh panitia hingga tahap kurasi/drawing selesai.');
 });
+
+test('organizer dapat menyimpan instruksi berkas fisik screening dan tampil di portal publik', function (): void {
+    $instructions = 'KTP ditunjukan langsung ketika TM dan Screening Player';
+
+    $response = $this->actingAs($this->organizer)
+        ->post(route('panel.organizer.categories.store', $this->event), [
+            'name' => 'Kategori Screening Fisik',
+            'match_type' => '5x5',
+            'gender' => 'male',
+            'registration_flow' => 'screening_first',
+            'registration_fee' => 0,
+            'document_instructions' => $instructions,
+            'allow_club' => true,
+            'allow_community' => false,
+        ]);
+
+    $response->assertSessionHasNoErrors();
+
+    $category = EventCategory::where('event_id', $this->event->id)
+        ->where('name', 'Kategori Screening Fisik')
+        ->firstOrFail();
+
+    expect($category->document_instructions)->toBe($instructions);
+
+    $this->get(route('events.show', $this->event->slug))
+        ->assertOk()
+        ->assertSee('Catatan Screening / TM:')
+        ->assertSee($instructions);
+});

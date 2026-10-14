@@ -6,8 +6,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title>@yield('title', 'ActStation — Platform Olahraga & Turnamen Basket')</title>
+    <title>@yield('title', 'ActStation — Platform Turnamen &amp; Ekosistem Olahraga Terbuka')</title>
+    <meta name="description" content="@yield('meta_description', 'ActStation adalah platform ekosistem olahraga terbuka dan turnamen multi-cabor bergaransi rekening bersama Escrow 100%, verifikasi atlet Digital Vault, dan tiket resmi.')">
+    <meta name="keywords" content="@yield('meta_keywords', 'turnamen basket, kompetisi olahraga, pendaftaran turnamen, tiket pertandingan, jadwal turnamen, rekening bersama turnamen, escrow olahraga, actstation')">
+    <meta name="robots" content="@yield('meta_robots', 'index, follow')">
+    <link rel="canonical" href="@yield('canonical_url', url()->current())">
 
+    <!-- Open Graph / Facebook / WhatsApp -->
+    <meta property="og:site_name" content="ActStation">
+    <meta property="og:locale" content="id_ID">
+    <meta property="og:type" content="@yield('og_type', 'website')">
+    <meta property="og:title" content="@yield('og_title', View::getSection('title', 'ActStation — Platform Turnamen &amp; Ekosistem Olahraga Terbuka'))">
+    <meta property="og:description" content="@yield('og_description', View::getSection('meta_description', 'Platform ekosistem olahraga terbuka dan turnamen multi-cabor bergaransi Rekening Bersama Escrow 100%.'))">
+    <meta property="og:url" content="@yield('canonical_url', url()->current())">
+    <meta property="og:image" content="@yield('og_image', asset('assets/img/logo_fix.png'))">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="@yield('twitter_card', 'summary_large_image')">
+    <meta name="twitter:title" content="@yield('twitter_title', View::getSection('title', 'ActStation — Platform Turnamen &amp; Ekosistem Olahraga Terbuka'))">
+    <meta name="twitter:description" content="@yield('twitter_description', View::getSection('meta_description', 'Platform ekosistem olahraga terbuka dan turnamen multi-cabor bergaransi Rekening Bersama Escrow 100%.'))">
+    <meta name="twitter:image" content="@yield('og_image', asset('assets/img/logo_fix.png'))">
+
+    @stack('schema')
     <!-- Favicons -->
     <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('assets/img/logo_fav.png') }}">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('assets/img/logo_fav.png') }}">
@@ -120,7 +140,7 @@
             </div>
         </nav>
 
-        @hasSection('is_landing')
+        @if(View::hasSection('is_landing'))
             @yield('content')
         @else
             <div style="padding-top: 72px;">

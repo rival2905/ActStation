@@ -23,7 +23,21 @@ class CategoryController extends Controller
     {
         $categories = $event->categories()->withCount('participants')->get();
         $developmentLevels = DevelopmentLevel::query()->where('is_active', true)->orderBy('sort_order')->get();
-        $documentTypes = DocumentType::query()->where('is_active', true)->orderBy('sort_order')->get();
+        $allReferencedCodes = $categories->flatMap(fn ($c) => (array) ($c->required_documents ?? []))
+            ->unique()
+            ->filter()
+            ->values()
+            ->all();
+
+        $documentTypes = DocumentType::query()
+            ->where(function ($q) use ($allReferencedCodes): void {
+                $q->where('is_active', true);
+                if (! empty($allReferencedCodes)) {
+                    $q->orWhereIn('code', $allReferencedCodes);
+                }
+            })
+            ->orderBy('sort_order')
+            ->get();
         $communities = DB::table('communities')->where('status', 'verified')->orderBy('name')->get(['id', 'name']);
 
         return view('admin.events.categories.index', compact('event', 'categories', 'developmentLevels', 'documentTypes', 'communities'));

@@ -4,59 +4,119 @@ declare(strict_types=1);
 
 namespace App\Modules\Event\Http\Controllers\Panel;
 
+use App\Contracts\CommunityLookup;
+use App\Contracts\EntityRequirements;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Modules\Event\Http\Requests\Panel\OrganizerKycRequest;
+use App\Modules\Event\Services\OrganizerKycService;
+use App\Modules\Event\Services\OrganizerRequirements;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class OrganizerKycController extends Controller
 {
+    public function __construct(
+        private readonly CommunityLookup $communityLookup,
+        private readonly OrganizerRequirements $organizerRequirements,
+    ) {}
+
     public function show(): View
     {
         /** @var User $user */
         $user = Auth::user();
+        $banks = OrganizerKycRequest::BANKS;
 
-        return view('panel.organizer.apply', compact('user'));
+        $organizerCommunity = $this->communityLookup->findForUser($user->id);
+
+        $legalDocumentLabels = EntityRequirements::DOCUMENT_LABELS;
+
+        $requiredLegalDocumentCodes = [];
+        $entityLegalDocuments = [];
+
+        if ($organizerCommunity) {
+            $requiredLegalDocumentCodes = EntityRequirements::legalDocumentCodes(
+                $organizerCommunity->subtype,
+                $organizerCommunity->institution_type
+            );
+
+            $entityLegalDocuments = $this->communityLookup->legalDocumentsForUser($user->id, $organizerCommunity->id);
+        }
+
+        $organizerDocumentLabels = OrganizerRequirements::DOCUMENT_LABELS;
+        $organizerDocuments = $user->documents()
+            ->whereIn('category', OrganizerRequirements::categories())
+            ->get()
+            ->keyBy(fn ($doc) => Str::after((string) $doc->category, 'organizer_'));
+
+        $organizerDocumentCodes = $this->organizerRequirements->documentCodes($organizerCommunity !== null);
+
+        $reusableDocuments = [];
+        $hasSelectedSameEntityPrior = $user->organizer_community_id !== null
+            && $organizerCommunity !== null
+            && (int) $user->organizer_community_id === (int) $organizerCommunity->id;
+
+        foreach ($organizerDocuments as $code => $doc) {
+            $storageExists = $doc->file_path && Storage::disk('local')->exists($doc->file_path);
+            $isNotRejected = $doc->status !== 'rejected';
+            $isPrivate = ! $doc->is_public;
+
+            if ($storageExists && $isNotRejected && $isPrivate) {
+                if ($code === 'authorization_letter') {
+                    if ($hasSelectedSameEntityPrior) {
+                        $reusableDocuments[$code] = true;
+                    }
+                } else {
+                    $reusableDocuments[$code] = true;
+                }
+            }
+        }
+
+        return view('panel.organizer.apply', compact(
+            'user',
+            'banks',
+            'organizerCommunity',
+            'entityLegalDocuments',
+            'legalDocumentLabels',
+            'requiredLegalDocumentCodes',
+            'organizerDocumentLabels',
+            'organizerDocuments',
+            'organizerDocumentCodes',
+            'reusableDocuments'
+        ));
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(OrganizerKycRequest $request, OrganizerKycService $service): RedirectResponse
     {
         /** @var User $user */
         $user = Auth::user();
 
-        $validated = $request->validate([
-            'identity_number' => ['required', 'string', 'max:30'],
-            'identity_image' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:4096'],
-            'bank_name' => ['required', 'string', 'max:50'],
-            'bank_account_number' => ['required', 'string', 'max:50'],
-            'bank_account_holder' => ['required', 'string', 'max:255'],
-            'emergency_contact' => ['required', 'string', 'max:20'],
-        ]);
-
-        $updateData = [
-            'identity_number' => $validated['identity_number'],
-            'bank_name' => $validated['bank_name'],
-            'bank_account_number' => $validated['bank_account_number'],
-            'bank_account_holder' => $validated['bank_account_holder'],
-            'emergency_contact' => $validated['emergency_contact'],
-            'kyc_status' => 'verified',
-        ];
-
-        if ($request->hasFile('identity_image')) {
-            $path = $request->file('identity_image')->store('organizer_kyc', 'local');
-            $updateData['identity_image'] = $path;
-        }
-
-        $user->update($updateData);
-
-        if (! $user->hasRole('organizer')) {
-            $user->assignRole('organizer');
-        }
+        $service->apply($user, $request);
 
         return redirect()
-            ->route('panel.organizer.events.create')
-            ->with('success', 'Profil PIC penyelenggara berhasil diverifikasi! Anda sekarang dapat membuat turnamen baru.');
+            ->route('panel.organizer.apply')
+            ->with('success', 'Kirim Pengajuan Penyelenggara berhasil! Berkas Anda sedang dalam proses peninjauan oleh tim admin.');
+    }
+
+    public function downloadDocument(int $document): StreamedResponse
+    {
+        /** @var User $user */
+        $user = Auth::user();
+
+        $doc = $user->documents()
+            ->where('id', $document)
+            ->whereIn('category', OrganizerRequirements::categories())
+            ->where('is_public', false)
+            ->firstOrFail();
+
+        if (! Storage::disk('local')->exists($doc->file_path)) {
+            abort(404, 'Berkas tidak ditemukan.');
+        }
+
+        return Storage::disk('local')->download($doc->file_path, basename($doc->file_path));
     }
 }

@@ -12,6 +12,8 @@ use App\Modules\Community\Models\CommunityOfficial;
 use App\Modules\Community\Models\Document;
 use App\Modules\Community\Services\AthleteMembershipService;
 use App\Modules\Community\Services\InvitationService;
+use App\Modules\Event\Models\Event;
+use App\Modules\Event\Models\EventCategory;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -520,4 +522,118 @@ test('atlet approve permintaannya sendiri initiated_by=athlete ditolak dan statu
 
     $response->assertSessionHas('error');
     expect($athlete->fresh()->status)->toBe('pending');
+});
+
+test('akun tanpa komunitas tidak melihat menu manajemen komunitas dan melihat cta buat komunitas', function (): void {
+    $rival = User::factory()->create([
+        'email' => 'rival@gmail.com',
+        'is_active' => true,
+    ]);
+    $rival->assignRole('community_manager');
+
+    $response = $this->actingAs($rival)
+        ->get(route('panel.community-events.index'));
+
+    $response->assertOk();
+
+    // CTA and available options
+    $response->assertSee('Buat Komunitas');
+    $response->assertSee('panel/community/create');
+    $response->assertSee('Ikuti Turnamen');
+    $response->assertSee('Permintaan Saya');
+
+    // Management menus MUST NOT be present
+    $response->assertDontSee('Profil Komunitas');
+    $response->assertDontSee('Pengurus');
+    $response->assertDontSee('Pelatih');
+    $response->assertDontSee('Roster Atlet');
+    $response->assertDontSee('Dokumen');
+    $response->assertDontSee('Undangan');
+
+    // Visibly informs user to create community before registration
+    $response->assertSee('Anda belum memiliki komunitas terdaftar');
+    $response->assertSee('Buat Komunitas Sekarang');
+});
+
+test('akun tanpa komunitas melihat tombol buat komunitas untuk mendaftar dan tidak bisa daftar turnamen', function (): void {
+    $rival = User::factory()->create([
+        'email' => 'rival2@gmail.com',
+        'is_active' => true,
+    ]);
+    $rival->assignRole('community_manager');
+
+    $event = Event::factory()->create([
+        'sport_category_id' => $this->sportCategory1,
+        'status' => 'published',
+        'registration_open' => true,
+    ]);
+
+    EventCategory::factory()->create([
+        'event_id' => $event->id,
+        'name' => 'KU-18 Putra',
+    ]);
+
+    $response = $this->actingAs($rival)
+        ->get(route('panel.community-events.index'));
+
+    $response->assertOk();
+    $response->assertSee('Buat Komunitas untuk Mendaftar');
+    $response->assertDontSee('Daftar Sekarang');
+
+    // Direct access to registration page is denied without community
+    $regResponse = $this->actingAs($rival)
+        ->get(route('panel.community-events.create', $event->slug));
+
+    $regResponse->assertRedirect(route('panel.community-events.index'));
+    $regResponse->assertSessionHas('error');
+});
+
+test('manager komunitas yang sah mempertahankan seluruh menu dan dapat mendaftar event', function (): void {
+    $event = Event::factory()->create([
+        'sport_category_id' => $this->sportCategory1,
+        'status' => 'published',
+        'registration_open' => true,
+    ]);
+
+    EventCategory::factory()->create([
+        'event_id' => $event->id,
+        'name' => 'KU-18 Putra',
+    ]);
+
+    $response = $this->actingAs($this->managerA)
+        ->get(route('panel.community-events.index'));
+
+    $response->assertOk();
+
+    // Full management menus visible
+    $response->assertSee('Profil Komunitas');
+    $response->assertSee('Pengurus');
+    $response->assertSee('Pelatih');
+    $response->assertSee('Roster Atlet');
+    $response->assertSee('Dokumen');
+    $response->assertSee('Undangan');
+    $response->assertSee('Ikuti Turnamen');
+    $response->assertSee('Permintaan Saya');
+
+    // No CTA Buat Komunitas
+    $response->assertDontSee('Buat Komunitas');
+
+    // Registration allowed
+    $response->assertDontSee('Anda belum memiliki komunitas terdaftar');
+    $response->assertSee('Daftar Sekarang');
+});
+
+test('menu organizer kelola event tetap terlihat untuk role organizer', function (): void {
+    $organizer = User::factory()->create([
+        'email' => 'organizer@actstation.test',
+        'is_active' => true,
+    ]);
+    $organizer->assignRole('organizer');
+
+    $response = $this->actingAs($organizer)
+        ->get(route('panel.community-events.index'));
+
+    $response->assertOk();
+    $response->assertSee('Kelola Event Saya');
+    $response->assertSee('Panel Organizer');
 });

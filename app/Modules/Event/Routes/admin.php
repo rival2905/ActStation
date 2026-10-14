@@ -7,6 +7,7 @@ use App\Modules\Event\Http\Controllers\Admin\CategoryController;
 use App\Modules\Event\Http\Controllers\Admin\EventCalendarController;
 use App\Modules\Event\Http\Controllers\Admin\EventController;
 use App\Modules\Event\Http\Controllers\Admin\EventModerationController;
+use App\Modules\Event\Http\Controllers\Admin\OrganizerKycModerationController;
 use App\Modules\Event\Http\Controllers\Admin\ParticipantController;
 use App\Modules\Event\Http\Controllers\Admin\ScheduleController;
 use App\Modules\Event\Http\Controllers\Admin\ScheduleSettingController;
@@ -72,6 +73,7 @@ Route::scopeBindings()->prefix('events/{event}')->name('events.workspace.')->gro
     Route::delete('documents/{document}', [OrganizerDocumentController::class, 'destroy'])->middleware('permission:event.delete')->name('documents.destroy');
     Route::post('documents/{document}/toggle-public', [OrganizerDocumentController::class, 'togglePublic'])->middleware('permission:event.update')->name('documents.togglePublic');
     Route::get('teams', [OrganizerTeamController::class, 'index'])->middleware('permission:event-participant.view')->name('teams.index');
+    Route::get('teams/{participant}/documents/{document}/download', [OrganizerTeamController::class, 'downloadDocument'])->middleware('permission:event-participant.view')->name('teams.documents.download');
     Route::post('teams/{participant}/verify', [OrganizerTeamController::class, 'verify'])->middleware('permission:event-participant.confirm')->name('teams.verify');
     Route::post('teams/{participant}/request-revision', [OrganizerTeamController::class, 'requestRevision'])->middleware('permission:event-participant.update')->name('teams.requestRevision');
     Route::post('teams/{participant}/confirm-manual-payment', [OrganizerTeamController::class, 'confirmManualPayment'])->middleware('permission:event-participant.confirm')->name('teams.confirmManualPayment');
@@ -110,6 +112,31 @@ Route::get('escrow/payouts', [AdminEscrowPayoutController::class, 'index'])
 Route::post('escrow/payouts/{payout}/transfer', [AdminEscrowPayoutController::class, 'processTransfer'])
     ->middleware('permission:refund.process')
     ->name('escrow-payouts.transfer');
+
+// Verifikasi & Moderasi KYC Penyelenggara (PRD_EXTERNAL §3.1)
+Route::get('organizers-kyc', [OrganizerKycModerationController::class, 'index'])
+    ->middleware('permission:user.view')
+    ->name('organizer-kyc.index');
+
+Route::get('organizers-kyc/{user}', [OrganizerKycModerationController::class, 'show'])
+    ->middleware('permission:user.view')
+    ->name('organizer-kyc.show');
+
+Route::post('organizers-kyc/{user}/approve', [OrganizerKycModerationController::class, 'approve'])
+    ->middleware('permission:user.update')
+    ->name('organizer-kyc.approve');
+
+Route::post('organizers-kyc/{user}/reject', [OrganizerKycModerationController::class, 'reject'])
+    ->middleware('permission:user.update')
+    ->name('organizer-kyc.reject');
+
+Route::get('organizers-kyc/{user}/documents/{document}/download', [OrganizerKycModerationController::class, 'downloadDocument'])
+    ->middleware('permission:user.view')
+    ->name('organizer-kyc.documents.download');
+
+Route::get('organizers-kyc/{user}/entity-documents/{code}/download', [OrganizerKycModerationController::class, 'downloadEntityDocument'])
+    ->middleware('permission:user.view')
+    ->name('organizer-kyc.entity-documents.download');
 Route::scopeBindings()->group(function (): void {
     // Categories
     Route::get('events/{event}/categories', [CategoryController::class, 'index'])

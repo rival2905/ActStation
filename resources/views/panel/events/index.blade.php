@@ -20,6 +20,26 @@
         </div>
     </div>
 </div>
+@if(! $community)
+<div class="card border-warning mb-3">
+    <div class="card-body p-3">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div class="d-flex align-items-center">
+                <span class="fas fa-exclamation-triangle text-warning fs-5 me-3"></span>
+                <div>
+                    <h6 class="mb-1 text-900 fw-bold">Anda belum memiliki komunitas terdaftar</h6>
+                    <p class="mb-0 text-700 fs-10">Untuk mendaftarkan tim ke turnamen basket, Anda harus membuat komunitas terlebih dahulu atau bergabung sebagai pengurus aktif.</p>
+                </div>
+            </div>
+            <div>
+                <a class="btn btn-sm btn-primary" href="{{ Route::has('panel.community.create') ? route('panel.community.create') : url('/panel/community/create') }}">
+                    <span class="fas fa-plus-circle me-1"></span>Buat Komunitas Sekarang
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
 
 @if(session('success'))
 <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -121,9 +141,15 @@
                     </div>
                 </div>
                 <div class="mt-auto">
+                    @if($community)
                     <a href="{{ route('panel.community-events.create', $event->slug) }}" class="btn btn-primary w-100 btn-sm">
                         <span class="fas fa-clipboard-check me-1"></span>Daftar Sekarang
                     </a>
+                    @else
+                    <a href="{{ Route::has('panel.community.create') ? route('panel.community.create') : url('/panel/community/create') }}" class="btn btn-falcon-default w-100 btn-sm">
+                        <span class="fas fa-plus-circle me-1"></span>Buat Komunitas untuk Mendaftar
+                    </a>
+                    @endif
                 </div>
             </div>
         </div>

@@ -1,9 +1,24 @@
 @php
     $category ??= null;
     $fieldPrefix ??= 'category';
+    $documentTypes ??= collect();
+    $hasParticipants = $category && (($category->participants_count ?? 0) > 0 || $category->participants()->exists());
     $fieldValue = static fn (string $field, mixed $default = null): mixed => old($field, $category?->{$field} ?? $default);
     $checked = static fn (string $field, bool $default = false): bool => (bool) old($field, $category?->{$field} ?? $default);
     $activeDocuments = old('required_documents', $category?->required_documents ?? []);
+    $isLegacySubtypesNull = $category !== null && $category->allowed_community_subtypes === null;
+    $defaultSubtypes = array_keys(\App\Contracts\EntityRequirements::CATEGORY_SUBTYPES);
+    $activeCommunitySubtypes = old('allowed_community_subtypes',
+        ($category && $hasParticipants && $isLegacySubtypesNull)
+            ? []
+            : ($category?->allowed_community_subtypes ?? ($category?->community_subtype ? [$category->community_subtype] : $defaultSubtypes))
+    );
+    $activeInstitutionTypes = old('allowed_institution_types', $category?->allowed_institution_types ?? []);
+    $activeEntityDocuments = old('required_entity_documents', $category?->required_entity_documents ?? []);
+
+    $canonicalSubtypes = \App\Contracts\EntityRequirements::CATEGORY_SUBTYPES;
+    $canonicalInstitutionTypes = \App\Contracts\EntityRequirements::INSTITUTION_TYPES;
+    $canonicalEntityDocLabels = \App\Contracts\EntityRequirements::DOCUMENT_LABELS;
     $formatDate = static function (mixed $value): ?string {
         if (! $value) {
             return null;
@@ -18,7 +33,6 @@
         }
     };
     $dateValue = static fn (string $field): ?string => $formatDate(old($field, $category?->{$field}));
-    $hasParticipants = $category && (($category->participants_count ?? 0) > 0 || $category->participants()->exists());
 @endphp
 
 <div id="{{ $fieldPrefix }}_wrapper" class="category-form-wrapper" data-prefix="{{ $fieldPrefix }}">
@@ -66,18 +80,24 @@
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fs-10 fw-bold mb-1" for="{{ $fieldPrefix }}_match_type">Format Tanding <span class="text-danger">*</span></label>
-                    <select class="form-select form-select-sm" id="{{ $fieldPrefix }}_match_type" name="match_type" required @if($hasParticipants) readonly @endif>
+                    <select class="form-select form-select-sm" id="{{ $fieldPrefix }}_match_type" name="match_type" required @disabled($hasParticipants)>
                         <option value="5x5" @selected($fieldValue('match_type', '5x5') === '5x5')>5 on 5</option>
                         <option value="3x3" @selected($fieldValue('match_type', '5x5') === '3x3')>3x3 Streetball</option>
                     </select>
+                    @if($hasParticipants)
+                        <input type="hidden" name="match_type" value="{{ $fieldValue('match_type', '5x5') }}">
+                    @endif
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fs-10 fw-bold mb-1" for="{{ $fieldPrefix }}_gender">Gender <span class="text-danger">*</span></label>
-                    <select class="form-select form-select-sm" id="{{ $fieldPrefix }}_gender" name="gender" required @if($hasParticipants) readonly @endif>
+                    <select class="form-select form-select-sm" id="{{ $fieldPrefix }}_gender" name="gender" required @disabled($hasParticipants)>
                         <option value="male" @selected($fieldValue('gender', 'mixed') === 'male')>Putra</option>
                         <option value="female" @selected($fieldValue('gender', 'mixed') === 'female')>Putri</option>
                         <option value="mixed" @selected($fieldValue('gender', 'mixed') === 'mixed')>Campuran</option>
                     </select>
+                    @if($hasParticipants)
+                        <input type="hidden" name="gender" value="{{ $fieldValue('gender', 'mixed') }}">
+                    @endif
                 </div>
                 <div class="col-md-3">
                     <label class="form-label fs-10 fw-bold mb-1" for="{{ $fieldPrefix }}_max_teams">Kuota Maksimal Tim</label>
@@ -100,32 +120,20 @@
         <div class="card-body py-2 px-3">
             <div class="row g-2 mb-2">
                 <div class="col-md-6">
-                    <label class="form-label fs-10 fw-bold mb-1" for="{{ $fieldPrefix }}_development_level_id">
-                        Master Kelompok Usia (Jenjang)
-                    </label>
-                    <select class="form-select form-select-sm" id="{{ $fieldPrefix }}_development_level_id" name="development_level_id">
-                        <option value="" data-min-age="" data-max-age="">Bebas / Kategori Umum (Tanpa Jenjang Master)</option>
-                        @foreach($developmentLevels as $developmentLevel)
-                            <option value="{{ $developmentLevel->id }}"
-                                data-min-age="{{ $developmentLevel->min_age ?? '' }}"
-                                data-max-age="{{ $developmentLevel->max_age ?? '' }}"
-                                @selected((string) $fieldValue('development_level_id') === (string) $developmentLevel->id)>
-                                {{ $developmentLevel->name }}
-                                @if($developmentLevel->min_age !== null || $developmentLevel->max_age !== null)
-                                    ({{ $developmentLevel->min_age ?? 0 }}–{{ $developmentLevel->max_age ?? '∞' }} tahun)
-                                @endif
-                            </option>
-                        @endforeach
-                    </select>
-                    <small class="text-muted fs-11">Pilih jenjang untuk mengisi rekomendasi umur secara otomatis.</small>
+                    <label class="form-label fs-10 fw-bold mb-1" for="{{ $fieldPrefix }}_min_age">Batasan Usia Minimum (tahun)</label>
+                    <div class="input-group input-group-sm">
+                        <input class="form-control form-control-sm" id="{{ $fieldPrefix }}_min_age" type="number" name="min_age" min="0" max="120" value="{{ $fieldValue('min_age') }}" placeholder="Tanpa batas minimum" @readonly($hasParticipants)>
+                        <span class="input-group-text">tahun</span>
+                    </div>
+                    <small class="text-muted fs-11">Kosongkan bila tidak ada batas bawah usia.</small>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label fs-10 fw-bold mb-1" for="{{ $fieldPrefix }}_min_age">Min Usia (tahun)</label>
-                    <input class="form-control form-control-sm" id="{{ $fieldPrefix }}_min_age" type="number" name="min_age" min="0" max="120" value="{{ $fieldValue('min_age') }}" placeholder="Contoh: 13" @readonly($hasParticipants)>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label fs-10 fw-bold mb-1" for="{{ $fieldPrefix }}_max_age">Maks Usia (tahun)</label>
-                    <input class="form-control form-control-sm" id="{{ $fieldPrefix }}_max_age" type="number" name="max_age" min="0" max="120" value="{{ $fieldValue('max_age') }}" placeholder="Contoh: 16" @readonly($hasParticipants)>
+                <div class="col-md-6">
+                    <label class="form-label fs-10 fw-bold mb-1" for="{{ $fieldPrefix }}_max_age">Batasan Usia Maksimum (tahun)</label>
+                    <div class="input-group input-group-sm">
+                        <input class="form-control form-control-sm" id="{{ $fieldPrefix }}_max_age" type="number" name="max_age" min="0" max="120" value="{{ $fieldValue('max_age') }}" placeholder="Tanpa batas maksimum" @readonly($hasParticipants)>
+                        <span class="input-group-text">tahun</span>
+                    </div>
+                    <small class="text-muted fs-11">Kosongkan jika kategori terbuka (Open / Senior).</small>
                 </div>
             </div>
             <div class="row g-2 align-items-center">
@@ -160,7 +168,7 @@
                     <label class="form-label fs-10 fw-bold mb-1" for="{{ $fieldPrefix }}_registration_flow">
                         Pilihan Alur Registrasi <span class="text-danger">*</span>
                     </label>
-                    <select class="form-select form-select-sm" id="{{ $fieldPrefix }}_registration_flow" name="registration_flow" required @if($hasParticipants) readonly @endif>
+                    <select class="form-select form-select-sm" id="{{ $fieldPrefix }}_registration_flow" name="registration_flow" required @disabled($hasParticipants)>
                         <option value="screening_first" @selected($fieldValue('registration_flow', 'screening_first') === 'screening_first')>
                             📋 Kurasi Berkas Dulu &rarr; Bayar Setelah Lolos &rarr; Konfirmasi (screening_first)
                         </option>
@@ -174,6 +182,9 @@
                             ✉️ Khusus Undangan Resmi (by_invitation)
                         </option>
                     </select>
+                    @if($hasParticipants)
+                        <input type="hidden" name="registration_flow" value="{{ $fieldValue('registration_flow', 'screening_first') }}">
+                    @endif
                     <small class="text-muted fs-11" id="{{ $fieldPrefix }}_flow_hint">
                         Pilih alur turnamen yang sesuai dengan prestise dan model bisnis kategori ini.
                     </small>
@@ -184,7 +195,7 @@
                     </label>
                     <div class="input-group input-group-sm">
                         <span class="input-group-text">Rp</span>
-                        <input class="form-control form-control-sm" id="{{ $fieldPrefix }}_registration_fee" type="number" name="registration_fee" min="0" step="1000" value="{{ $fieldValue('registration_fee', 0) }}" required>
+                        <input class="form-control form-control-sm" id="{{ $fieldPrefix }}_registration_fee" type="number" name="registration_fee" min="0" step="1000" value="{{ $fieldValue('registration_fee', 0) }}" required @readonly($hasParticipants)>
                     </div>
                     <div class="d-flex flex-wrap gap-1 mt-1">
                         <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2 fee-preset-btn" data-fee="0">Gratis (0)</button>
@@ -273,42 +284,112 @@
         <div class="card-body py-2 px-3">
             <div class="row g-2 align-items-center mb-2">
                 <div class="col-md-3">
-                    <input type="hidden" name="allow_club" value="0">
+                    @if($hasParticipants)
+                        <input type="hidden" name="allow_club" value="{{ $checked('allow_club', true) ? '1' : '0' }}">
+                    @else
+                        <input type="hidden" name="allow_club" value="0">
+                    @endif
                     <div class="form-check form-switch mb-0">
-                        <input class="form-check-input" id="{{ $fieldPrefix }}_allow_club" type="checkbox" name="allow_club" value="1" @checked($checked('allow_club', true)) @if($hasParticipants) readonly @endif>
+                        <input class="form-check-input" id="{{ $fieldPrefix }}_allow_club" type="checkbox" name="allow_club" value="1" @checked($checked('allow_club', true)) @disabled($hasParticipants)>
                         <label class="form-check-label fw-bold fs-10" for="{{ $fieldPrefix }}_allow_club">
                             <span class="badge badge-subtle-primary me-1">Klub</span> Izinkan Klub
                         </label>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <input type="hidden" name="allow_community" value="0">
+                    @if($hasParticipants)
+                        <input type="hidden" name="allow_community" value="{{ $checked('allow_community', true) ? '1' : '0' }}">
+                    @else
+                        <input type="hidden" name="allow_community" value="0">
+                    @endif
                     <div class="form-check form-switch mb-0">
-                        <input class="form-check-input" id="{{ $fieldPrefix }}_allow_community" type="checkbox" name="allow_community" value="1" @checked($checked('allow_community', true)) @if($hasParticipants) readonly @endif>
+                        <input class="form-check-input" id="{{ $fieldPrefix }}_allow_community" type="checkbox" name="allow_community" value="1" @checked($checked('allow_community', true)) @disabled($hasParticipants)>
                         <label class="form-check-label fw-bold fs-10" for="{{ $fieldPrefix }}_allow_community">
                             <span class="badge badge-subtle-info me-1">Komunitas</span> Izinkan Komunitas
                         </label>
                     </div>
                 </div>
-                {{-- Kontainer Dinamis Subtipe Komunitas --}}
-                <div class="col-md-6" id="{{ $fieldPrefix }}_community_subtype_container" style="display: none;">
-                    <label class="form-label fs-10 fw-bold mb-1" for="{{ $fieldPrefix }}_community_subtype">
-                        Pilih Subtipe Komunitas <span class="text-danger">*</span>
-                    </label>
-                    <select class="form-select form-select-sm" id="{{ $fieldPrefix }}_community_subtype" name="community_subtype" @if($hasParticipants) readonly @endif>
-                        <option value="">-- Wajib Pilih Subtipe Komunitas --</option>
-                        <option value="school" @selected($fieldValue('community_subtype') === 'school')>🏫 Sekolah (school)</option>
-                        <option value="university" @selected($fieldValue('community_subtype') === 'university')>🎓 Perguruan Tinggi (university)</option>
-                        <option value="institution" @selected($fieldValue('community_subtype') === 'institution')>🏢 Instansi / Lembaga (institution)</option>
-                        <option value="club" @selected($fieldValue('community_subtype') === 'club')>🏀 Komunitas Klub (club)</option>
-                        <option value="free_association" @selected($fieldValue('community_subtype') === 'free_association')>👥 Perkumpulan Bebas (free_association)</option>
-                    </select>
-                    <small class="text-muted fs-11">Wajib dipilih saat opsi Komunitas aktif. Nilai yang didukung sistem ActStation.</small>
+                <div class="col-md-4">
+                    @if($hasParticipants)
+                        <input type="hidden" name="allow_individual" value="{{ $checked('allow_individual', false) ? '1' : '0' }}">
+                    @else
+                        <input type="hidden" name="allow_individual" value="0">
+                    @endif
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" id="{{ $fieldPrefix }}_allow_individual" type="checkbox" name="allow_individual" value="1" @checked($checked('allow_individual', false)) @disabled($hasParticipants)>
+                        <label class="form-check-label fw-bold fs-10" for="{{ $fieldPrefix }}_allow_individual">
+                            <span class="badge badge-subtle-success me-1">Mandiri</span> Izinkan Atlet Mandiri / Perorangan
+                        </label>
+                    </div>
+                </div>
+                {{-- Kontainer Dinamis Subtipe Komunitas Multi-Pilihan --}}
+                <div class="col-12 mt-2" id="{{ $fieldPrefix }}_community_subtype_container" style="display: none;">
+                    <div class="border rounded p-2 bg-body-tertiary">
+                        <label class="form-label fs-10 fw-bold mb-1">
+                            Pilih Subtipe Komunitas yang Diizinkan <span class="text-danger">*</span>
+                        </label>
+                        <div class="row g-2 mb-2">
+                            @foreach($canonicalSubtypes as $subKey => $subLabel)
+                                <div class="col-sm-6 col-md-3">
+                                    <div class="form-check mb-1">
+                                        <input class="form-check-input {{ $fieldPrefix }}_subtype_check" id="{{ $fieldPrefix }}_subtype_{{ $subKey }}" type="checkbox" name="allowed_community_subtypes[]" value="{{ $subKey }}" @checked(in_array($subKey, (array) $activeCommunitySubtypes, true)) @disabled($hasParticipants)>
+                                        <label class="form-check-label fs-11" for="{{ $fieldPrefix }}_subtype_{{ $subKey }}">
+                                            {{ $subLabel }}
+                                        </label>
+                                    </div>
+                                </div>
+                            @endforeach
+                            @if($category !== null && (in_array('school', (array) $activeCommunitySubtypes, true) || in_array('school', (array) ($category->allowed_community_subtypes ?? []), true) || ($isLegacySubtypesNull && $category->community_subtype === 'school')))
+                                <div class="col-sm-6 col-md-3">
+                                    <div class="form-check mb-1">
+                                        <input class="form-check-input {{ $fieldPrefix }}_subtype_check" id="{{ $fieldPrefix }}_subtype_school" type="checkbox" name="allowed_community_subtypes[]" value="school" @checked(true) @disabled($hasParticipants)>
+                                        <label class="form-check-label fs-11 text-warning-emphasis" for="{{ $fieldPrefix }}_subtype_school">
+                                            Sekolah (Semua Jenjang; aturan lama) (school)
+                                        </label>
+                                    </div>
+                                </div>
+                            @endif
+                        </div>
+                        @if($hasParticipants && ! $isLegacySubtypesNull)
+                            @foreach((array) $activeCommunitySubtypes as $selSubtype)
+                                <input type="hidden" name="allowed_community_subtypes[]" value="{{ $selSubtype }}">
+                            @endforeach
+                        @endif
+
+                        {{-- Kontainer Dinamis Detail Tipe Instansi (Hanya Tampil Bila Subtipe Instansi Dipilih) --}}
+                        <div id="{{ $fieldPrefix }}_institution_type_container" class="pt-2 border-top" style="display: none;">
+                            @if(! $hasParticipants)
+                                <input type="hidden" name="has_allowed_institution_types" value="1">
+                                <input type="hidden" name="clear_allowed_institution_types" value="1">
+                            @endif
+                            <label class="form-label fs-10 fw-bold mb-1 text-primary">
+                                <span class="fas fa-building me-1"></span>Batasan Tipe Instansi / Lembaga (Opsional, kosongkan untuk semua instansi):
+                            </label>
+                            <div class="row g-2">
+                                @foreach($canonicalInstitutionTypes as $instKey => $instLabel)
+                                    <div class="col-sm-6 col-md-4">
+                                        <div class="form-check mb-1">
+                                            <input class="form-check-input" id="{{ $fieldPrefix }}_inst_{{ $instKey }}" type="checkbox" name="allowed_institution_types[]" value="{{ $instKey }}" @checked(in_array($instKey, (array) $activeInstitutionTypes, true)) @disabled($hasParticipants)>
+                                            <label class="form-check-label fs-11" for="{{ $fieldPrefix }}_inst_{{ $instKey }}">
+                                                {{ $instLabel }}
+                                            </label>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                            @if($hasParticipants)
+                                @foreach((array) $activeInstitutionTypes as $selInstType)
+                                    <input type="hidden" name="allowed_institution_types[]" value="{{ $selInstType }}">
+                                @endforeach
+                            @endif
+                            <small class="text-muted fs-11 d-block mt-1">Jika dipilih, hanya instansi dengan legalitas tipe tersebut (misal: Federasi Cabor atau Dinas Pemuda/Dispora) yang dapat mendaftar.</small>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div id="{{ $fieldPrefix }}_source_warning" class="alert alert-danger py-1 px-2 fs-11 mb-0" style="display: none;">
                 <span class="fas fa-exclamation-triangle me-1"></span>
-                Minimal salah satu sumber tim (Klub atau Komunitas) harus diaktifkan.
+                Minimal salah satu kriteria pendaftar (Klub, Komunitas, atau Atlet Mandiri) harus diaktifkan.
             </div>
         </div>
     </div>
@@ -322,25 +403,142 @@
             <span class="badge bg-200 text-600 fs-11">Digital Vault</span>
         </div>
         <div class="card-body py-2 px-3">
-            <div class="mb-2">
-                <label class="form-label fs-10 fw-bold mb-1">Dokumen Wajib Atlet &amp; Tim:</label>
+            @php
+                $originChipLabels = [
+                    'school' => 'Sekolah',
+                    'institution' => 'Instansi',
+                    'club' => 'Klub',
+                    'university' => 'Kampus',
+                    'free_association' => 'Komunitas Bebas',
+                ];
+                $athleteDocTypes = $documentTypes->where('scope', 'athlete');
+                $teamDocTypes = $documentTypes->where('scope', 'team');
+            @endphp
+
+            {{-- Kelompok A: Dokumen Wajib Per Atlet --}}
+            <div class="mb-3">
+                <div class="d-flex align-items-center justify-content-between mb-1">
+                    <label class="form-label fs-10 fw-bold mb-0 text-primary">
+                        <span class="fas fa-user-check me-1"></span>Dokumen Wajib Per Atlet
+                    </label>
+                    <span class="badge badge-subtle-primary fs-11">Digital Vault Roster</span>
+                </div>
+                <div class="fs-11 text-muted mb-2">
+                    Setiap atlet terpilih wajib memiliki berkas pribadi ini di <strong>Digital Vault</strong> masing-masing (atau diunggah baru saat registrasi tim: misal KTP, Akta Kelahiran, NISN).
+                </div>
                 <div class="border rounded p-2 bg-body-tertiary" style="max-height: 160px; overflow-y: auto;">
                     <div class="row g-2">
-                        @forelse($documentTypes as $documentType)
-                            <div class="col-md-6">
+                        @forelse($athleteDocTypes as $documentType)
+                            @php
+                                $appEntities = (array) ($documentType->applicable_entities ?? []);
+                            @endphp
+                            <div class="col-md-6 {{ $fieldPrefix }}_doc_item" data-scope="athlete" data-applicable-entities="{{ json_encode($appEntities) }}">
                                 <div class="form-check mb-1">
-                                    <input class="form-check-input" id="{{ $fieldPrefix }}_document_{{ $documentType->id }}" type="checkbox" name="required_documents[]" value="{{ $documentType->code }}" @checked(in_array($documentType->code, $activeDocuments, true)) @if($hasParticipants) readonly @endif>
+                                    <input class="form-check-input {{ $fieldPrefix }}_doc_check" id="{{ $fieldPrefix }}_document_{{ $documentType->id }}" type="checkbox" name="required_documents[]" value="{{ $documentType->code }}" @checked(in_array($documentType->code, $activeDocuments, true)) @disabled($hasParticipants)>
                                     <label class="form-check-label fs-11" for="{{ $fieldPrefix }}_document_{{ $documentType->id }}">
                                         {{ $documentType->name }}
-                                        <span class="badge bg-200 text-dark ms-1">{{ $documentType->scope === 'athlete' ? 'Atlet' : 'Tim' }}</span>
+                                        @if(empty($appEntities))
+                                            <span class="badge bg-200 text-dark ms-1">Semua Asal</span>
+                                        @else
+                                            @foreach($appEntities as $ent)
+                                                <span class="badge badge-subtle-primary ms-1">{{ $originChipLabels[$ent] ?? ucfirst($ent) }}</span>
+                                            @endforeach
+                                        @endif
                                     </label>
                                 </div>
                             </div>
                         @empty
-                            <div class="col-12 text-muted fs-11">Belum ada tipe dokumen aktif.</div>
+                            <div class="col-12 text-muted fs-11">Belum ada tipe dokumen per atlet aktif.</div>
                         @endforelse
                     </div>
                 </div>
+            </div>
+
+            {{-- Kelompok B: Dokumen Wajib Per Tim --}}
+            <div class="mb-3">
+                <div class="d-flex align-items-center justify-content-between mb-1">
+                    <label class="form-label fs-10 fw-bold mb-0 text-success">
+                        <span class="fas fa-users-cog me-1"></span>Dokumen Wajib Per Tim
+                    </label>
+                    <span class="badge badge-subtle-success fs-11">1x per Tim Pendaftar</span>
+                </div>
+                <div class="fs-11 text-muted mb-2">
+                    Dokumen resmi perwakilan tim yang diunggah <strong>1 kali saja oleh Manajer / PIC</strong> untuk mewakili seluruh roster tim (misal: Surat Keterangan Sekolah untuk Tim, Surat Penugasan Tim, Surat Mandat / Perwakilan Tim, Surat Rekomendasi). Bukan berkas perorangan tiap atlet.
+                </div>
+                <div class="border rounded p-2 bg-body-tertiary" style="max-height: 160px; overflow-y: auto;">
+                    <div class="row g-2">
+                        @forelse($teamDocTypes as $documentType)
+                            @php
+                                $appEntities = (array) ($documentType->applicable_entities ?? []);
+                            @endphp
+                            <div class="col-md-6 {{ $fieldPrefix }}_doc_item" data-scope="team" data-applicable-entities="{{ json_encode($appEntities) }}">
+                                <div class="form-check mb-1">
+                                    <input class="form-check-input {{ $fieldPrefix }}_doc_check" id="{{ $fieldPrefix }}_document_{{ $documentType->id }}" type="checkbox" name="required_documents[]" value="{{ $documentType->code }}" @checked(in_array($documentType->code, $activeDocuments, true)) @disabled($hasParticipants)>
+                                    <label class="form-check-label fs-11" for="{{ $fieldPrefix }}_document_{{ $documentType->id }}">
+                                        {{ $documentType->name }}
+                                        @if(empty($appEntities))
+                                            <span class="badge bg-200 text-dark ms-1">Semua Asal Tim</span>
+                                        @else
+                                            @foreach($appEntities as $ent)
+                                                <span class="badge badge-subtle-primary ms-1">{{ $originChipLabels[$ent] ?? ucfirst($ent) }}</span>
+                                            @endforeach
+                                        @endif
+                                    </label>
+                                    @if(in_array('school', $appEntities, true))
+                                        <small class="text-muted d-block fs-11">Berlaku untuk pendaftar asal sekolah. Jika kategori gabungan (sekolah &amp; instansi), pendaftar non-sekolah tidak dibebani berkas ini.</small>
+                                    @endif
+                                </div>
+                            </div>
+                        @empty
+                            <div class="col-12 text-muted fs-11">Belum ada tipe dokumen per tim aktif.</div>
+                        @endforelse
+                    </div>
+                </div>
+            </div>
+
+            @if($hasParticipants)
+                @foreach((array) $activeDocuments as $selDoc)
+                    <input type="hidden" name="required_documents[]" value="{{ $selDoc }}">
+                @endforeach
+            @endif
+
+            <div class="mb-2">
+                @if(! $hasParticipants)
+                    <input type="hidden" name="has_required_entity_documents" value="1">
+                    <input type="hidden" name="clear_required_entity_documents" value="1">
+                @endif
+                <label class="form-label fs-10 fw-bold mb-1">
+                    <span class="fas fa-landmark text-primary me-1"></span>Dokumen Legalitas Entitas Komunitas (Opsional / Legal Vault):
+                </label>
+                <div class="border rounded p-2 bg-body-tertiary" style="max-height: 160px; overflow-y: auto;">
+                    <div class="row g-2">
+                        @foreach($canonicalEntityDocLabels as $eCode => $eLabel)
+                            <div class="col-md-6">
+                                <div class="form-check mb-1">
+                                    <input class="form-check-input" id="{{ $fieldPrefix }}_entity_doc_{{ $eCode }}" type="checkbox" name="required_entity_documents[]" value="{{ $eCode }}" @checked(in_array($eCode, (array) $activeEntityDocuments, true)) @disabled($hasParticipants)>
+                                    <label class="form-check-label fs-11" for="{{ $fieldPrefix }}_entity_doc_{{ $eCode }}">
+                                        {{ $eLabel }}
+                                        <span class="badge bg-200 text-dark ms-1">Legalitas</span>
+                                    </label>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+                @if($hasParticipants)
+                    @foreach((array) $activeEntityDocuments as $selEntityDoc)
+                        <input type="hidden" name="required_entity_documents[]" value="{{ $selEntityDoc }}">
+                    @endforeach
+                @endif
+                <small class="text-muted fs-11">Bila dipilih, pendaftar komunitas wajib memiliki dokumen legalitas terverifikasi di Legal Vault profilnya.</small>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fs-10 fw-bold mb-1" for="{{ $fieldPrefix }}_document_instructions">
+                    Instruksi / Catatan Khusus Verifikasi Berkas (Screening Player)
+                </label>
+                <input class="form-control form-control-sm" id="{{ $fieldPrefix }}_document_instructions" type="text" name="document_instructions" value="{{ $fieldValue('document_instructions') }}" placeholder="Contoh: KTP ditunjukan langsung ketika TM dan Screening Player" maxlength="500">
+                <small class="text-muted fs-11">Bila ada berkas fisik yang wajib diperlihatkan langsung ke panitia saat TM atau screening di lapangan.</small>
             </div>
 
             <div class="pt-2 border-top">
@@ -370,7 +568,6 @@
     function init() {
         const flowEl = document.getElementById(prefix + '_registration_flow');
         const feeEl = document.getElementById(prefix + '_registration_fee');
-        const devLevelEl = document.getElementById(prefix + '_development_level_id');
         const minAgeEl = document.getElementById(prefix + '_min_age');
         const maxAgeEl = document.getElementById(prefix + '_max_age');
         const matchTypeEl = document.getElementById(prefix + '_match_type');
@@ -378,6 +575,7 @@
         const maxRosterEl = document.getElementById(prefix + '_max_roster');
         const allowClubEl = document.getElementById(prefix + '_allow_club');
         const allowCommEl = document.getElementById(prefix + '_allow_community');
+        const allowIndivEl = document.getElementById(prefix + '_allow_individual');
         const commSubtypeContainer = document.getElementById(prefix + '_community_subtype_container');
         const commSubtypeEl = document.getElementById(prefix + '_community_subtype');
         const sourceWarningEl = document.getElementById(prefix + '_source_warning');
@@ -435,15 +633,76 @@
             if (allowCommEl && commSubtypeContainer) {
                 const isCommChecked = allowCommEl.checked;
                 commSubtypeContainer.style.display = isCommChecked ? 'block' : 'none';
-                if (!isCommChecked && commSubtypeEl) {
-                    commSubtypeEl.value = '';
+
+                const instSubtypeEl = document.getElementById(prefix + '_subtype_institution');
+                const instContainer = document.getElementById(prefix + '_institution_type_container');
+                if (instContainer) {
+                    instContainer.style.display = (isCommChecked && instSubtypeEl && instSubtypeEl.checked) ? 'block' : 'none';
                 }
             }
 
-            // 6. Source Warning (minimal salah satu harus aktif)
-            if (allowClubEl && allowCommEl && sourceWarningEl) {
-                const noneChecked = !allowClubEl.checked && !allowCommEl.checked;
+            // 6. Source Warning (minimal salah satu harus aktif dari 3 kriteria)
+            if (sourceWarningEl) {
+                const isClubChecked = allowClubEl ? allowClubEl.checked : false;
+                const isCommChecked = allowCommEl ? allowCommEl.checked : false;
+                const isIndivChecked = allowIndivEl ? allowIndivEl.checked : false;
+                const noneChecked = !isClubChecked && !isCommChecked && !isIndivChecked;
                 sourceWarningEl.style.display = noneChecked ? 'block' : 'none';
+            }
+
+            // 7. Filter Dokumen Wajib Berdasarkan Asal Tim (applicable_entities)
+            const isClubAllowed = allowClubEl && allowClubEl.checked;
+            const isCommAllowed = allowCommEl && allowCommEl.checked;
+            const isIndivAllowed = allowIndivEl && allowIndivEl.checked;
+            const activeOrigins = [];
+
+            if (isClubAllowed) {
+                activeOrigins.push('club');
+            }
+
+            if (isIndivAllowed) {
+                activeOrigins.push('individual');
+            }
+
+            if (isCommAllowed && commSubtypeContainer) {
+                commSubtypeContainer.querySelectorAll('.' + prefix + '_subtype_check:checked').forEach(chk => {
+                    const val = chk.value;
+                    if (['school', 'school_sd', 'school_smp', 'school_sma'].includes(val)) {
+                        if (!activeOrigins.includes('school')) activeOrigins.push('school');
+                    } else {
+                        if (!activeOrigins.includes(val)) activeOrigins.push(val);
+                    }
+                });
+            }
+
+            const wrapperEl = document.getElementById(prefix + '_wrapper');
+            const isLocked = {{ $hasParticipants ? 'true' : 'false' }};
+            if (wrapperEl) {
+                wrapperEl.querySelectorAll('.' + prefix + '_doc_item').forEach(item => {
+                    let applicable = [];
+                    try {
+                        applicable = JSON.parse(item.getAttribute('data-applicable-entities') || '[]');
+                    } catch (e) {
+                        applicable = [];
+                    }
+
+                    // Empty / null applies universally to all origins
+                    const isApplicable = applicable.length === 0 || applicable.some(ent => activeOrigins.includes(ent));
+                    const chk = item.querySelector('.' + prefix + '_doc_check');
+
+                    if (isApplicable) {
+                        item.style.display = '';
+                        if (!isLocked && chk) {
+                            chk.disabled = false;
+                        }
+                    } else {
+                        item.style.display = 'none';
+                        if (!isLocked && chk) {
+                            chk.disabled = true;
+                            chk.checked = false;
+                        }
+                    }
+                });
             }
         }
 
@@ -453,16 +712,14 @@
         feeEl.addEventListener('change', refreshUI);
         if (allowCommEl) allowCommEl.addEventListener('change', refreshUI);
         if (allowClubEl) allowClubEl.addEventListener('change', refreshUI);
+        if (allowIndivEl) allowIndivEl.addEventListener('change', refreshUI);
+        const instSubtypeEl = document.getElementById(prefix + '_subtype_institution');
+        if (instSubtypeEl) instSubtypeEl.addEventListener('change', refreshUI);
 
-        // Auto-fill min/max age from Jenjang master
-        if (devLevelEl) {
-            devLevelEl.addEventListener('change', function() {
-                const selected = devLevelEl.options[devLevelEl.selectedIndex];
-                if (!selected) return;
-                const minA = selected.getAttribute('data-min-age');
-                const maxA = selected.getAttribute('data-max-age');
-                if (minA !== null && minA !== '' && minAgeEl) minAgeEl.value = minA;
-                if (maxA !== null && maxA !== '' && maxAgeEl) maxAgeEl.value = maxA;
+        const formWrapper = document.getElementById(prefix + '_wrapper');
+        if (formWrapper) {
+            formWrapper.querySelectorAll('.' + prefix + '_subtype_check').forEach(chk => {
+                chk.addEventListener('change', refreshUI);
             });
         }
 

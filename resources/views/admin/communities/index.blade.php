@@ -39,11 +39,9 @@
     <div class="col-md-3">
         <select name="subtype" class="form-select form-select-sm">
             <option value="">Semua Tipe</option>
-            <option value="school" {{ ($filters['subtype'] ?? request('subtype')) === 'school' ? 'selected' : '' }}>Sekolah</option>
-            <option value="university" {{ ($filters['subtype'] ?? request('subtype')) === 'university' ? 'selected' : '' }}>Perguruan Tinggi</option>
-            <option value="institution" {{ ($filters['subtype'] ?? request('subtype')) === 'institution' ? 'selected' : '' }}>Instansi</option>
-            <option value="club" {{ ($filters['subtype'] ?? request('subtype')) === 'club' ? 'selected' : '' }}>Klub Olahraga</option>
-            <option value="free_association" {{ ($filters['subtype'] ?? request('subtype')) === 'free_association' ? 'selected' : '' }}>Komunitas Bebas</option>
+            @foreach(\App\Contracts\EntityRequirements::SUBTYPES as $key => $label)
+                <option value="{{ $key }}" {{ ($filters['subtype'] ?? request('subtype')) === $key ? 'selected' : '' }}>{{ $label }}</option>
+            @endforeach
         </select>
     </div>
     <div class="col-md-3">
@@ -107,13 +105,7 @@
                         </td>
                         <td class="align-middle">
                             <span class="badge badge-subtle-secondary fs-11">
-                                @switch($community->subtype)
-                                    @case('school') Sekolah @break
-                                    @case('university') Perguruan Tinggi @break
-                                    @case('institution') Instansi @break
-                                    @case('club') Klub @break
-                                    @default Komunitas Bebas
-                                @endswitch
+                                {{ \App\Contracts\EntityRequirements::SUBTYPES[$community->subtype] ?? ucfirst(str_replace('_', ' ', $community->subtype)) }}
                             </span>
                             @if($community->sport_category_id)
                                 <div class="fs-11 text-700 mt-1">

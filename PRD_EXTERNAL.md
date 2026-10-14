@@ -98,6 +98,8 @@ Untuk memitigasi risiko kegagalan operasional, pembukaan fitur eksternal diterap
    - User baru bebas menjelajahi seluruh konten eksternal tanpa dipaksa mengisi dokumen identitas berlebih di awal.
 3. **Just-In-Time KYC**:
    - Pengisian berkas KTP dan rekening bank HANYA dipicu saat user berniat menyelenggarakan event sendiri dengan menekan tombol `+ Buat Event`.
+   - Navigasi panel, termasuk `/panel/my-requests`, menampilkan **Ajukan Penyelenggara Event** untuk pengguna non-organizer (atlet/member/pengurus komunitas) menuju `/panel/organizer/apply`. Tidak perlu akun kedua dan klik menu tidak mengubah role. Organizer mendapat **Buat Event** serta **Kelola Event Saya**; pemeriksaan KYC dan izin rute tetap berlaku.
+   - [x] Perbaikan menu lintas-role diterapkan pada `layouts/partials/panel-sidebar.blade.php`; regresi empat kasus di `OrganizerNavigationTest.php` (athlete, member, community_manager, organizer). Verifikasi gabungan navigasi/KYC: 23 passed / 238 assertions; Pint passed dan cache view dibersihkan. Full suite: 307/309 passed, dua kegagalan ekspektasi redirect login dari perubahan onboarding komunitas terdahulu (`AdminAuthTest`, `AdminSecurityRegressionTest`), bukan menu organizer; tidak mengubah kebijakan login dalam perbaikan menu ini.
 
 ---
 ## 3. Mekanisme Anti-Penipuan (Anti-Fraud & Escrow Platform)
@@ -139,6 +141,73 @@ Sistem ActStation menerapkan arsitektur **Zero-Trust Event Hosting** untuk menja
 ```
 
 ### 3.1 Legalitas Penyelenggara: Klasifikasi Tipe Organizer (Individu vs Organisasi)
+
+#### Revisi onboarding berbasis entitas — checkpoint pelaksanaan
+
+- [x] Keputusan pengguna: pengajuan penyelenggara harus **menunggu review admin**; akses pembuatan event baru aktif setelah disetujui. Kelengkapan upload bukan bukti keaslian dan tidak boleh otomatis menghasilkan `verified` atau role organizer.
+- [x] Audit awal: implementasi lama `OrganizerKycService::apply()` langsung menetapkan `verified` dan assign role; guard GET create memakai kondisi `&&` yang dapat dilewati rekening terisi. Revisi harus mengamankan GET create **dan** POST store, serta alur lain yang bergantung KYC, bukan hanya menyembunyikan menu.
+- [x] Riset awal ERP: komunitas memakai subtipe sekolah, universitas, instansi dan perkumpulan bebas; `public-community-registration/preparation.blade.php:25–33` menjelaskan instansi sebagai perusahaan/kantor pemerintah dan SK Keterangan Instansi **opsional**. Itu aturan pendaftaran komunitas ERP, bukan aturan pengajuan organizer ActStation.
+- [x] Riset ERP membedakan pengurus federasi dan klub: `public-club-registration/dpc-renewal-preparation.blade.php:6` mewajibkan SK Kepengurusan DPC/Pengkab/Pengkot (PDF 5 MB); `renewal-preparation.blade.php:6` mewajibkan dua berkas klub (SK Pengkab/Pengkot dan SK/akta Kemenkumham, PDF 2 MB). Jangan menerapkan dua berkas klub tersebut kepada semua instansi.
+- [x] Audit final struktur tersedia: `CommunityLookup`/`CommunitySummary` mendukung pengurus aktif dan subtype, vault polymorphic sudah tersedia; audit awal belum memiliki admin review KYC; kini tersedia `/admin/organizers-kyc`. Jangan menyalin status ERP `pending_verification` ke enum ActStation yang hanya memiliki `pending`.
+- [x] Kontrak bersama peserta/organizer: profil entitas menjadi sumber klasifikasi; kategori kompetisi mengatur entitas yang diizinkan (dapat beberapa) dan persyaratan tambahan; pendaftaran membaca profil server-side, bukan mempercayai input hidden `community_subtype`.
+- [x] Pemisahan berkas: User = identitas PIC/atlet; Community = legalitas entitas (SK/akta); EventParticipant = mandat tim/SPTJM per pendaftaran; Event = izin/rekomendasi event. Legalitas terverifikasi boleh direferensikan ulang dengan ownership dan status aktual, tidak mengharuskan upload identik berulang.
+- [x] KYC organizer/payout hanya untuk penyelenggara. Peserta tidak wajib KYC organizer atau rekening payout; tetap lolos kelayakan kategori, roster dan dokumen peserta.
+- [x] Aturan keanggotaan diperjelas pengguna: atlet satu klub aktif, tetapi dapat beberapa komunitas non-klub sekaligus. ActStation memakai batas klub per cabor sesuai PRD internal; keanggotaan klub dan komunitas tidak saling menggugurkan.
+- [x] Pisahkan keanggotaan dari roster kompetisi: walau anggota beberapa komunitas, atlet tetap hanya satu tim dalam kategori event sama (`RosterValidator`). Kategori berbeda memakai aturan kategori; jangan otomatis melarang seluruh event tanpa kebijakan eksplisit. Bug guard keanggotaan diperbaiki dan diverifikasi pada PRD.md G.5.
+- [x] Form pilih jenis penyelenggara lalu data entitas/PIC/alamat/bank dan dokumen wajib sesuai jenis; data klub/komunitas hanya dapat dipakai pengurus aktif yang berwenang. Multi-cabor; tidak ada koneksi DB ERP.
+- [x] Penyimpanan pengajuan pending, upload privat, halaman review approve/reject admin dengan izin eksplisit, serta catatan revisi dan pengajuan ulang.
+- [x] Tests izin/ownership/berkas/flow pending dan regresi/build; checkpoint internal pada PRD.md.
+
+Status: implementasi lokal selesai dan integrasi setelah audit terverifikasi (382 tests / 2.326 assertions). Perubahan kebijakan review ini menggantikan auto-verification pada implementasi KYC terdahulu, bukan mengklaim audit dokumen sudah terjadi.
+
+Checkpoint pemisahan jenjang sekolah kategori:
+- [x] Koreksi pengguna: tiga pilihan **SD/MI**, **SMP/MTs**, **SMA/SMK**; jangan gabungkan seluruh sekolah, jangan pisahkan SMA dan SMK menjadi dua checkbox.
+- [x] Kontrak `EntityRequirements::CATEGORY_SUBTYPES` memiliki school_sd/school_smp/school_sma; profil Community tetap subtype school. CommunitySummary meneruskan school_level dari master NPSN, bukan nama sekolah atau input pemohon. Lookup regression 1 test / 3 assertions passed.
+- [x] Event terhubung: tiga checkbox SD/MI, SMP/MTs, SMA/SMK tanpa token teknis pada label; request, model, filter form dan RegistrationGuard memakai school_level lookup. Unknown ditolak untuk kategori spesifik. Legacy school ditandai “Semua Jenjang; aturan lama” hanya pada kategori existing agar batas lama tidak berubah diam-diam; organizer dapat menggantinya jika kategori belum punya peserta. Tidak backfill/memecah kategori existing.
+- [x] Parent integrasi: fokus sekolah+workspace 15 tests / 143 assertions passed; full 398 tests / 2.449 assertions passed; Pint, npm build, Blade cache dan git diff --check passed. Regression lama yang melarang school_sd diperbarui untuk menolak token unknown; penolakan sumber palsu tetap diuji.
+
+Checkpoint eksekusi entitas bersama:
+- [x] Lingkup dikonfirmasi pengguna: revisi aplikasi lokal, bukan deployment hosting.
+- [x] Kontrak writer ditetapkan: `communities.institution_type` nullable (`federation`, `government`, `corporate`, `foundation`, `association`); `CommunitySummary` memuat detail itu. Label/matriks legalitas terpusat pada `App\Contracts\EntityRequirements`, tidak ada role atau taxonomy organizer duplikat.
+- [x] Kategori kompetisi dirancang dengan `allowed_community_subtypes`, `allowed_institution_types`, `required_entity_documents` nullable JSON; jika opsi baru tidak diisi, aturan `community_subtype` lama dipertahankan. Klub tetap dikendalikan `allow_club`, bukan boleh menyelinap lewat `allow_community`.
+- [x] Organizer memakai mode `individual`/`entity`; mode entity mereferensikan komunitas terverifikasi milik pengurus aktif. Legalitas dari vault Community; dokumen KYC/PIC/mandat organizer privat. Keputusan admin baru memberi verified/role organizer; GET dan POST pembuatan event serta payout tidak boleh bypass.
+- [x] Workstream Community diterapkan: `EntityRequirements`, `CommunitySummary.institution_type/is_active`, lookup legalitas scoped, form klasifikasi instansi dan matriks upload, guard klub-ke-klub. Parent memverifikasi 16 tests / 64 assertions untuk klasifikasi+membership; seluruh data lama tidak direklasifikasi. Migrasi `2026_10_13_174829_add_institution_type_to_communities_table` Ran pada runtime/test.
+- [x] Workstream peserta ditulis: tiga JSON kategori, filtering kategori berdasarkan profil, legalitas terverifikasi dan upload mandat per kode. Migrasi `2026_10_13_174409_add_entity_eligibility_fields_to_event_categories_table` Ran pada kedua DB.
+- [x] Integrasi peserta diperkeras: label/whitelist hanya kontrak canonical, pengosongan checkbox eksplisit, input array invalid422, file mandat nonaktif disabled. Parent menambah regression tidak boleh meminjam identitas pengurus lain ketika konteks pemohon hilang; menghapus fallback raw `community_officials` dari RegistrationGuard. Jalur admin tanpa konteks pemohon tidak boleh melompati dokumen wajib.
+- [x] Workstream organizer ditulis: pending dan upload privat, admin `/admin/organizers-kyc`, mode individu/entitas tanpa subtype ganda, gate create/payout. Migrasi `2026_10_13_180000_add_organizer_kyc_review_fields_to_users_table` Ran pada kedua DB.
+- [x] Hardening organizer: parent memeriksa service approve/reject dengan fresh lock, validasi seluruh wajib berkas privat/non-rejected/aktual ada, legalitas dan pengurus aktif; nested MIME dan input array fail422. Parent focused suites KYC: 37 tests / 317 assertions lolos sebelum tambahan UI.
+- [x] Perbaikan UI review/apply: detail instansi memakai label canonical, status entitas tidak lagi selalu verified, download alias legalitas memakai canonical code. Regression UI + download scoped 1 test / 8 assertions lolos. `npm run build` dan `php artisan view:cache` lolos; build hanya warning optional fontaine.
+- [x] Integrasi akhir terverifikasi parent: full `php artisan test --compact` 368 passed / 2.255 assertions; Pint --dirty, Node region reset/stale postcode check, npm build dan Blade cache lolos. Dua ekspektasi login lama diselaraskan onboarding komunitas; test juga memastikan akun eksternal tetap 403 pada admin dashboard. Data approved lama tidak di-reset atau ditebak subtype barunya.
+- [x] Audit UI independen diterima: 11 temuan ditelusuri; sebagian severity “fatal/bypass” merupakan ketidaksesuaian UI, bukan bypass server (middleware/validator tetap menolak). Label severity laporan bukan bukti eksploitasi.
+- [x] Copy panduan auto-role dan klaim Vault verified seumur hidup dibuang; panduan menyebut pending, dokumen PIC, legalitas entitas dan rekening organisasi.
+- [x] Penutupan UI: form pending memakai disabled fieldset/submit; berkas reusable menampilkan status/download dan required sesuai mode; mandat entitas tersembunyi/disabled pada individu, toggle berjalan sejak load. Admin menampilkan alasan persyaratan belum terpenuhi dari validator service yang sama sebelum approve. Checkbox sumber/whitelist disabled+hidden preserve termasuk legacy null; tombol roster visibility/invite/workspace mengikuti permission. Parent Node `organizer-apply-toggle.cjs` PASS.
+- [x] Penutupan Community: pending/verified classification terkunci pada UI/server; berkas verified tidak bisa dihapus langsung, upload/hapus legalitas wajib diblokir selama review/verified, opsional nonverified tetap bisa dikelola. Admin harus reject/revoke dahulu untuk revisi; approval Community memeriksa fresh pending row lock dan legalitas. Tombol verify hanya pending dengan checklist dokumen.
+- [x] Verifikasi akhir setelah audit fixes: parent full suite 382 passed / 2.326 assertions; focused audit suites 32 passed / 167 assertions; Pint, kedua Node checks, npm build, Blade cache, git diff --check lolos. Warning fontaine opsional tetap nonblocking. PHP feature tests memakai autentikasi fixture, bukan klaim walkthrough browser akun produksi. Implementasi lokal selesai; tidak commit/push/deploy.
+
+##### Fase awal: dokumen organizer opsional
+
+- [x] Pengguna menyetujui menyembunyikan Section 5 `Dokumen Verifikasi Penyelenggara (Privat)` sekaligus menjadikan upload organizer opsional, bukan menghapus review admin. Section tidak dirender (bukan hanya CSS) pada `/panel/organizer/apply`. Foto KTP PIC pada bagian identitas tetap tersedia sebagai upload opsional; data identitas/alamat/bank tetap divalidasi.
+- [x] Pengajuan tanpa upload tetap pending, GET/POST create tidak dapat bypass; admin bisa menyetujui tanpa mandatory organizer files pada fase awal. Legalitas Community dan ownership pengurus tetap wajib untuk mode entity; persyaratan peserta tidak diubah.
+- [x] Berkas lama tidak dihapus dan download tetap privat; optional upload tetap memakai MIME/size rules. Admin mendapat pemberitahuan bahwa upload belum diwajibkan, bukan bukti keaslian identitas.
+- [x] Mode ketat bisa dipulihkan melalui `ORGANIZER_PRIVATE_DOCUMENTS_REQUIRED=true` lalu refresh config; satu konfigurasi memulihkan UI dan syarat submit/approve. Default false.
+- [x] Review read-only independen diterima setelah implementasi: tidak menemukan blocker tambahan pada scope fase awal; daftar penyimpanan optional upload terpisah dari syarat mandatory, guard legalitas entitas dan keputusan admin tetap dipertahankan.
+- [x] Parent: 387 tests / 2.375 assertions passed setelah RED–GREEN pada `OrganizerEarlyAccessTest`; strict review/UI suites mengaktifkan konfigurasi true agar proteksi tetap diuji. Pint, kedua Node checks, build dan Blade cache lolos.
+
+##### Rincian Instansi/Organisasi dan matriks berkas — referensi riset; implementasi canonical mengikuti EntityRequirements
+
+Koreksi arah dari pengguna: klasifikasi entitas harus dipakai bersama saat menjadi **peserta maupun penyelenggara**, bukan disimpan hanya sebagai subjenis pengajuan organizer. Instansi/organisasi terdaftar tetap memakai `communities.subtype = institution` dengan detail klasifikasi tersendiri (federasi, kedinasan, corporate, yayasan/perkumpulan berbadan hukum, asosiasi lain) tanpa mengganti nilai lama diam-diam. Pengajuan organizer mereferensikan entitas dan kewenangan PIC; peserta mereferensikan entitas yang sama melalui `event_participants.community_id`. Individu tetap pengguna, bukan dipaksa menjadi komunitas. Matriks di bawah berlaku sebagai kebutuhan legalitas entitas; tambahan dokumen organizer/peserta mengikuti konteksnya. Implementasi organizer-only diganti kontrak bersama; klasifikasi, kategori dan pengajuan kini memakai sumber entitas yang sama.
+
+| Subjenis | Contoh penjelas UI | Berkas legalitas khusus yang diusulkan |
+|---|---|---|
+| Pengurus Federasi / Cabang Olahraga | PERBASI KBB (Kabupaten Bandung Barat), PBSI kabupaten/kota, pengurus cabor tingkat provinsi | SK Kepengurusan yang masih berlaku beserta lampiran susunan pengurus; nomor, penerbit dan masa bakti dicatat untuk review |
+| Kedinasan / Instansi Pemerintah | Dinas Pemuda dan Olahraga, dinas pendidikan, kecamatan | Surat tugas/keputusan pembentukan panitia dari pejabat berwenang; tidak otomatis diminta akta notaris atau NIB |
+| Corporate / Perusahaan | PT/CV, BUMN/BUMD, panitia olahraga perusahaan | Bukti identitas/legalitas perusahaan yang sesuai bentuknya, serta surat penunjukan PIC; NIB diminta untuk entitas usaha yang sesuai, bukan dipaksakan pada dinas/federasi |
+| Yayasan / Perkumpulan Berbadan Hukum | Yayasan olahraga, perkumpulan berbadan hukum | Akta dan bukti pengesahan/pendaftaran sesuai bentuk hukum, serta surat penunjukan PIC |
+| Organisasi / Asosiasi Lain | Organisasi kepemudaan, asosiasi profesi | SK/akta atau bukti pendirian yang sesuai, serta mandat PIC; tidak memakai unggahan bebas sebagai pengganti semua syarat |
+
+Berkas umum usulan: identitas PIC, bukti kepemilikan rekening tujuan, surat kuasa/tugas bila PIC bertindak mewakili entitas, dan pernyataan tanggung jawab. NPWP pribadi bukan otomatis NPWP entitas. Rekening entitas tidak wajib bernama sama dengan KTP PIC; admin memeriksa kesesuaian pemilik rekening dengan entitas/mandat yang sah. Persyaratan izin venue, rekomendasi cabor untuk suatu turnamen, dan izin penyelenggaraan berada pada dokumen **event**, tidak dicampur dengan SK organisasi saat onboarding.
+
+Provenansi: kode ERP lokal pada path yang tercatat di checkpoint; halaman resmi https://perbasi.or.id menyebut SK kepengurusan dan surat pengajuan untuk layanan akses website Pengurus Kota/Kabupaten (bukan peraturan universal organizer); https://oss.go.id/en menyebut NIB sebagai identitas resmi pelaku usaha. Matriks ActStation di atas merupakan kebijakan produk usulan untuk review, bukan klaim seluruh dokumen diwajibkan hukum untuk semua entitas. Contoh nama tidak berarti pengurus/perusahaan contoh telah terdaftar atau terverifikasi.
 
 Untuk menjamin akuntabilitas hukum dan keamanan dana pendaftaran di rekening escrow, ActStation mengklasifikasikan penyelenggara menjadi 4 kategori dengan syarat kelengkapan berkas yang terukur:
 
@@ -383,6 +452,48 @@ Untuk memastikan integrasi dan sharing API di masa mendatang berjalan *plug-and-
 
 ### 4.5 Alur Registrasi Dinamis per Kategori (ActStation vs PERBASI)
 
+Checkpoint dokumen per atlet/per tim dan entitas:
+- [x] Pengguna meminta pemisahan eksplisit Per Atlet (User vault) dan Per Tim (EventParticipant pendaftaran, sekali oleh PIC), bukan satu dokumen tim diminta tiap pemain.
+- [x] Koreksi: surat sekolah hanya entitas sekolah; instansi tidak wajib surat sekolah. `DocumentType.applicable_entities` mengendalikan penerapan pada entitas aktual server-side. Kategori campuran dapat memuat syarat berbeda; setiap pendaftar hanya memenuhi berkas yang berlaku untuk entitasnya.
+- [x] Kontrak existing scope/applicable_entities dipakai; tidak menambah JSON scope override. Master tim ditambah additive school_team_letter, team_assignment_letter, team_mandate_letter; recommendation_letter lama dipertahankan. Helper appliesToEntity sekolah jenjang map broad school; null/empty berlaku universal legacy. Master/helper tests 2 / 20 assertions passed.
+- [x] UI ditulis: dua kelompok Per Atlet/Per Tim, chip entitas berlaku, origin filter dan unified upload per teamcode; surat sekolah tidak dirender bagi instansi. Modal kurasi menampilkan evidence scoped. Parent unit/focused passed.
+- [x] Agent integrasi selesai: Node mengeksekusi JavaScript produksi dari Blade, required/disabled input upload dinamis, dan coverage unduh organizer/admin/foreign owner/event mismatch. Agent focused 31 tests /186 assertions passed. Parent rerun 4 Node scope tests + organizer toggle + region cascade passed; git diff --check dan sintaks controller passed. Full suite menunggu migrasi kategori task berikutnya.
+- [x] Backend scoped submission/moderation + local/private upload + cleanuprollback diterapkan. Parent focused metadata/participant/unit 28 tests /156 assertions passed. Parent full setelah memperbaiki fixture entitas dan bocor Model::unguard unit: 423 tests /2.608 assertions passed. Ini checkpoint sebelum final agent memperkuat coverage JavaScript/download, bukan final buildverifikasi.
+- [x] Audit read-only: metadata master scope/applicability mutable dapat mengubah persyaratan lama; evidence privat membutuhkan rute unduh scoped, bukan tautan storage publik.
+- [x] Master freeze/delete protection parent focused/full passed; label/deskripsi tetap editable, scope/code/applicability tipe dipakai terkunci.
+- [x] Workspace kurasi menampilkan bukti Per Tim/Per Atlet, scoped download event+participant+owner dan required code; file baru local/private. Legacy public disk fallback dipertahankan, bukan dimigrasikan. Metadata inactive yang masih direferensikan tetap terlihat.
+
+### Email langsung tanpa workerLaravel (revisi berjalan)
+
+Pengguna memilih trigger n8n langsung saat Kirim/Kirim Ulang; antrean bila dibutuhkan ditangani n8n. UI harus mencerminkan hasil Diterima n8n/Gagal/Tidak diketahui, bukan suksesmasukqueue. Pesan lama tidak otomatis dikirim ulang; admin dapat triggermanualyangbelumdiproses. Writer directsend selesai; parent focused31/144 passed. Pesan baru/retry trigger langsung, tidak membutuhkan workerLaravel. Dua writer deleg_a231f092 melengkapi emailstatus pendaftaran/revisi/kurasi/pembayaran/pembatalan dan bannerstatus/resendverifikasi pada form registrasi; AGENTS.md mencatat flow. Lifecycleemail dan bannerverifikasi form terpasang: pendaftaran, waitinglist/tagihan, revisi, konfirmasi, pembayaran dan pembatalan; snapshot aftercommit, rollbacktanpaemail dan no-op save tidakmengirim. Parent full516 tests /3154 assertions passed, focused40/199, Node13, Pint/build/Blade/diff passed. Tidak mengirim pesan historis otomatis. Review independen deleg_5479eeb2 selesai tanpa blocker. Implementasi lokal selesai; pengiriman riil tiap proses event belum diuji.
+
+### Kirim ulang email khusus admin
+
+Detail email kini menampilkan Kirim Ulang Manual untuk admin/superadmin yang memiliki setting.email, termasuk pesan Diterima n8n. Konfirmasi memperingatkan emailganda; aksi hanya requeue dan membutuhkan worker emails. Pesan antrean/proses tidak boleh diulang; verifikasi tetap resendmilikpengguna. Pesan #2 user masih queued bukan deliverygagal. Focused16/71 dan full500/3057 passed; review independen deleg_bd619e54 passed tanpa blocker.
+
+### Notifikasi email n8n dan verifikasi email (berjalan)
+
+Pengguna meminta remake email informasi/kesiapan/surat penugasan/lampiran dan verifikasi dengan tema Falcon ActStation. Referensi ERP n8/Perbasi Email (Lampiran).json serta officialassignment event56 diaudit read-only deleg_43d50719. Pilihan pengguna: server n8n PERBASI, workflow diduplikasi khusus ActStation; verifikasi email berupa status/kirimulang tanpa blokir akses awal. Origin server terdeteksi https://n8.fasekita.my.id tanpa membaca credential. Workflow baru belum diimpor/diaktifkan; tidak kirim email nyata untuk acceptance.
+
+Tiga writer deleg_8224c873: outbox/job n8n privat, verifikasi native signedLaravel, UI composer/history + email inline theme + workflow export bersih. Status queued/submitted bukan klaim delivered. Lampiran privat melalui temporarysigned reader, retry ambigu perlu peringatan duplikasi. Kemampuan assignment/readiness tahap ini kirim pesan terstruktur dan lampiran; tidak mengklaim punya workflow penugasan petugas ERP yang belum ada di ActStation. Audit referensi selesai: ActStation belum memiliki domain EventOfficialAssignment/surat PDF ERP. Jenis readiness/assignment saat ini pesan manual+lampiran, bukan otomatisasi kesiapan petugas. Remote n8n tidak dapat mengambil lampiran dari localhost; binding memerlukan APP_URL HTTPS yang dapat diakses n8n dan kredensial khusus workflow. Tidak mempublikasikan file privat atau memalsukan uji delivery. Email writer batch selesai; parent menjalankan migrasi runtime email_messages dan focused16 tests /73 assertions passed setelah memperbaiki fatal afterCommit trait collision, urutan attachments, header source, atomic queuedclaim dan ambiguity handling. Dua integration fixer selesai. Parent final full496 tests /3033 assertions, production Node workflowVM +13 UI tests, Pint/build/Blade/diff passed. Modul lokal selesai: `/admin/emails`, `/admin/emails/create`, `/email/verify` native route sesuai route verification.notice, status/kirimulangtanpablokirakses. Artifact `n8/ActStation Email.json` activefalse siapimport; remote credentials binding/import/SMTP/livequeueworker belum diaktifkan. Tidak ada SMTP live, klaim deliveryinbox atau deployment.
+
+### Profil lokasi dan peta kegiatan multi-cabor (berjalan)
+
+Pengguna meminta detail latitude/longitude di `/panel/profile` sesuai referensi ERP `/panel/profil`, serta peta sekolah/komunitas/klub/instansi dengan rincian kegiatan. Klarifikasi pengguna: tampilkan program rutin/ekstrakurikuler per cabor dan riwayat event. Gunakan `/admin/coverage-map` existing, bukan peta kedua. Tiga writer terpisah backend profil/program, backend Report/map, UI `deleg_3bbeca8c`; audit discovery read-only `deleg_b0ffe2c5`.
+
+Satu entitas dapat mempunyai banyak program dengan cabor berbeda; cabor utama lama tetap kompatibel untuk guard keanggotaan klub. Koordinat opsional berpasangan, rentang sah dan nilai0valid; tanpa koordinat jangan membuat titik palsu. Sekolah terhubung via NPSN master lokal, bukan ERP runtime. Detail peta admin memuat kegiatan/riwayat event tanpa identitas atlet, kontak pribadi atau dokumen privat. Migration runtime/test telah dijalankan; parent full466 tests /2884 assertions,13 production-source Node checks, Pint/build/Blade/diff passed. Profil coordinates/programCRUD dan peta detail lazyload telah terpasang. Selector Panel Aktif deleg_af536c3a terpasang: session selection hanya entitas activeofficial sah, forms stalecontext ditolak, profil/roster/dokumen/program mengikuti pilihan. Parent focused8 tests /52 assertions passed; lookup non-authuser tidak memakai session pengguna aktif. Hak akun nyata tidak ditambah dan aturan keanggotaan atlet tetap. Final full regression digabung setelah modul email selesai.
+
+### Profil komunitas dan master sekolah lokal (selesai)
+
+Pengguna meminta form `/panel/community/create` mengikuti konteks referensi ERP `/pendaftaran-komunitas/daftar` dan master sekolah disalin dari DB PERBASI ke data/seeder aplikasi. Dua writer `deleg_0ed0fac2`: data sekolah read-only source + idempotent local import; form/search/validasi memakai NPSN lokal, nama resmi dan jenjang dari master. Tidak menyalin akun/PII atau memakai koneksi runtime ERP; draft/manual review tetap. Parent memverifikasi source31325, CSV31325, JSON31325 uniqueNPSN identik dan targetdb_actstation31325 matchedNPSN31325. Full448 tests /2777 assertions, focused11/90,9 Nodechecks, build/Pint/Blade/diff passed. Artifact database/data/schools.csv + schools.json dan SchoolSeeder idempotent tersedia. Review independen deleg_03765335 selesai: tidak menemukan blocker keamanan/fungsional; catatan non-blocking berupa artifact CSV/JSON duplikat dan seeder dua parser. Kedua format tetap dipertahankan sebagai artifact ekspor yang sudah diberikan, tanpa refactor tambahan. Sumber dataset campuran kemendikdasmen2026/opendata_jabar2023, bukan semua2026. Implementasi lokal selesai tanpa commit/push/deploy. Koreksi pengguna: dropdown sub-tipe form create harus langsung menampilkan tiga sekolah SD/MI, SMP/MTs, SMA/SMK. Form memakai token school_sd/school_smp/school_sma; server menyimpan broad subtype school dan memvalidasi pilihan terhadap jenjang nyata NPSN master, bukan posted level.
+
+### Pendaftaran publik sesuai kategori (selesai)
+
+- Permintaan pengguna: halaman publik event/register harus memilih kategori dahulu, bukan selalu menawarkan jalur entitas dan atlet mandiri. Atlet Mandiri hanya tersedia bila kategori mengizinkan secara eksplisit.
+- Backend/UI writer `deleg_287abf7e` berjalan; `allow_individual` default false dirancang tanpa mengaktifkan kategori lama. Guard POST harus menolak kategori tertutup sebelum mutasi akun atau session.
+- Referensi ERP komunitas `/pendaftaran-komunitas/daftar` dan klub `/pemutakhiran-klub` selesai diaudit read-only. Parent memeriksa routes serta kedua controller: komunitas menggunakan subtipe/NPSN dan PDF opsional awal; pemutakhiran klub memerlukan identitas klub, induk wilayah dan dua PDF legalitas. Reuse hanya perbedaan konteks/form entitas; tidak menyalin aktivasi instan, storage public, kewajiban federasi tunggal atau menambah koneksi runtime ERP. Rujukan: ERP PublicCommunityRegistrationController.php:78–119, PublicClubRegistrationController.php:147–196.
+- Migrasi allow_individual runtime/test telah dijalankan; parent runtime migrate:status Ran. Parent full suite437 tests /2.684 assertions passed, Pint/build/Blade passed. Public HTTP200, category selector tersedia, tombol mandiri tidak muncul pada event target yang belum mengizinkan individu. Parent menyambungkan query kategori publik ke preselection form panel serta mengganti label jalur generik; focused9 UItests/59 assertions dan6 Node tests passed. Review independen `deleg_49319a01` PASS tanpa blocker: defaultfalse, UI/POST kategori, guest existingaccount wajiblogin, NIK conflict dan transaction/source locks diperiksa. Implementasi lokal selesai; tanpa commit/push/deploy.
+
 #### A. Filosofi: Mengapa ActStation Harus Lebih Maju dari PERBASI ERP?
 - **Aplikasi PERBASI (`http://localhost:8000/admin/event/68/categories`)**:
   Merupakan ERP Regulator/Birokrasi. Form kategori di PERBASI bersifat kaku/statis (hanya batas umur, kuota, biaya dasar) dan tidak memiliki sistem penanganan kuota over-subscribed, batas waktu invoice kasir, maupun rekening bersama (escrow).
@@ -391,7 +502,7 @@ Untuk memastikan integrasi dan sharing API di masa mendatang berjalan *plug-and-
 
 #### B. 4 Pilihan Mode Alur Pendaftaran per Kategori (`registration_flow`)
 Saat membuat/mengedit kategori turnamen di `/panel/organizer/events/{id}/manage` (Tab Kategori), ketua panitia dapat memilih salah satu dari 4 mode:
-Form kategori bersama pada `/admin/events/{event}/categories` dan panel organizer wajib memuat **Usia Minimum (tahun)**, **Usia Maksimum (tahun)**, dan **Biaya Pendaftaran (Rp)**. PERBASI memakai `min_age`/`max_age` dalam tahun umur genap, **bukan** tahun kelahiran. Keduanya boleh kosong untuk rentang terbuka dan jika terisi wajib `min_age <= max_age`. Umur dihitung tepat pada `events.starts_at` dari `users.birth_date` untuk semua roster tim/pendaftar individu, tanpa fallback ke tanggal hari ini. Jika kategori membatasi umur sementara tanggal mulai event belum terisi, penetapan batas dan validasi roster ditolak dengan pesan eksplisit. Batas kategori yang terisi mengungguli jenjang master; `development_level_id` menjadi referensi/fallback hanya bila batas kategori kosong. Setiap kategori memiliki harga mandiri, termasuk Rp 0; form pembuatan/edit event **tidak** meminta satu harga global.
+Form kategori bersama pada `/admin/events/{event}/categories` dan panel organizer memuat **Usia Minimum (tahun)**, **Usia Maksimum (tahun)**, dan **Biaya Pendaftaran (Rp)** secara langsung dan fleksibel (dropdown master jenjang disederhanakan/dihilangkan dari UI agar panitia leluasa menentukan KU apapun). PERBASI memakai `min_age`/`max_age` dalam tahun umur genap, **bukan** tahun kelahiran. Keduanya boleh kosong untuk rentang terbuka dan jika terisi wajib `min_age <= max_age`. Umur dihitung tepat pada `events.starts_at` dari `users.birth_date` untuk semua roster tim/pendaftar individu, tanpa fallback ke tanggal hari ini. Jika kategori membatasi umur sementara tanggal mulai event belum terisi, penetapan batas dan validasi roster ditolak dengan pesan eksplisit. Batas umur eksplisit kategori menjadi satu-satunya penentu validasi usia atlet. Setiap kategori memiliki harga mandiri, termasuk Rp 0; form pembuatan/edit event **tidak** meminta satu harga global.
 
 1. **`screening_first`: daftar bebas kuota → verifikasi berkas → pengumuman eligible (maksimal `max_teams`) → bayar → konfirmasi.** Pada mode ini, pendaftaran publik **tidak dibatasi oleh kuota `max_teams`**; siapapun dapat mendaftarkan timnya hingga tenggat waktu berakhir. Nilai `max_teams` bertindak sebagai target kuota tim lolos kurasi oleh panitia. Hanya mode berbayar ini menampilkan **Tenggat Bayar** (`payment_time_limit_hours`, durasi sejak dinyatakan eligible). Tim tidak eligible tidak menerima invoice. Invoice berakhir paling lambat `events.starts_at`. Bila biaya Rp 0, verifikasi roster/berkas tetap wajib tetapi tidak ada tagihan.
 2. **`payment_first`: bayar → verifikasi berkas.** Untuk biaya > 0 tampil empat tanggal/jam kategori: **Mulai Daftar**, **Tutup Daftar**, **Mulai Pembayaran**, **Tutup Pembayaran**. Mulai bayar boleh sesudah mulai daftar, tetapi tutup daftar dan tutup bayar wajib serentak: `registration_start <= payment_start < registration_end = payment_end <= events.starts_at`, dengan `registration_start < registration_end`. `events.registration_deadline` jika terisi tidak boleh lebih awal daripada `registration_end`; saat tanggal global diedit, perubahan yang membuat jadwal kategori tidak valid ditolak. Invoice terbit sekali saat tim mendaftar dengan snapshot harga kategori; bayar hanya dalam `[payment_start, payment_end]`. Tim belum bayar saat tutup tidak otomatis lolos/terkonfirmasi dan slot dilepas sesuai kebijakan antrean. Lunas belum berarti berkas lolos: panitia tetap memverifikasi kelengkapan sebelum `confirmed`. Tidak ada input `payment_time_limit_hours` pada mode ini; expiry invoice paling lambat `payment_end`.
@@ -415,6 +526,9 @@ Konfigurasi `payment_first` mensyaratkan biaya > Rp 0; `instant_free` mensyaratk
 4. **Kerahasiaan Roster / Tim Terdaftar (`is_roster_public`)**:
    - Nilai default `false`. Nama tim dan pemain yang mendaftar dirahasiakan di portal publik (`/events/{slug}`) hingga panitia mempublikasikannya, mencegah "wait and see" dan menjaga privasi atlet sebelum diverifikasi.
    - Panitia memiliki tombol aksi satu-klik untuk toggle visibilitas tim kapan saja di Workspace Kategori.
+5. **Instruksi Khusus Screening & Berkas Fisik (`document_instructions`)**:
+   - Panitia dapat mencantumkan instruksi berkas fisik atau catatan verifikasi lapangan (misalnya: *"KTP dan Akta asli ditunjukkan langsung ketika TM dan Screening Player"*).
+   - Catatan ini tampil di form konfigurasi kategori, kolom dokumen workspace panitia, portal publik (`/events/{slug}`), serta panduan form pendaftaran manajer tim.
 
 ---
 
@@ -431,6 +545,136 @@ Sebelum pendaftaran disimpan, dua lapis penjaga domain otomatis mengeksekusi pem
    - Memeriksa kesesuaian gender atlet (`male`, `female`, `mixed`).
    - Memeriksa nomor punggung unik & tepat 1 kapten.
    - Memastikan seorang atlet tidak bermain di dua tim berbeda dalam satu kategori turnamen.
+
+### 4.6.1 PRD — Pendaftaran Multi-Tim Komunitas dalam Satu Event
+
+**Tanggal:** 2026-10-14. **Status:** spesifikasi untuk implementasi; belum diterapkan oleh perubahan dokumen ini.
+
+**Halaman sasaran:** `/panel/events/{slug}/register`, dengan contoh `/panel/events/piala-kemerdekaan-basket-jabar-2026/register`.
+
+**Dokumen mandiri:** [PRD_FlowRegister.md](PRD_FlowRegister.md), berisi flow, kontrak, dan acceptance criteria terfokus. Perubahan keputusan berikutnya wajib menyelaraskan kedua dokumen.
+
+#### Masalah dan bukti kondisi awal
+
+- Pengurus perlu mengirim lebih dari satu tim dari komunitas sama ke event sama, misalnya satu tim putra dan satu tim putri, tanpa membuat komunitas atau akun baru.
+- Kode sudah membatasi satu komunitas per **kategori**, bukan per event: `RegistrationGuard::validate()` dan unique index `event_participants_cat_comm_unique` pada pasangan `event_category_id, community_id`. Contoh putra dan putri berbeda kategori tidak memerlukan penghapusan index tersebut.
+- Form `resources/views/panel/events/register.blade.php` menampilkan satu kategori, identitas tim, dokumen, dan roster sekaligus. Belum ada ringkasan tim komunitas pada event tersebut atau aksi eksplisit untuk melanjutkan pendaftaran tim berikutnya.
+- `CommunityEventRegistrationController::store()` langsung mengarahkan peserta berbayar ke checkout; peserta lainnya ke roster. Daftar partisipasi tersedia di `/panel/events`, tetapi belum menjadi pusat alur tambah tim pada halaman register.
+- Pemeriksaan runtime halaman publik event menemukan kategori **Pelajar SMA Putra** dan **Pelajar SMA Putri**, juga kategori SMP putra/putri. Konfigurasi biaya dan syarat keduanya tidak identik; jangan mengasumsikan biaya atau kelayakan sama karena berasal dari komunitas sama.
+- Akses browser tanpa sesi ke URL panel dialihkan ke `/panel/login`. Temuan form internal bersumber dari kode, bukan klaim pengujian pendaftaran end-to-end terautentikasi.
+
+#### Tujuan dan batas keputusan
+
+1. Satu komunitas dapat memiliki beberapa tim pada event sama, masing-masing di kategori berbeda; putra 1 + putri 1 menjadi skenario penerimaan utama.
+2. Pengurus mengetahui tim yang sudah didaftarkan, kategori yang masih bisa diikuti, kekurangan berkas, dan tindakan berikutnya tanpa berpindah-pindah event.
+3. Pengisian identitas komunitas dan dokumen bersama tidak diulang; roster, berkas mandat tim, status, serta tagihan tetap independen per tim.
+4. Kirim **satu tim per transaksi**, lalu **Tambah Tim Lain**. Tidak memerlukan keranjang multi-tim atau submit massal yang menggagalkan seluruh tim saat salah satu tidak valid.
+
+**Batas scope:** tetap satu tim komunitas per kategori. Dua tim putra A/B pada kategori sama bukan bagian perubahan ini; kebutuhan tersebut memerlukan keputusan batas tim dan perubahan guard/index tersendiri. Tidak membuat kategori duplikat hanya untuk mengakali pembatasan. Tidak menambah master tim permanen, draft lintas perangkat, pembayaran gabungan, atau mengubah aturan refund dan kelayakan kategori. Jumlah tim dalam event tidak dipatok dua; dibatasi kategori yang tersedia dan aturan kuota.
+
+#### Aturan domain
+
+| Area | Ketentuan |
+|---|---|
+| Identitas | `community_id` sama boleh muncul pada beberapa `event_participants` di event sama, dengan `event_category_id` berbeda. Satu participant mewakili satu tim pada satu kategori. |
+| Kepemilikan | Komunitas ditentukan dari pengurus aktif terautentikasi di server. Parameter form tidak boleh memindahkan kepemilikan ke komunitas lain. |
+| Kategori | Kategori wajib milik event terkait dan memenuhi sumber tim, subtipe, jenjang, waktu, kuota, serta undangan. Label putra/putri berasal dari konfigurasi kategori, bukan hardcode cabor. |
+| Gender | Gender tim mengikuti kategori. Tidak menambah pilihan gender terpisah yang dapat bertentangan dengan kategori; kategori campuran tetap didukung. |
+| Nama | Usulan nama `{nama komunitas} — {nama kategori}`, boleh diedit. Nama tetap unik case-insensitive dalam kategori setelah trim, mengikuti batas field. |
+| Roster | Roster terpisah per participant; hanya atlet aktif dan terverifikasi yang memenuhi syarat. Umur tampil dan divalidasi pada tanggal mulai event. Min/max pemain, kapten, nomor punggung, serta larangan atlet di dua tim kategori sama tetap berlaku. |
+| Lintas kategori | Atlet tidak otomatis dilarang pada seluruh event; setiap kategori memeriksa kelayakan sendiri. Jangan menyalin roster putra ke putri. |
+| Dokumen | Legalitas komunitas dan Digital Vault atlet digunakan ulang sesuai scope serta status verifikasi. Surat mandat/SPTJM tim terikat participant; tidak otomatis disalin sebagai dokumen sah tim berikutnya. |
+| Status | Kurasi, revisi, waiting list, penolakan, konfirmasi, dan pembayaran satu tim tidak mengubah status tim lain. |
+| Kuota | Dua tim menghitung dua pendaftaran, bukan satu komunitas. Tiap tim mengikuti kuota event/kategori dan mode screening/waiting list yang berlaku. |
+| Pembayaran | Invoice dan snapshot nominal tetap per participant. Tim putri boleh didaftarkan saat invoice tim putra belum dibayar, selama syarat tim putri terpenuhi. |
+| Pendaftaran lama | Bila pasangan komunitas-kategori sudah memiliki participant, arahkan ke record itu, termasuk status ditolak/dibatalkan; jangan mencoba INSERT baru yang berbenturan dengan unique index. Pendaftaran ulang atau reaktivasi status tidak diperkenalkan dalam scope ini. |
+
+#### Alur pengguna
+
+```mermaid
+flowchart TD
+    A[Buka pendaftaran event] --> B[Ringkasan tim komunitas pada event]
+    B --> C[Tambah tim dan pilih kategori tersedia]
+    C --> D[Isi identitas tim dan PIC]
+    D --> E[Pilih roster dan lengkapi dokumen]
+    E --> F[Tinjau syarat, roster, dan biaya]
+    F --> G{Validasi server}
+    G -->|Tidak valid| E
+    G -->|Valid| H[Simpan satu tim dan tampilkan hasil]
+    H --> I[Tambah Tim Lain]
+    I --> C
+    H --> J[Lihat Roster atau Bayar Tim Ini]
+```
+
+#### Kebutuhan antarmuka
+
+**A. Ringkasan event dan tim komunitas**
+
+- Bagian atas menampilkan nama event, komunitas aktif, jadwal/tenggat efektif, dan teks: **“Komunitas Anda dapat mendaftarkan beberapa tim pada kategori berbeda, misalnya putra dan putri.”**
+- Tampilkan seluruh pendaftaran milik komunitas pada event ini: nama tim, kategori, jumlah pemain, status pendaftaran, status tagihan bila ada, tenggat bayar, dan tindakan sesuai hak/status.
+- Aksi utama **Tambah Tim** saat belum ada pendaftaran, lalu **Tambah Tim Lain** setelah tim pertama tercatat. Pendaftaran ditutup menonaktifkan tambah tim dengan alasan; riwayat dan tagihan lama tetap dapat diakses sesuai aturannya.
+- Tim yang memerlukan revisi menampilkan catatan panitia dan akses detail yang sudah tersedia; jangan menawarkan edit melalui endpoint baru yang belum ada.
+
+**B. Form bertahap, satu tim aktif**
+
+1. **Kategori & Identitas Tim.** Pilih kategori dahulu. Ringkasan kategori memperlihatkan gender, umur pada tanggal event, min/max roster, biaya, mode pendaftaran, batas waktu, dan kuota/antrean. Kategori yang sudah digunakan menampilkan **Sudah didaftarkan — Lihat Tim**, bukan pilihan submit baru. Kategori tidak memenuhi syarat tampil dengan alasan dan tidak dapat dipilih. Untuk screening, label kuota adalah kuota lolos, bukan sisa slot daftar.
+2. **Roster & Dokumen.** Hanya roster kategori terpilih yang aktif dan terkirim. Tersedia pencarian nama, penghitung pemain terpilih terhadap batas kategori, pilihan kapten, nomor punggung, dan checklist dokumen. Kekurangan legalitas komunitas, berkas atlet, atau mandat tim dibedakan jelas; gunakan ulang vault yang sah, bukan meminta unggah semua berkas lagi.
+3. **Tinjau & Kirim.** Tampilkan kategori, nama tim, PIC, daftar pemain/kapten, kelengkapan berkas, biaya kategori, serta kapan tagihan diterbitkan. Tombol final **Daftarkan Tim Ini**. Langkah sebelumnya dapat dibuka tanpa menghapus input.
+
+- Pertahankan Blade/Falcon dan form server-side yang ada. Stepper hanya membantu pengisian, bukan workflow domain baru; jangan menambah router SPA atau dependensi UI.
+- PIC awal dari pengguna aktif. Saat memilih **Tambah Tim Lain**, nama dan nomor PIC dari pendaftaran terakhir pada event boleh diprefill dan tetap bisa diedit. Roster, kapten, nomor punggung, unggahan tim, serta token undangan tidak ikut disalin.
+- Pergantian kategori setelah memilih roster/berkas meminta konfirmasi sebelum mengosongkan data khusus kategori. Identitas PIC dan catatan umum dipertahankan; pilihan kategori menentukan ulang persyaratan.
+- Kegagalan validasi mempertahankan input teks, kategori, roster, kapten, dan nomor punggung. File input yang tidak dapat dipulihkan browser diberi pesan **Pilih ulang berkas**, tidak ditampilkan seolah sudah tersimpan.
+- Tampilan mobile menggunakan satu kolom. Label input, urutan fokus, navigasi keyboard, ringkasan error, dan status harus dapat dibaca tanpa mengandalkan warna.
+
+**C. Hasil pendaftaran dan tindak lanjut**
+
+- Sesudah sukses, kembali ke ringkasan event pada URL register, dengan tim baru terlihat dan pesan nama tim/kategori yang disimpan. Tidak otomatis memaksa checkout sebelum pengurus bisa menambah tim berikutnya.
+- Sediakan **Tambah Tim Lain**, **Lihat Roster**, serta **Bayar Tim Ini** hanya ketika invoice memang tersedia dan jendela pembayaran mengizinkan. Belum waktunya bayar menampilkan waktu mulai; sudah kedaluwarsa menampilkan statusnya tanpa membuka pembayaran.
+- `screening_first` menampilkan **Menunggu kurasi** tanpa tombol bayar sebelum invoice diterbitkan. Gratis tidak menampilkan tagihan; waiting list menampilkan posisi antrean, bukan janji slot pasti.
+- Tambah tim berikutnya tetap memakai event dan komunitas sama, tanpa membawa kategori sebelumnya sebagai pilihan yang masih tersedia.
+- `/panel/events` tetap menjadi daftar lintas-event, dengan tautan kembali ke ringkasan pendaftaran event. Halaman roster dan checkout mempertahankan konteks nama tim, kategori, serta tautan kembali ke ringkasan.
+
+#### Kontrak teknis dan integritas data
+
+| Permukaan | Ketentuan implementasi |
+|---|---|
+| `GET /panel/events/{slug}/register` | Tambahkan ringkasan participant milik komunitas aktif pada event ini. Query `event_category_id` dari portal publik tetap didukung; kategori yang tidak tersedia tidak boleh diam-diam diganti. |
+| `POST /panel/events/{slug}/register` | Tetap menerima satu payload tim beserta `members` dan dokumen, bukan array `teams`. Sukses memakai redirect GET ke ringkasan event; gagal kembali ke form dengan error terarah. |
+| `GET /panel/registrations/{participant}/roster` dan `/checkout` | Pertahankan route, otorisasi kepemilikan, aturan akses roster, serta aturan pembayaran; hanya tambahkan navigasi balik yang relevan. |
+| Validasi | FormRequest memvalidasi input; service domain menangani pendaftaran atomik dan guard. Controller tipis. Gunakan kontrak Community/Payment yang ada, bukan import langsung model modul lain. |
+| Transaksi | Participant, roster, dokumen tim, penebusan undangan, dan invoice yang memang waktunya terbit konsisten per tim. Kegagalan tim kedua tidak membatalkan tim pertama. |
+| Duplikasi | Pertahankan unique index komunitas-kategori dan nama tim-kategori, serta lock transaksi. Double-click/reload/dua tab tidak menghasilkan participant atau invoice ganda; konflik ditampilkan ramah dengan tautan tim yang sudah ada. |
+| Skema | Tidak memerlukan tabel tim induk, batch registration, kolom gender tim, atau pelepasan unique index komunitas-kategori. Jangan mengubah data peserta/invoice historis. |
+| Keamanan | Session `web`, CSRF, akses panel, dan pemeriksaan pengurus aktif tetap wajib; ID kategori, atlet, participant, serta dokumen divalidasi server-side. Ringkasan tidak membocorkan tim komunitas lain. |
+| API | Perubahan ini menargetkan route web existing. Tidak menambah API batch atau endpoint mobile; implementasi API v1 terpisah tetap mengikuti JsonResource, FormRequest, Sanctum, dan izin eksplisit. |
+
+**Area terdampak:** `CommunityEventRegistrationController`, `RegistrationGuard`, `RosterValidator`, view `panel/events/register`, `panel/events/index`, `panel/registrations/roster`, dan `panel/registrations/checkout`. Reuse aturan yang ada; perubahan difokuskan pada alur, read model ringkasan, validasi input, dan pesan konflik.
+
+#### Acceptance criteria
+
+| ID | Skenario | Hasil wajib |
+|---|---|---|
+| MT-01 | Pengurus komunitas eligible mendaftarkan satu tim SMA putra lalu satu tim SMA putri pada event sama. | Dua participant berbeda, `community_id` dan `event_id` sama, kategori berbeda; kedua tim terlihat pada ringkasan tanpa membuat akun/komunitas baru. |
+| MT-02 | Tim putra belum dibayar atau masih menunggu kurasi ketika pengurus menambah tim putri. | Pendaftaran putri tetap dapat diproses sesuai syaratnya sendiri; status putra tidak berubah. |
+| MT-03 | Pengurus membuka kategori yang sudah dipakai, termasuk lewat URL langsung atau dua tab. | UI mengarahkan ke participant lama; POST ganda tidak menciptakan tim/invoice kedua dan tidak menampilkan error SQL. |
+| MT-04 | Roster tim putri kurang pemain atau menyertakan atlet yang tidak eligible. | Tim putri ditolak dengan error spesifik; tim putra tetap utuh. Input yang dapat dipulihkan tetap tersedia. |
+| MT-05 | Pengurus mengganti kategori setelah mengisi roster. | Konfirmasi pengosongan muncul; hanya data roster/dokumen kategori baru yang dapat terkirim, tidak ada hidden input kategori lama yang ikut. |
+| MT-06 | Dua tim memiliki biaya atau mode pendaftaran berbeda. | Setiap tim memakai harga kategori dan waktu penerbitan invoice sendiri; tidak ada tagihan gabungan atau nominal warisan tim pertama. |
+| MT-07 | Kategori gratis, screening belum eligible, waiting list, atau invoice belum memasuki jendela bayar. | Ringkasan memberi status dan tindakan tepat; tidak menampilkan tombol bayar yang menyesatkan atau mengonfirmasi tim otomatis. |
+| MT-08 | Legalitas komunitas/vault atlet sudah memenuhi persyaratan. | Berkas bersama dipakai ulang tanpa upload ulang wajib; dokumen mandat tim kedua tetap diperiksa secara terpisah. |
+| MT-09 | Kuota habis atau tenggat terlewati setelah halaman dibuka. | Server memeriksa ulang saat submit dan menolak/menempatkan antrean sesuai aturan; tidak melampaui kuota atau mengubah tim lain. |
+| MT-10 | Pengguna mengganti ID komunitas, atlet, kategori lintas-event, atau participant milik pengguna lain. | Akses/payload ditolak tanpa kebocoran roster, dokumen, dan invoice. |
+| MT-11 | Komunitas memiliki participant rejected/cancelled pada kategori yang sama. | Record lama tetap terlihat, tidak dibuat registrasi baru; kategori berbeda tetap dapat didaftarkan. |
+| MT-12 | Form dipakai pada layar mobile dan dengan keyboard. | Seluruh langkah, error, aksi tambah tim, serta ringkasan dapat diakses; input tidak hilang ketika berpindah langkah. |
+
+**Definisi selesai implementasi:** MT-01 dibuktikan lewat browser terautentikasi dengan dua roster valid, dilanjutkan pemeriksaan participant/roster/tagihan masing-masing; MT-03, MT-04, MT-09, dan MT-10 mencakup kegagalan serta integritas transaksi. Uji tidak memakai pembayaran riil. Dokumen ini bukan bukti bahwa skenario tersebut sudah lulus.
+
+**Ukuran keberhasilan:** skenario putra + putri selesai dalam satu konteks event, tanpa input ulang legalitas komunitas, tanpa harus melunasi tim pertama, dan tanpa data roster/tagihan tercampur. Tidak menambah telemetry baru untuk PRD ini.
+
+#### Catatan kesiapan data event contoh
+
+Halaman publik saat riset menampilkan SMA Putra berumur 16–18 tahun dan sumber SMA/SMK, sedangkan SMA Putri masih “Semua usia” dan sumber lebih luas. Sebelum UAT, organizer harus memeriksa konfigurasi kategori dan kesiapan roster komunitas untuk keduanya. Nama “SMA” pada kategori tidak boleh dianggap sebagai validasi jenjang/umur. PRD ini tidak mengubah konfigurasi event otomatis.
 
 ---
 
@@ -976,6 +1220,27 @@ Prefix: `/api/v1/*` | Middleware: `auth:sanctum`
 ## 7. Kriteria Keberimaan (Acceptance Criteria - AC)
 
 ### AC-01: Verifikasi Penyelenggara (KYC Organizer)
+
+#### Perluasan form PIC — pelaksanaan bertahap
+
+Lingkup disetujui: `/panel/organizer/apply` memuat Identitas & Informasi Bank bagi pemilik/perwakilan. Alamat diisi berjenjang (Provinsi, Kota/Kabupaten, Kecamatan, Kelurahan/Desa, Kode Pos), alamat detail, serta RT/RW opsional. Referensi UX ERP hanya dibaca; data wilayah tetap dari `db_actstation`, tanpa koneksi ERP.
+
+- KTP: Nomor KTP 16 digit unik, Nama KTP, Tempat Lahir, Tanggal Lahir, Pekerjaan sesuai KTP, Alamat KTP.
+- NPWP: opsional; jika diisi, nomor 15/16 digit (format bertanda titik/tanda hubung diterima setelah normalisasi) dan Nama NPWP wajib berpasangan.
+- Bank: pilih bank yang tersedia, Nama Pemilik Rekening minimal 3 karakter sesuai Nama KTP (abaikan kapitalisasi dan spasi tepi), Nomor Rekening berupa digit, Cabang minimal 3 karakter.
+- Foto KTP dan kontak darurat dipertahankan. Unggahan disimpan privat; formulir tidak boleh mengklaim verifikasi Dukcapil/bank atau enkripsi disk yang tidak tersedia. Perluasan ini tidak mengubah alur persetujuan KYC eksisting.
+- Validasi server-side wajib, termasuk keberadaan dan hubungan induk wilayah. Data tersimpan hanya pada pengguna login, tidak masuk serialisasi publik atau audit log mentah.
+
+Checkpoint pelaksanaan (lanjutkan dari status terakhir, bukan mengulang migrasi/data):
+- [x] Penelusuran form/controller/model dan komponen wilayah: komponen lama memakai endpoint `/admin/regions/*`, sehingga perlu endpoint panel terautentikasi tanpa membuka izin admin.
+- [x] Kontrak field dan pembagian kepemilikan backend/frontend ditetapkan; implementasi paralel sedang berjalan.
+- [x] Referensi ERP diverifikasi pada `Perbasi-Jabar-BE/resources/views/admin/user/self-edit.blade.php`: empat dropdown wilayah berjenjang, kode pos, detail jalan dan preview alamat lengkap otomatis. ActStation mempertahankan field terstruktur dan preview tanpa koneksi DB ERP.
+- [x] Audit privasi selesai: `User::$hidden` dan `ActivityLog::SENSITIVE_ATTRIBUTES` perlu mencakup identitas/alamat dan bank; tidak menambah Resource fiktif atau field `district_id` duplikat.
+- [x] Backend, skema pengguna, migrasi runtime/test, validasi dan privasi selesai: `2026_10_13_130204_add_expanded_kyc_fields_to_users_table`, FormRequest `OrganizerKycRequest`, service `OrganizerKycService`, redaksi `User`/`ActivityLog`. Migrasi pada kedua DB dan focused tests terverifikasi melalui full suite.
+- [x] Form lengkap dan cascading wilayah panel selesai: `apply.blade.php`, komponen `region-select`, endpoint `panel.regions.*`, preview alamat lengkap otomatis; akses admin tetap 403 bagi member.
+- [x] Pengujian KYC final: 26 tests / 245 assertions passed; pemeriksaan JavaScript cascading (`node tests/region-select.cjs`), Pint, Blade compile dan build passed. Input array invalid kini mendapat 422; respons wilayah/kodepos yang sudah kedaluwarsa diabaikan.
+- [!] Full suite pertama sebelum perubahan paralel onboarding: 294 passed / 1.841 assertions. Run berikutnya menemukan konflik di pekerjaan onboarding komunitas lain (redirect auth, `$valProvince` pada view komunitas dan deadlock DB test). Form KYC terverifikasi; full regression keseluruhan masih perlu diselaraskan oleh pemilik perubahan onboarding, tidak ditandai hijau.
+
 - **Skenario**: User dengan role `organizer` baru mendaftar dan hendak membuat event.
 - **Hasil yang Diharapkan**:
   1. Sistem memblokir akses ke form pembuatan event sebelum form profil PIC (NIK, Foto KTP, No Rekening Bank) berstatus `verified`.

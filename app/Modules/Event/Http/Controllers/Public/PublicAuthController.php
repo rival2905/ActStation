@@ -6,9 +6,11 @@ namespace App\Modules\Event\Http\Controllers\Public;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\View\View;
 
@@ -42,16 +44,22 @@ class PublicAuthController extends Controller
             $phoneNormalized = '+'.$rawPhone;
         }
 
-        $user = User::create([
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-            'phone_number' => $validated['phone_number'],
-            'phone_normalized' => $phoneNormalized,
-            'password' => Hash::make($validated['password']),
-            'is_active' => true,
-        ]);
+        $user = DB::transaction(function () use ($validated, $phoneNormalized): User {
+            $user = User::create([
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+                'phone_number' => $validated['phone_number'],
+                'phone_normalized' => $phoneNormalized,
+                'password' => Hash::make($validated['password']),
+                'is_active' => true,
+            ]);
 
-        $user->assignRole('member');
+            $user->assignRole('member');
+
+            return $user;
+        });
+
+        event(new Registered($user));
 
         Auth::login($user);
 

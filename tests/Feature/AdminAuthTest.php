@@ -82,8 +82,10 @@ test('user with external only role is auto redirected to their panel from admin 
         'password' => 'password123',
     ]);
 
-    $response->assertRedirect(route('panel.profile.show'));
+    $response->assertRedirect(route('panel.community.create'));
     $this->assertAuthenticatedAs($user);
+    $this->get(route('panel.community.create'))->assertOk();
+    $this->get(route('admin.dashboard'))->assertForbidden();
 });
 
 test('user with organizer role is auto redirected to organizer panel from admin login', function (): void {

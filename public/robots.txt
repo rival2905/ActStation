@@ -1,2 +1,7 @@
 User-agent: *
-Disallow:
+Allow: /
+Disallow: /admin/
+Disallow: /panel/
+Disallow: /api/
+
+Sitemap: http://localhost:7000/sitemap.xml

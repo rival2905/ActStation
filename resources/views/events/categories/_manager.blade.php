@@ -6,6 +6,7 @@
     $canCreate = ! $isAdmin || auth()->user()?->can('event-category.create');
     $canUpdate = ! $isAdmin || auth()->user()?->can('event-category.update');
     $canDelete = ! $isAdmin || auth()->user()?->can('event-category.delete');
+    $docTypesByCode = ($documentTypes ?? collect())->keyBy('code');
 @endphp
 
 <div class="card mb-3">
@@ -107,10 +108,7 @@
                                 <span class="badge bg-light text-dark border">{{ ucfirst($category->gender) }}</span>
                             </td>
                             <td>
-                                <div>{{ $developmentLevels->firstWhere('id', $category->development_level_id)?->name ?? 'Semua Usia' }}</div>
-                                @if($category->min_age !== null || $category->max_age !== null)
-                                    <small class="text-muted d-block">{{ $category->min_age ?? 0 }}–{{ $category->max_age ?? '∞' }} thn</small>
-                                @endif
+                                <span class="badge bg-100 text-dark border">{{ $category->ageRangeLabel() }}</span>
                             </td>
                             <td>{{ $category->min_roster ?? '–' }}–{{ $category->max_roster ?? '–' }}</td>
                             <td>{{ $category->participants_count }} / {{ $category->max_teams ?? 'Tanpa batas' }}</td>
@@ -124,16 +122,89 @@
                                 @endif
                             </td>
                             <td>
-                                @if($category->allow_club)<span class="badge badge-subtle-primary">Klub</span>@endif
-                                @if($category->allow_community)<span class="badge badge-subtle-info">Komunitas{{ $category->community_subtype ? ': '.$category->community_subtype : '' }}</span>@endif
-                                @if(! $category->allow_club && ! $category->allow_community)<span class="text-muted">Tidak ada</span>@endif
-                            </td>
-                            <td>
-                                @forelse($category->required_documents ?? [] as $documentCode)
-                                    <span class="badge bg-100 text-dark border">{{ $documentCode }}</span>
+                                @forelse($category->allowedEntityLabels() as $lbl)
+                                    <span class="badge badge-subtle-primary me-1 mb-1">{{ $lbl }}</span>
                                 @empty
                                     <span class="text-muted">Tidak ada</span>
                                 @endforelse
+                            </td>
+                            <td>
+                                @php
+                                    $reqDocCodes = $category->required_documents ?? [];
+                                    $teamReqDocs = [];
+                                    $athleteReqDocs = [];
+                                    $unknownReqDocs = [];
+
+                                    foreach ($reqDocCodes as $code) {
+                                        $meta = $docTypesByCode->get($code);
+                                        if (! $meta) {
+                                            $unknownReqDocs[] = $code;
+                                        } elseif ($meta->scope === 'team') {
+                                            $teamReqDocs[] = $meta;
+                                        } elseif ($meta->scope === 'athlete') {
+                                            $athleteReqDocs[] = $meta;
+                                        } else {
+                                            $unknownReqDocs[] = $code;
+                                        }
+                                    }
+                                @endphp
+
+                                @if(empty($reqDocCodes))
+                                    <span class="text-muted">Tidak ada</span>
+                                @else
+                                    @if(! empty($teamReqDocs))
+                                        <div class="mb-1">
+                                            <span class="fw-bold text-success d-block fs-11">
+                                                <span class="fas fa-users-cog me-1"></span>Dokumen Tim:
+                                            </span>
+                                            @foreach($teamReqDocs as $tDoc)
+                                                <span class="badge bg-100 text-dark border me-1 mb-1" title="Kode: {{ $tDoc->code }}">
+                                                    {{ $tDoc->name }}
+                                                </span>
+                                            @endforeach
+                                        </div>
+                                    @endif
+
+                                    @if(! empty($athleteReqDocs))
+                                        <div class="mb-1">
+                                            <span class="fw-bold text-primary d-block fs-11">
+                                                <span class="fas fa-user-check me-1"></span>Dokumen Atlet:
+                                            </span>
+                                            @foreach($athleteReqDocs as $aDoc)
+                                                <span class="badge bg-100 text-dark border me-1 mb-1" title="Kode: {{ $aDoc->code }}">
+                                                    {{ $aDoc->name }}
+                                                </span>
+                                            @endforeach
+                                        </div>
+                                    @endif
+
+                                    @if(! empty($unknownReqDocs))
+                                        <div class="mb-1">
+                                            <span class="fw-bold text-danger d-block fs-11">
+                                                <span class="fas fa-exclamation-triangle me-1"></span>Metadata Hilang / Tidak Dikenal:
+                                            </span>
+                                            @foreach($unknownReqDocs as $uCode)
+                                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle me-1 mb-1" title="Tipe dokumen [{{ $uCode }}] tidak ditemukan di Master Data">
+                                                    {{ $uCode }} (Metadata tidak ditemukan)
+                                                </span>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                @endif
+
+                                @if(! empty($category->required_entity_documents))
+                                    <div class="mt-1">
+                                        <small class="text-primary fw-bold d-block fs-11">Legalitas Entitas:</small>
+                                        @foreach($category->required_entity_documents as $eDoc)
+                                            <span class="badge badge-subtle-info me-1 mb-1">{{ \App\Contracts\EntityRequirements::DOCUMENT_LABELS[$eDoc] ?? $eDoc }}</span>
+                                        @endforeach
+                                    </div>
+                                @endif
+                                @if($category->document_instructions)
+                                    <div class="mt-1 fs-11 text-info text-truncate" style="max-width: 180px;" title="{{ $category->document_instructions }}">
+                                        <span class="fas fa-id-card me-1"></span>{{ $category->document_instructions }}
+                                    </div>
+                                @endif
                             </td>
                             <td>
                                 <span class="badge badge-subtle-{{ $category->enable_waiting_list ? 'success' : 'secondary' }}">
@@ -141,16 +212,26 @@
                                 </span>
                             </td>
                             <td>
-                                <form action="{{ route($routePrefix.'.toggleRosterVisibility', [$event, $category]) }}" method="POST" class="d-inline">
-                                    @csrf
-                                    <button type="submit" class="btn btn-xs badge badge-subtle-{{ $category->is_roster_public ? 'success' : 'warning' }} border-0" title="Klik untuk ubah visibilitas tim pendaftar di portal publik">
+                                @if($canUpdate)
+                                    <form action="{{ route($routePrefix.'.toggleRosterVisibility', [$event, $category]) }}" method="POST" class="d-inline">
+                                        @csrf
+                                        <button type="submit" class="btn btn-xs badge badge-subtle-{{ $category->is_roster_public ? 'success' : 'warning' }} border-0" title="Klik untuk ubah visibilitas tim pendaftar di portal publik">
+                                            <span class="fas fa-{{ $category->is_roster_public ? 'eye' : 'eye-slash' }} me-1"></span>
+                                            {{ $category->is_roster_public ? 'Publik' : 'Dirahasiakan' }}
+                                        </button>
+                                    </form>
+                                @else
+                                    <span class="badge badge-subtle-{{ $category->is_roster_public ? 'success' : 'warning' }}">
                                         <span class="fas fa-{{ $category->is_roster_public ? 'eye' : 'eye-slash' }} me-1"></span>
                                         {{ $category->is_roster_public ? 'Publik' : 'Dirahasiakan' }}
-                                    </button>
-                                </form>
+                                    </span>
+                                @endif
                             </td>
                             <td class="text-end text-nowrap">
-                                @if($category->registration_flow === 'by_invitation' && ($isAdmin || auth()->user()?->id === $event->user_id))
+                                @php
+                                    $canInvite = $category->registration_flow === 'by_invitation' && ($isAdmin ? $canUpdate : (auth()->user()?->id === $event->user_id || auth()->user()?->hasRole('superadmin')));
+                                @endphp
+                                @if($canInvite)
                                     <button type="button" class="btn btn-xs btn-outline-info me-1" data-bs-toggle="modal" data-bs-target="#modalInvite-{{ $category->id }}">Undang</button>
                                 @endif
                                 @if($canUpdate)
@@ -185,7 +266,7 @@
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
                     </div>
                     <div class="modal-body fs-10">
-                        @include('events.categories._form-fields', ['category' => null, 'fieldPrefix' => 'add_category'])
+                        @include('events.categories._form-fields', ['category' => null, 'fieldPrefix' => 'add_category', 'documentTypes' => $documentTypes ?? collect()])
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
@@ -210,7 +291,7 @@
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
                         </div>
                         <div class="modal-body fs-10">
-                            @include('events.categories._form-fields', ['category' => $category, 'fieldPrefix' => 'edit_category_'.$category->id])
+                            @include('events.categories._form-fields', ['category' => $category, 'fieldPrefix' => 'edit_category_'.$category->id, 'documentTypes' => $documentTypes ?? collect()])
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
@@ -224,7 +305,10 @@
 @endif
 
 @foreach($categories as $category)
-    @if($category->registration_flow === 'by_invitation')
+    @php
+        $canInvite = $category->registration_flow === 'by_invitation' && ($isAdmin ? $canUpdate : (auth()->user()?->id === $event->user_id || auth()->user()?->hasRole('superadmin')));
+    @endphp
+    @if($canInvite)
         <div class="modal fade" id="modalInvite-{{ $category->id }}" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog">
                 <form action="{{ route($isAdmin ? 'admin.events.invitations.store' : 'panel.organizer.invitations.store', $event) }}" method="POST">

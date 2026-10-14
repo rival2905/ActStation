@@ -1,8 +1,23 @@
+@php
+    $activeCommunity = $panelActiveCommunity ?? $activeCommunity ?? null;
+    if (! $activeCommunity) {
+        if (isset($community)) {
+            $activeCommunity = $community;
+        } elseif (request()->attributes->has('panel_active_community')) {
+            $activeCommunity = request()->attributes->get('panel_active_community');
+        } elseif (auth()->check()) {
+            $activeCommunity = app(\App\Contracts\CommunityLookup::class)->findForUser((int) auth()->id());
+            request()->attributes->set('panel_active_community', $activeCommunity);
+        }
+    }
+    $entities = $panelOfficialEntities ?? collect();
+    $entitiesCount = $entities->count();
+@endphp
 <nav class="navbar navbar-light navbar-glass navbar-top navbar-expand">
     <button class="btn navbar-toggler-humburger-icon navbar-toggler me-1 me-sm-3" type="button" data-bs-toggle="collapse" data-bs-target="#navbarVerticalCollapse" aria-controls="navbarVerticalCollapse" aria-expanded="false" aria-label="Toggle Navigation">
         <span class="navbar-toggle-icon"><span class="toggle-line"></span></span>
     </button>
-    <a class="navbar-brand me-1 me-sm-3 d-xl-none" href="{{ route('panel.profile.show') }}">
+    <a class="navbar-brand me-1 me-sm-3 d-xl-none" href="{{ $activeCommunity && Route::has('panel.profile.show') ? route('panel.profile.show') : (Route::has('panel.community.create') ? route('panel.community.create') : url('/panel/community/create')) }}">
         <div class="d-flex align-items-center">
             <img class="me-2" src="{{ asset('assets/img/logo_fix.png') }}" alt="{{ config('app.name', 'ActStation') }}" width="36" />
             <span class="font-sans-serif text-primary fw-bold">{{ config('app.name', 'ActStation') }} Panel</span>
@@ -10,6 +25,56 @@
     </a>
 
     <ul class="navbar-nav navbar-nav-icons ms-auto flex-row align-items-center">
+        <!-- Entity Switcher / Indicator -->
+        <li class="nav-item pe-2">
+            @if($entitiesCount > 1)
+                <div class="dropdown">
+                    <button class="btn btn-falcon-default btn-sm dropdown-toggle d-flex align-items-center gap-1 py-1 px-2" type="button" id="entitySwitcherDropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                        <span class="fas fa-building text-primary fs-11"></span>
+                        <span class="fw-semibold fs-11 text-truncate d-inline-block" style="max-width: 160px;">{{ $activeCommunity?->name ?? 'Pilih Entitas' }}</span>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end py-2 shadow-sm border" aria-labelledby="entitySwitcherDropdown" style="min-width: 240px;">
+                        <h6 class="dropdown-header text-uppercase fs-11 text-500 py-1 px-3">Ganti Entitas</h6>
+                        @foreach($entities as $ent)
+                            <form method="POST" action="{{ route('panel.switch') }}" class="m-0">
+                                @csrf
+                                <input type="hidden" name="community_id" value="{{ $ent->id }}">
+                                <button type="submit" class="dropdown-item d-flex align-items-center justify-content-between py-2 {{ $ent->is_current ? 'active bg-200 text-900' : '' }}" {{ $ent->is_current ? 'disabled' : '' }}>
+                                    <div class="pe-2 text-truncate">
+                                        <div class="fw-bold text-truncate fs-11">{{ $ent->name }}</div>
+                                        <div class="text-500 fs-11 text-capitalize">{{ $ent->subtype }} &bull; {{ $ent->position }}</div>
+                                    </div>
+                                    @if($ent->is_current)
+                                        <span class="fas fa-check text-success fs-11"></span>
+                                    @endif
+                                </button>
+                            </form>
+                        @endforeach
+                    </div>
+                </div>
+            @elseif($entitiesCount === 1)
+                @php $singleEntity = $entities->first(); @endphp
+                <span class="badge badge-subtle-primary py-1 px-2 fs-11 d-flex align-items-center gap-1 border">
+                    <span class="fas fa-building text-primary"></span>
+                    <span class="text-truncate fw-semibold" style="max-width: 180px;">{{ $singleEntity->name }}</span>
+                </span>
+            @else
+                <a class="btn btn-outline-primary btn-sm py-1 px-2 fs-11 d-flex align-items-center gap-1" href="{{ Route::has('panel.community.create') ? route('panel.community.create') : url('/panel/community/create') }}">
+                    <span class="fas fa-plus"></span>
+                    <span>Buat Komunitas</span>
+                </a>
+            @endif
+        </li>
+
+        @auth
+        <li class="nav-item pe-2">
+            <a href="{{ route('verification.notice') }}" class="badge {{ auth()->user()->hasVerifiedEmail() ? 'badge-subtle-success' : 'badge-subtle-warning' }} text-decoration-none">
+                {{ auth()->user()->hasVerifiedEmail() ? 'Email terverifikasi' : 'Verifikasi email' }}
+            </a>
+        </li>
+
+        @endauth
+
         <!-- Theme Switcher -->
         <li class="nav-item ps-2 pe-0">
             <div class="dropdown theme-control-dropdown">
@@ -42,9 +107,13 @@
                         <h6 class="mb-0 text-900 fw-bold">{{ auth()->user()->name ?? 'User' }}</h6>
                         <small class="text-600 fs-11">{{ auth()->user()->email ?? '' }}</small>
                     </div>
-                    @if(Route::has('panel.profile.show'))
+                    @if($activeCommunity && Route::has('panel.profile.show'))
                     <a class="dropdown-item mt-1" href="{{ route('panel.profile.show') }}">
                         <span class="fas fa-building me-2 text-primary"></span>Profil Komunitas
+                    </a>
+                    @elseif(! $activeCommunity)
+                    <a class="dropdown-item mt-1" href="{{ Route::has('panel.community.create') ? route('panel.community.create') : url('/panel/community/create') }}">
+                        <span class="fas fa-plus-circle me-2 text-primary"></span>Buat Komunitas
                     </a>
                     @endif
                     @if(auth()->user()?->roles->contains(fn ($role) => in_array($role->panel_access, ['internal', 'both'], true)) && auth()->user()->can('dashboard.view'))

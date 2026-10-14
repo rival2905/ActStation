@@ -1,6 +1,41 @@
 @extends('layouts.public')
 
 @section('title', 'ActStation — Platform Turnamen Basket & Ekosistem Olahraga Terbuka')
+@section('meta_description', 'Platform ekosistem olahraga terbuka multi-cabor (Basket, Futsal, Badminton, Sepak Bola, Voli) dengan proteksi Rekening Bersama Escrow 100%, verifikasi atlet Digital Vault, dan tiket pertandingan resmi.')
+@section('meta_keywords', 'turnamen basket, turnamen futsal, turnamen badminton, pendaftaran turnamen olahraga, kompetisi olahraga, escrow turnamen, digital vault atlet, actstation')
+@section('og_title', 'ActStation — Platform Turnamen & Ekosistem Olahraga Terbuka')
+@section('og_description', 'Platform ekosistem olahraga terbuka multi-cabor dengan garansi Rekening Bersama Escrow 100%, verifikasi atlet Digital Vault, dan tiket resmi.')
+@section('og_image', asset('assets/img/generic/bg-1.jpg'))
+@push('schema')
+<script type="application/ld+json">
+{!! json_encode([
+    chr(64) . 'context' => 'https://schema.org',
+    chr(64) . 'graph' => [
+        [
+            chr(64) . 'type' => 'WebSite',
+            chr(64) . 'id' => url('/') . '#website',
+            'url' => url('/'),
+            'name' => 'ActStation',
+            'description' => 'Platform Turnamen & Ekosistem Olahraga Terbuka Multi-Cabor',
+            'inLanguage' => 'id-ID',
+            'potentialAction' => [
+                chr(64) . 'type' => 'SearchAction',
+                'target' => route('events.index') . '?q={search_term_string}',
+                'query-input' => 'required name=search_term_string',
+            ],
+        ],
+        [
+            chr(64) . 'type' => 'SportsOrganization',
+            chr(64) . 'id' => url('/') . '#organization',
+            'name' => 'ActStation',
+            'url' => url('/'),
+            'logo' => asset('assets/img/logo_fix.png'),
+            'description' => 'Platform ekosistem olahraga terbuka untuk penyelenggaraan turnamen dengan garansi Rekening Bersama Escrow 100% dan verifikasi atlet Digital Vault.',
+        ],
+    ],
+], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}
+</script>
+@endpush
 
 @section('is_landing', 'true')
 @section('navbar_class', '')

@@ -146,8 +146,10 @@ test('login with external role is auto redirected and recorded as login', functi
         'password' => 'password123',
     ]);
 
-    $response->assertRedirect(route('panel.profile.show'));
+    $response->assertRedirect(route('panel.community.create'));
     $this->assertAuthenticatedAs($member);
+    $this->get(route('panel.community.create'))->assertOk();
+    $this->get(route('admin.dashboard'))->assertForbidden();
 
     $loginLog = ActivityLog::where('event', 'login')
         ->where('user_id', $member->id)

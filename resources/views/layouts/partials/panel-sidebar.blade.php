@@ -1,3 +1,17 @@
+@php
+    if (! isset($activeCommunity)) {
+        if (isset($community)) {
+            $activeCommunity = $community;
+        } elseif (request()->attributes->has('panel_active_community')) {
+            $activeCommunity = request()->attributes->get('panel_active_community');
+        } elseif (auth()->check()) {
+            $activeCommunity = app(\App\Contracts\CommunityLookup::class)->findForUser((int) auth()->id());
+            request()->attributes->set('panel_active_community', $activeCommunity);
+        } else {
+            $activeCommunity = null;
+        }
+    }
+@endphp
 <nav class="navbar navbar-light navbar-vertical navbar-expand-xl">
     <script>
         var navbarStyle = localStorage.getItem("navbarStyle");
@@ -11,7 +25,7 @@
                 <span class="navbar-toggle-icon"><span class="toggle-line"></span></span>
             </button>
         </div>
-        <a class="navbar-brand" href="{{ Route::has('panel.profile.show') ? route('panel.profile.show') : '#' }}">
+        <a class="navbar-brand" href="{{ $activeCommunity && Route::has('panel.profile.show') ? route('panel.profile.show') : (Route::has('panel.community.create') ? route('panel.community.create') : url('/panel/community/create')) }}">
             <div class="d-flex align-items-center py-3">
                 <img class="me-2" src="{{ asset('assets/img/logo_fix.png') }}" alt="{{ config('app.name', 'ActStation') }}" width="40" />
                 <span class="font-sans-serif text-primary fw-bolder">Panel Komunitas</span>
@@ -29,6 +43,7 @@
                     </div>
                 </li>
 
+                @if($activeCommunity)
                 <!-- Profil Komunitas -->
                 <li class="nav-item">
                     <a class="nav-link {{ request()->routeIs('panel.profile.*') ? 'active' : '' }}" href="{{ Route::has('panel.profile.show') ? route('panel.profile.show') : '#' }}" role="button">
@@ -88,6 +103,17 @@
                         </div>
                     </a>
                 </li>
+                @else
+                <!-- Buat Komunitas CTA -->
+                <li class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('panel.community.create') ? 'active' : '' }}" href="{{ Route::has('panel.community.create') ? route('panel.community.create') : url('/panel/community/create') }}" role="button">
+                        <div class="d-flex align-items-center">
+                            <span class="nav-link-icon"><span class="fas fa-plus-circle text-primary"></span></span>
+                            <span class="nav-link-text ps-1">Buat Komunitas</span>
+                        </div>
+                    </a>
+                </li>
+                @endif
                 <li class="nav-item">
                     <div class="row navbar-vertical-label-wrapper mt-3 mb-2">
                         <div class="col-auto navbar-vertical-label">Turnamen</div>
@@ -101,6 +127,15 @@
                         <div class="d-flex align-items-center">
                             <span class="nav-link-icon"><span class="fas fa-trophy"></span></span>
                             <span class="nav-link-text ps-1">Ikuti Turnamen</span>
+                        </div>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('panel.organizer.apply*', 'panel.organizer.events.create') ? 'active' : '' }}" href="{{ route(auth()->user()?->hasAnyRole(['organizer', 'superadmin']) ? 'panel.organizer.events.create' : 'panel.organizer.apply') }}">
+                        <div class="d-flex align-items-center">
+                            <span class="nav-link-icon"><span class="fas fa-plus-circle"></span></span>
+                            <span class="nav-link-text ps-1">{{ auth()->user()?->hasAnyRole(['organizer', 'superadmin']) ? 'Buat Event' : 'Ajukan Penyelenggara Event' }}</span>
                         </div>
                     </a>
                 </li>

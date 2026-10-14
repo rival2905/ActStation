@@ -7,6 +7,7 @@ namespace App\Modules\Event\Models;
 use App\Contracts\Payable;
 use App\Models\Concerns\Auditable;
 use App\Models\User;
+use App\Modules\Event\Observers\EventParticipantObserver;
 use Database\Factories\EventParticipantFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -59,6 +60,13 @@ class EventParticipant extends Model implements Payable
             'is_escrow_waived' => 'boolean',
             'waiting_list_order' => 'integer',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        parent::booted();
+
+        static::observe(EventParticipantObserver::class);
     }
 
     protected static function newFactory(): EventParticipantFactory

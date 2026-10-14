@@ -28,6 +28,7 @@ class RegistrationGuard
         ?string $registrationSource = null,
         ?string $communitySubtype = null,
         bool $invitationAuthorized = false,
+        ?int $userId = null,
     ): void {
         $now = Carbon::now();
 
@@ -86,18 +87,38 @@ class RegistrationGuard
                 throw new RegistrationGuardException('Komunitas pendaftar harus terdaftar dan berstatus verified.');
             }
 
+            if (! $community->is_active) {
+                throw new RegistrationGuardException('Komunitas pendaftar tidak aktif.');
+            }
+
             $actualSubtype = (string) $community->subtype;
+            $actualInstitutionType = $community->institution_type;
+            $actualSchoolLevel = $community->school_level;
             $actualSource = $actualSubtype === 'club' ? 'club' : 'community';
             if (($registrationSource !== null && $registrationSource !== $actualSource)
                 || ($communitySubtype !== null && $communitySubtype !== $actualSubtype)) {
                 throw new RegistrationGuardException('Sumber atau subtipe komunitas pada pendaftaran tidak sesuai dengan profil komunitas.');
             }
-            $sourceAllowed = ($actualSubtype === 'club' && $category->allow_club)
-                || ($category->allow_community && ($category->community_subtype === null || $category->community_subtype === $actualSubtype));
 
-            if (! $sourceAllowed) {
+            if (! $category->acceptsCommunityType($actualSubtype, $actualInstitutionType, $actualSchoolLevel)) {
                 throw new RegistrationGuardException('Sumber atau subtipe komunitas tidak diizinkan pada kategori ini.');
             }
+
+            if (! empty($category->required_entity_documents)) {
+                $checkUserId = $userId ?? $ignoring?->user_id;
+                if ($checkUserId === null) {
+                    $firstDoc = $category->required_entity_documents[0] ?? 'dokumen';
+                    throw new RegistrationGuardException("Dokumen legalitas entitas [{$firstDoc}] belum diverifikasi atau tidak tersedia.");
+                }
+
+                $availableDocs = $this->communityLookup->legalDocumentsForUser($checkUserId, $communityId);
+                foreach ($category->required_entity_documents as $docCode) {
+                    if (! isset($availableDocs[$docCode])) {
+                        throw new RegistrationGuardException("Dokumen legalitas entitas [{$docCode}] belum diverifikasi atau tidak tersedia.");
+                    }
+                }
+            }
+
             $hasRegistered = $this->activeParticipants($category->participants(), $now)
                 ->when($ignoring, fn ($query) => $query->where('id', '!=', $ignoring->id))
                 ->where('community_id', $communityId)
@@ -105,6 +126,30 @@ class RegistrationGuard
 
             if ($hasRegistered) {
                 throw new RegistrationGuardException('Komunitas hanya diperbolehkan mendaftarkan 1 tim per kategori event.');
+            }
+        } else {
+            if (! $category->allow_individual) {
+                throw new RegistrationGuardException('Kategori ini tidak mengizinkan pendaftaran atlet mandiri (individu).');
+            }
+
+            if ($registrationSource !== null && $registrationSource !== 'individual') {
+                throw new RegistrationGuardException('Sumber pendaftaran tidak valid untuk pendaftaran mandiri.');
+            }
+
+            if ($flow === 'by_invitation') {
+                throw new RegistrationGuardException('Pendaftaran atlet mandiri tidak didukung untuk kategori undangan.');
+            }
+
+            if ($userId !== null) {
+                $hasRegistered = $this->activeParticipants($category->participants(), $now)
+                    ->when($ignoring, fn ($query) => $query->where('id', '!=', $ignoring->id))
+                    ->where('user_id', $userId)
+                    ->whereNull('community_id')
+                    ->exists();
+
+                if ($hasRegistered) {
+                    throw new RegistrationGuardException('Anda sudah terdaftar di kategori ini.');
+                }
             }
         }
 

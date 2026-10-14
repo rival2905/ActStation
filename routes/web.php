@@ -11,11 +11,14 @@ use App\Modules\Event\Http\Controllers\Public\PublicResultController;
 use App\Modules\Event\Http\Controllers\Public\PublicScheduleController;
 use App\Modules\Event\Http\Controllers\Public\PublicTicketPurchaseController;
 use App\Modules\Event\Http\Controllers\Public\PublicTournamentController;
+use Illuminate\Foundation\Auth\EmailVerificationRequest;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 // Landing Page Publik (Falcon Theme)
 Route::get('/', [PublicEventController::class, 'landing'])->name('landing');
 Route::get('panduan-event', fn () => view('public.panduan'))->name('panduan.event');
+Route::get('sitemap.xml', [PublicEventController::class, 'sitemap'])->name('sitemap');
 
 // Registrasi Publik & Onboarding (PRD_EXTERNAL §2.1)
 Route::middleware('guest')->group(function (): void {
@@ -47,4 +50,34 @@ Route::prefix('events')->name('events.')->group(function (): void {
 Route::middleware('auth')->group(function (): void {
     Route::get('my-events', [MyEventController::class, 'index'])->name('my-events.index');
     Route::get('my-tickets', [MyTicketController::class, 'index'])->name('my-tickets.index');
+
+    // Verifikasi Email (PRD §Komunikasi email n8n)
+    Route::get('email/verify', function (Request $request) {
+        if ($request->user()->hasVerifiedEmail()) {
+            return redirect()->intended($request->user()->getPanelHomeRoute());
+        }
+
+        return view()->exists('auth.verify-email')
+            ? view('auth.verify-email')
+            : response('Verification notice', 200);
+    })->name('verification.notice');
+
+    Route::get('email/verify/{id}/{hash}', function (EmailVerificationRequest $request) {
+        $request->fulfill();
+
+        return redirect()->intended($request->user()->getPanelHomeRoute())
+            ->with('verified', true)
+            ->with('success', 'Email berhasil diverifikasi.');
+    })->middleware(['signed', 'throttle:6,1'])->name('verification.verify');
+
+    Route::post('email/verification-notification', function (Request $request) {
+        if ($request->user()->hasVerifiedEmail()) {
+            return redirect()->intended($request->user()->getPanelHomeRoute())
+                ->with('info', 'Email Anda sudah terverifikasi.');
+        }
+
+        $request->user()->sendEmailVerificationNotification();
+
+        return back()->with('status', 'verification-link-sent');
+    })->middleware('throttle:6,1')->name('verification.send');
 });

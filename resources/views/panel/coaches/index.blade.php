@@ -78,6 +78,7 @@
                             <form method="POST" action="{{ route('panel.coaches.destroy', $coach) }}" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin menghapus pelatih ini?');">
                                 @csrf
                                 @method('DELETE')
+                                <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
                                 <button class="btn btn-link text-danger p-0 ms-2" type="submit" data-bs-toggle="tooltip" title="Hapus Pelatih">
                                     <span class="fas fa-trash-alt fs-10"></span>
                                 </button>
@@ -104,6 +105,7 @@
         <div class="modal-content">
             <form method="POST" action="{{ route('panel.coaches.store') }}">
                 @csrf
+                <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalAddCoachLabel">Tambah Pelatih Komunitas</h5>
                     <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>

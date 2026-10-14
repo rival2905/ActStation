@@ -6,7 +6,7 @@ namespace App\Modules\Community\Http\Controllers\Panel;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Community\Models\Community;
-use App\Modules\Community\Models\CommunityOfficial;
+use App\Modules\Community\Services\CommunityLookupService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
 
@@ -29,33 +29,59 @@ abstract class PanelBaseController extends Controller
         if ($user->hasRole('superadmin') || $user->hasRole('admin')) {
             $communityId = $request->input('community_id') ?? session('current_community_id');
             if ($communityId) {
-                $community = Community::find($communityId);
+                $community = Community::whereNull('deleted_at')->where('is_active', true)->find($communityId);
                 if ($community) {
+                    $this->validateCommunityContext($request, $community);
+
                     return $community;
                 }
             }
         }
 
-        /** @var CommunityOfficial|null $official */
-        $official = CommunityOfficial::query()
-            ->where('user_id', $user->id)
-            ->where('status', 'active')
-            ->whereNull('ended_at')
-            ->with('community')
-            ->first();
+        $communityId = CommunityLookupService::resolveActiveCommunityId($user->id);
 
-        if ($official && $official->community) {
-            return $official->community;
+        if ($communityId) {
+            $community = Community::whereNull('deleted_at')->where('is_active', true)->find($communityId);
+            if ($community) {
+                $this->validateCommunityContext($request, $community);
+
+                return $community;
+            }
         }
 
         if ($user->hasRole('superadmin') || $user->hasRole('admin')) {
-            $community = Community::first();
+            $community = Community::whereNull('deleted_at')->where('is_active', true)->first();
             if ($community) {
+                $this->validateCommunityContext($request, $community);
+
                 return $community;
             }
         }
 
         abort(403, 'Anda bukan pengurus aktif komunitas manapun.');
+    }
+
+    /**
+     * Guard against cross-entity stale context form tampering.
+     */
+    protected function validateCommunityContext(Request $request, Community $community): void
+    {
+        if (! $request->isMethodSafe() && $request->has('panel_community_id')) {
+            $token = $request->input('panel_community_id');
+            if ($token !== null && (string) $token !== '') {
+                if ((int) $token !== (int) $community->id) {
+                    $message = 'Konteks komunitas telah berubah. Silakan muat ulang halaman.';
+                    if ($request->expectsJson() || $request->header('X-Inertia')) {
+                        abort(response()->json([
+                            'message' => $message,
+                            'errors' => ['panel_community_id' => [$message]],
+                        ], 422));
+                    }
+
+                    abort(422, $message);
+                }
+            }
+        }
     }
 
     /**

@@ -10,6 +10,7 @@ use App\Modules\Community\Models\Community;
 use App\Modules\Community\Models\Document;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -26,6 +27,11 @@ class CommunityDocumentController extends Controller
     public function store(CommunityDocumentRequest $request, Community $community): RedirectResponse
     {
         $data = $request->validated();
+
+        if (in_array($community->status, ['pending', 'verified'], true) && $community->isStatutoryCategory($data['category'])) {
+            abort(403, 'Dokumen legalitas wajib tidak dapat diunggah saat komunitas dalam peninjauan atau telah terverifikasi.');
+        }
+
         $filePath = $request->file('file')->store('community_documents', 'local');
 
         $community->documents()->create([
@@ -56,11 +62,25 @@ class CommunityDocumentController extends Controller
     {
         abort_if($document->documentable_type !== Community::class || (int) $document->documentable_id !== $community->id, 404);
 
-        if ($document->file_path && Storage::disk('local')->exists($document->file_path)) {
-            Storage::disk('local')->delete($document->file_path);
-        }
+        $filePath = null;
+        DB::transaction(function () use ($community, $document, &$filePath): void {
+            /** @var Community $freshCommunity */
+            $freshCommunity = Community::where('id', $community->id)->lockForUpdate()->firstOrFail();
 
-        $document->delete();
+            $isPendingOrVerified = in_array($freshCommunity->status, ['pending', 'verified'], true);
+            $isStatutory = $freshCommunity->isStatutoryCategory($document->category);
+
+            if ($document->status === 'verified' || ($isPendingOrVerified && $isStatutory)) {
+                abort(403, 'Dokumen terverifikasi atau dokumen legalitas wajib tidak dapat dihapus saat peninjauan atau setelah terverifikasi.');
+            }
+
+            $filePath = $document->file_path;
+            $document->delete();
+        });
+
+        if ($filePath && Storage::disk('local')->exists($filePath)) {
+            Storage::disk('local')->delete($filePath);
+        }
 
         return redirect()
             ->route('admin.communities.documents.index', $community)

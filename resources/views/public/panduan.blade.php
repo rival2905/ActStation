@@ -1,6 +1,32 @@
 @extends('layouts.public')
 
-@section('title', 'Panduan Operasional Turnamen Basket — ActStation')
+@section('title', 'Panduan Operasional Turnamen Basket &amp; Regulasi Escrow — ActStation')
+@section('meta_description', 'Panduan operasional penyelenggaraan turnamen olahraga, pendaftaran tim berbasis Digital Document Vault, dan sistem proteksi Rekening Bersama Escrow Platform.')
+@section('meta_keywords', 'panduan turnamen, regulasi turnamen basket, digital document vault, escrow turnamen, kurasi berkas panitia, actstation')
+@section('og_title', 'Panduan Operasional Turnamen Basket &amp; Regulasi Escrow — ActStation')
+@section('og_description', 'Panduan operasional penyelenggaraan turnamen olahraga dan alur pendaftaran tim berbasis Digital Document Vault.')
+@push('schema')
+<script type="application/ld+json">
+{!! json_encode([
+    chr(64) . 'context' => 'https://schema.org',
+    chr(64) . 'type' => 'Article',
+    'headline' => 'Panduan Operasional Penyelenggaraan Event & Pendaftaran Turnamen',
+    'description' => 'Panduan operasional penyelenggaraan turnamen olahraga, pendaftaran tim berbasis Digital Document Vault, dan sistem proteksi Rekening Bersama Escrow Platform.',
+    'publisher' => [
+        chr(64) . 'type' => 'Organization',
+        'name' => 'ActStation',
+        'logo' => [
+            chr(64) . 'type' => 'ImageObject',
+            'url' => asset('assets/img/logo_fix.png'),
+        ],
+    ],
+    'mainEntityOfPage' => [
+        chr(64) . 'type' => 'WebPage',
+        chr(64) . 'id' => route('panduan.event'),
+    ],
+], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}
+</script>
+@endpush
 
 @section('content')
 <div class="row justify-content-center">
@@ -9,7 +35,7 @@
         <div class="card mb-4 border shadow-sm">
             <div class="card-body p-4 text-center">
                 <span class="badge bg-primary fs-11 px-3 py-1 mb-2">DOKUMEN PANDUAN RESMI</span>
-                <h2 class="fw-bolder mb-2">Panduan Operasional Penyelenggaraan Event & Pendaftaran Turnamen</h2>
+                <h1 class="h2 fw-bolder mb-2">Panduan Operasional Penyelenggaraan Event &amp; Pendaftaran Turnamen</h1>
                 <p class="text-muted fs-10 mb-0">
                     Alur turnamen end-to-end: Pembuatan event oleh panitia, pendaftaran tim berbasis Digital Document Vault, simulasi pengujian staf internal, penjualan tiket, hingga pencairan dana bertahap melalui sistem Rekening Bersama (Escrow Platform).
                 </p>
@@ -55,11 +81,17 @@
             <div class="card-body fs-10">
                 <p>Penyelenggara turnamen mendaftar melalui portal publik <code>/register</code> tanpa hambatan administratif di awal (role awal: <code>member</code>). Saat menekan tombol <strong>"+ Buat Event"</strong>, sistem mengarahkan ke form verifikasi KYC <code>/panel/organizer/apply</code>:</p>
                 <ul>
-                    <li>NIK KTP dan Foto KTP (disimpan di disk privat <code>local</code>).</li>
-                    <li>Nomor Rekening Bank Penampungan Escrow (nama pemilik rekening wajib sama persis dengan KTP PIC).</li>
+                    <li>Data identitas KTP PIC dan alamat. Foto KTP disimpan di disk privat <code>local</code> bila dilampirkan.</li>
+                    <li>Informasi rekening payout. Individu: nama rekening sesuai KTP PIC. Entitas: admin memeriksa nama rekening dan kewenangan pengurus.</li>
                     <li>Kontak WhatsApp Darurat PIC.</li>
+                    <li>Mode entitas memakai profil klub/komunitas/instansi terverifikasi beserta legalitas sesuai jenisnya. Peserta biasa tidak wajib KYC organizer.</li>
+                    @if(\App\Modules\Event\Services\OrganizerRequirements::privateDocumentsRequired())
+                        <li>Upload KTP, swafoto, SPTJM dan bukti rekening wajib; mode entitas juga melampirkan surat kuasa PIC.</li>
+                    @else
+                        <li>Upload dokumen organizer belum diwajibkan pada fase awal; pengajuan tetap menunggu review admin.</li>
+                    @endif
                 </ul>
-                <p class="mb-0">Setelah disimpan, sistem otomatis meng-upgrade role menjadi <strong>organizer</strong>.</p>
+                <p class="mb-0">Setelah dikirim, pengajuan berstatus <strong>pending</strong> dan menunggu review admin. Role <strong>organizer</strong> serta akses pembuatan event diberikan setelah pengajuan disetujui.</p>
             </div>
         </div>
 

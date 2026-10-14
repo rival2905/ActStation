@@ -55,6 +55,7 @@ beforeEach(function (): void {
         'registration_end' => now()->addDays(5),
         'payment_end' => now()->addDays(5),
         'name' => '3-Point Contest',
+        'allow_individual' => true,
         'gender' => 'male',
         'development_level_id' => $this->devLevel->id,
         'min_roster' => 1,

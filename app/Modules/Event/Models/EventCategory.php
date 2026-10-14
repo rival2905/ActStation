@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Event\Models;
 
+use App\Contracts\EntityRequirements;
 use App\Models\Concerns\Auditable;
 use App\Modules\MasterData\Models\DevelopmentLevel;
 use Database\Factories\EventCategoryFactory;
@@ -42,8 +43,13 @@ class EventCategory extends Model
         'payment_time_limit_hours',
         'allow_club',
         'allow_community',
+        'allow_individual',
         'community_subtype',
+        'allowed_community_subtypes',
+        'allowed_institution_types',
         'required_documents',
+        'required_entity_documents',
+        'document_instructions',
     ];
 
     /**
@@ -67,7 +73,11 @@ class EventCategory extends Model
             'payment_time_limit_hours' => 'integer',
             'allow_club' => 'boolean',
             'allow_community' => 'boolean',
+            'allow_individual' => 'boolean',
+            'allowed_community_subtypes' => 'array',
+            'allowed_institution_types' => 'array',
             'required_documents' => 'array',
+            'required_entity_documents' => 'array',
         ];
     }
 
@@ -98,6 +108,155 @@ class EventCategory extends Model
         }
 
         return $this->min_age.'–'.$this->max_age.' tahun';
+    }
+
+    public function acceptsCommunityType(?string $subtype, ?string $institutionType = null, ?string $schoolLevel = null): bool
+    {
+        if ($subtype === 'club') {
+            return (bool) $this->allow_club;
+        }
+
+        if (! $this->allow_community || $subtype === null) {
+            return false;
+        }
+
+        if ($subtype === 'school' || str_starts_with($subtype, 'school_')) {
+            return $this->acceptsSchoolCommunity($subtype, $schoolLevel);
+        }
+
+        if ($this->allowed_community_subtypes === null) {
+            if ($this->community_subtype !== null && $this->community_subtype !== $subtype) {
+                return false;
+            }
+        } else {
+            if (! in_array($subtype, $this->allowed_community_subtypes, true)) {
+                return false;
+            }
+        }
+
+        if ($subtype === 'institution') {
+            if (! empty($this->allowed_institution_types)) {
+                if ($institutionType === null || $institutionType === '') {
+                    return false;
+                }
+
+                if (! in_array($institutionType, $this->allowed_institution_types, true)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private function acceptsSchoolCommunity(string $subtype, ?string $schoolLevel): bool
+    {
+        $token = $this->resolveEffectiveSchoolToken($subtype, $schoolLevel);
+
+        if ($this->allowed_community_subtypes === null) {
+            if ($this->community_subtype === null || $this->community_subtype === 'school') {
+                return true;
+            }
+
+            if ($token !== null && ($this->community_subtype === $token)) {
+                return true;
+            }
+
+            return false;
+        }
+
+        if (in_array('school', $this->allowed_community_subtypes, true)) {
+            return true;
+        }
+
+        if ($token === null) {
+            return false;
+        }
+
+        if (in_array($token, $this->allowed_community_subtypes, true)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function resolveEffectiveSchoolToken(string $subtype, ?string $schoolLevel): ?string
+    {
+        if ($schoolLevel !== null && trim($schoolLevel) !== '') {
+            $raw = strtolower(trim($schoolLevel));
+
+            return match ($raw) {
+                'sd', 'mi' => 'school_sd',
+                'smp', 'mts' => 'school_smp',
+                'sma', 'smk', 'ma' => 'school_sma',
+                default => null,
+            };
+        }
+
+        if (str_starts_with($subtype, 'school_')) {
+            return match ($subtype) {
+                'school_sd' => 'school_sd',
+                'school_smp' => 'school_smp',
+                'school_sma' => 'school_sma',
+                default => null,
+            };
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function allowedEntityLabels(): array
+    {
+        $labels = [];
+
+        if ($this->allow_club) {
+            $labels[] = 'Klub';
+        }
+
+        if ($this->allow_community) {
+            $categorySubtypeLabels = EntityRequirements::CATEGORY_SUBTYPES;
+            $subtypeLabels = EntityRequirements::SUBTYPES;
+            $institutionLabels = EntityRequirements::INSTITUTION_TYPES;
+
+            if ($this->allowed_community_subtypes === null) {
+                if ($this->community_subtype !== null) {
+                    if ($this->community_subtype === 'institution' && ! empty($this->allowed_institution_types)) {
+                        $instNames = array_map(fn ($it) => $institutionLabels[$it] ?? ucfirst($it), $this->allowed_institution_types);
+                        $labels[] = 'Instansi ('.implode(', ', $instNames).')';
+                    } elseif ($this->community_subtype === 'school') {
+                        $labels[] = 'Sekolah (Semua Jenjang; aturan lama)';
+                    } else {
+                        $labels[] = $categorySubtypeLabels[$this->community_subtype] ?? ($subtypeLabels[$this->community_subtype] ?? ucfirst(str_replace('_', ' ', $this->community_subtype)));
+                    }
+                } else {
+                    $labels[] = 'Komunitas (Semua Tipe)';
+                }
+            } else {
+                foreach ($this->allowed_community_subtypes as $st) {
+                    if ($st === 'institution') {
+                        if (! empty($this->allowed_institution_types)) {
+                            $instNames = array_map(fn ($it) => $institutionLabels[$it] ?? ucfirst($it), $this->allowed_institution_types);
+                            $labels[] = 'Instansi ('.implode(', ', $instNames).')';
+                        } else {
+                            $labels[] = $categorySubtypeLabels['institution'] ?? ($subtypeLabels['institution'] ?? 'Instansi / Lembaga');
+                        }
+                    } elseif ($st === 'school') {
+                        $labels[] = 'Sekolah (Semua Jenjang; aturan lama)';
+                    } else {
+                        $labels[] = $categorySubtypeLabels[$st] ?? ($subtypeLabels[$st] ?? ucfirst(str_replace('_', ' ', $st)));
+                    }
+                }
+            }
+        }
+
+        if ($this->allow_individual) {
+            $labels[] = 'Atlet Mandiri';
+        }
+
+        return $labels;
     }
 
     public function event(): BelongsTo

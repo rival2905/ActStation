@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'n8n' => [
+        'email_enabled' => (bool) env('N8N_EMAIL_ENABLED', false),
+        'webhook_url' => env('N8N_EMAIL_WEBHOOK_URL', ''),
+        'webhook_secret' => env('N8N_EMAIL_WEBHOOK_SECRET', ''),
+        'allowed_host' => env('N8N_EMAIL_ALLOWED_HOST', 'n8.fasekita.my.id'),
+    ],
+
 ];

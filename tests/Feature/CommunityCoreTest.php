@@ -15,13 +15,13 @@ use App\Modules\Community\Services\InvitationService;
 use Database\Seeders\RolePermissionSeeder;
 use DomainException;
 use Illuminate\Database\QueryException;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 
-uses(RefreshDatabase::class);
+uses(DatabaseTransactions::class);
 
 beforeEach(function (): void {
     $this->seed(RolePermissionSeeder::class);
@@ -172,7 +172,31 @@ test('FK restrictOnDelete dari communities ke sport_categories mencegah hapus ca
 });
 
 test('lifecycle verify, reject, revoke dan submit bekerja dengan benar', function (): void {
+    Storage::fake('local');
     $community = Community::factory()->create(['status' => 'pending']);
+
+    $pathReg = UploadedFile::fake()->create('reg.pdf', 100)->store('community_documents', 'local');
+    $pathEntity = UploadedFile::fake()->create('entity.pdf', 100)->store('community_documents', 'local');
+
+    Document::create([
+        'documentable_type' => Community::class,
+        'documentable_id' => $community->id,
+        'category' => 'club_registration',
+        'name' => 'Tanda Registrasi Klub',
+        'file_path' => $pathReg,
+        'status' => 'verified',
+        'is_public' => false,
+    ]);
+
+    Document::create([
+        'documentable_type' => Community::class,
+        'documentable_id' => $community->id,
+        'category' => 'legal_entity_proof',
+        'name' => 'Bukti Legalitas Klub',
+        'file_path' => $pathEntity,
+        'status' => 'verified',
+        'is_public' => false,
+    ]);
 
     // Admin verifies pending community
     $this->actingAs($this->admin)

@@ -468,9 +468,9 @@ class RolePermissionSeeder extends Seeder
             'event.view',
         ]);
 
-        // 4. Seed 1 user superadmin dev
+        // 4. Seed user superadmin dev
         $superadminUser = User::firstOrCreate(
-            ['email' => 'superadmin@actstation.test'],
+            ['email' => 'admin@gmail.com'],
             [
                 'name' => 'Superadmin Dev',
                 'password' => Hash::make(env('SEEDER_SUPERADMIN_PASSWORD', 'password')),
@@ -478,7 +478,17 @@ class RolePermissionSeeder extends Seeder
                 'is_active' => true,
             ]
         );
-
         $superadminUser->assignRole('superadmin');
+
+        $superadminTest = User::firstOrCreate(
+            ['email' => 'superadmin@actstation.test'],
+            [
+                'name' => 'Superadmin Test',
+                'password' => Hash::make(env('SEEDER_SUPERADMIN_PASSWORD', 'password')),
+                'email_verified_at' => now(),
+                'is_active' => true,
+            ]
+        );
+        $superadminTest->assignRole('superadmin');
     }
 }

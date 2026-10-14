@@ -146,6 +146,82 @@ Atlet **bukan** tabel sendiri: atlet adalah `users` ber-role `athlete`, sama sep
 
 `identity_number`, `identity_image`, `birth_certificate` adalah PII: tidak boleh di-log, tidak boleh keluar di `JsonResource` publik maupun di payload sharing API partner.
 
+#### Revisi pengajuan organizer berbasis entitas — checkpoint internal
+
+Keputusan pengguna: pengajuan masuk pending dan akses membuat event hanya setelah review admin. Implementasi auto-verified sebelumnya akan diganti; data verified lama tidak di-reset diam-diam. Penelusuran menemukan guard GET create berkondisi `&&` dan POST store belum memiliki gerbang KYC yang sama; keduanya wajib diamankan dalam revisi.
+
+- [x] Keputusan moderasi dan celah gerbang pembuatan event dicatat.
+- [x] Kontrak entitas bersama Community ditetapkan untuk organizer **dan peserta**: klasifikasi detail institution pada profil entitas, referensi sama melalui `event_participants.community_id` dan pengajuan organizer; hindari duplikasi taxonomy di users. Data existing tidak dinormalisasi otomatis.
+- [x] Kontrak lintas modul meneruskan klasifikasi/ownership dan metadata berkas terverifikasi; aturan kategori diperiksa server-side. KYC organizer/payout tidak menjadi syarat semua peserta.
+- [x] Skema pengajuan/berkas privat, endpoint review internal dengan izin eksplisit, perubahan status transaksional dan audit tanpa PII diterapkan.
+- [x] Pengujian approve/reject/resubmit, larangan bypass GET/POST dan kerahasiaan berkas diverifikasi.
+
+Detail UX/matriks persyaratan mengikuti `PRD_EXTERNAL.md` §3.1. Implementasi lokal kini diotorisasi dan didelegasikan dengan file ownership terpisah. Kontrak skema: Community menambah `institution_type`; EventCategory menambah tiga JSON nullable (`allowed_community_subtypes`, `allowed_institution_types`, `required_entity_documents`); User hanya referensi `organizer_community_id` dan timestamp/aktor review, bukan duplikasi subtype entitas.
+
+- [x] Kontrak klasifikasi/dokumen terpusat, pemisahan ownership writer dan kebijakan kompatibilitas data lama ditetapkan.
+- [x] Parent read-back `migrate:status` runtime/test: `2026_10_13_174829_add_institution_type_to_communities_table`, `2026_10_13_174409_add_entity_eligibility_fields_to_event_categories_table`, `2026_10_13_180000_add_organizer_kyc_review_fields_to_users_table` seluruhnya Ran.
+- [x] Parent memeriksa `OrganizerKycService::approve/reject`: fresh User row lock dan pending-only keputusan, wajib dokumen privat/non-rejected/aktual, legalitas terverifikasi milik pengurus aktif; exact category download mengganti wildcard, upload nested MIME fail422. Fokus KYC 37 tests / 317 assertions passed. Tambahan UI+canonical alias download 1 test / 8 assertions passed. Full suite menunggu writer peserta selesai; jangan menganggap fokus tes sebagai full acceptance.
+- [x] Parent menjalankan full suite setelah writer selesai: 368 tests / 2.255 assertions passed; Pint --dirty, Node cascade reset/stale postcode, npm build dan Blade cache passed. Dua ekspektasi login onboarding diperbarui dengan tambahan assert 403 admin, bukan melemahkan auth.
+- [x] Parent route:list --path=organizers-kyc -vv memverifikasi enam route internal: read/download user.view, approve/reject user.update. Download legalitas via CommunityLookup scoped; RegistrationGuard tidak lagi mengambil pengurus lain dari raw tabel lintas-modul sebagai pengganti pemohon. Audit UI independen dituntaskan; checkbox disabled+hidden-preserve, form pending disabled, legalitas review immutable dan checklist admin telah diperiksa.
+
+Status checkpoint: implementasi lokal selesai. Parent memverifikasi akhir setelah audit UI: 382 tests / 2.326 assertions passed, Pint, Node organizer-mode toggle dan stale region checks, npm build, Blade cache serta git diff --check passed. Tidak commit/push/deploy; runtime/test migration read-back telah selesai. Klasifikasi pending/verified terkunci; revisi legalitas wajib lewat reject/revoke, berkas verified tidak boleh dihapus langsung. Mode peserta tetap tidak mewajibkan KYC organizer/payout.
+
+#### Pemisahan jenjang sekolah kategori — terverifikasi
+
+Pengguna menetapkan tiga kelompok SD/MI (`school_sd`), SMP/MTs (`school_smp`), SMA/SMK (`school_sma`) pada whitelist kategori. Community subtype tetap school; lookup menambah trailing DTO school_level nullable dari master schools berdasarkan NPSN. Tidak menebak nama/sekolah unknown; category sekolah spesifik harus fail-closed jika jenjang tak diketahui. Legacy `school` tetap semua jenjang sampai organizer memilih kebijakan baru; tidak migrasi/backfill/ubah kategori aktif diam-diam. Kontrak canonical dan Event terhubung: request tokens, EventCategory::acceptsCommunityType trailing schoolLevel, RegistrationGuard menggunakan DTO aktual, form registrasi filter kategori. Pemetaan raw master sd/mi ke SD/MI, smp/mts ke SMP/MTs, sma/smk/ma ke SMA/SMK; schema master yang ada sd/smp/sma/smk tidak diubah. NPSN tidak dikenal tidak ditebak. Lookup1 / 3 assertions, fokus sekolah+workspace15 / 143 assertions dan full398 / 2.449 assertions passed; Pint/build/Blade/git diff check passed. Checkbox label tanpa token internal; data school legacy tetap ditandai semua jenjang.
+
+#### Scope dan penerapan dokumen kategori — checkpoint berjalan
+
+Kategori tetap menyimpan required_documents[] canonical. `DocumentType.scope` menentukan athlete(User) atau team(EventParticipant); `applicable_entities` menentukan broad entity yang wajib, tiga token jenjang sekolah dinormalisasi ke school. Null/empty applicability tetap universal legacy. Surat Keterangan Sekolah untuk Tim hanya school; Penugasan/Mandat dapat klub/sekolah/kampus/instansi/komunitas sesuai master. Kategori campuran tidak memaksa instansi mengunggah surat sekolah. Tidak mengubah scope dokumen existing atau requirements kategori3 otomatis.
+
+Master tipe tim ditambah additive melalui firstOrCreate agar custom existing tidak tertimpa; parent read-back tiga canonical code/scope/applicability pada runtime telah sesuai. Seeder mendukung installbaru; test master/helper 2 tests / 20 assertions passed. Dua writer mengerjakan UI dan validasi submission/moderation; final regression belum selesai. Audit read-only menemukan metadata code/scope/applicability dapat diubah global dan upload baru privat belum memiliki reader dokumen peserta/athlete. Writer master telah menulis isInUse(), larangan mutation code/scope/applicable_entities yang direferensikan, serta larangan hard-delete dengan fresh row lock. Parent read source dan php -l passed; focused metadata/participant/unit 28 tests /156 assertions passed, full423 /2.608 assertions passed. Final agent `deleg_e8bc2611` selesai: focused31 /186 assertions passed, Vite build passed. Parent rerun4 scope Node tests + organizer/region checks, git diff --check dan php -l passed. Full suite berikutnya diserialkan setelah migrasi kategori allow_individual, bukan dijalankan paralel dengan writer. Backend menyediakan download scoped event+participant+document, UI menampilkan daftar evidence tanpa public asset URL. Tests DB diserialkan. Upload baru harus privat serta terbatas selected authorized athlete+scopecode, bukan bebas mengubah vault user lain.
+
+#### Kirim ulang email khusus admin
+
+Endpoint retry existing memakai RetryEmailRequest: role admin/superadmin serta setting.email; status submitted/unknown membutuhkan confirm_resend accepted, failed boleh retry, queued/processing ditolak409. Verificationtype tetap tidak dapat diulang admin. Compare-and-set status atomik sebelumdispatch mencegah klikganda masukqueue. Submitted_at/failed_at direset ketika requeue. Tombol manual show tersedia failed/unknown/submitted untukauthorizedadmin; konfirmasi duplikasi eksplisit. Focused16 tests /71 assertions passed, Pint/Blade/diff passed; Full500 tests /3057 assertions passed; review independen deleg_bd619e54 passed tanpa blocker. Tidak melakukan kirim ulang pesan nyata #1/#2.
+
+#### Pengiriman email langsung ke n8n (revisi berjalan)
+
+Koreksi pengguna: tidak memakai queueLaravel/worker emails. Writer deleg_0c961676 mengganti dispatch baru dan retry menjadi eksekusi HTTP langsung, aftercommit bila transactionaktif. Riwayat encrypted/status/privacy/tanda tangan tetap; tidak otomatis resendpesanlama. Job existing dipertahankan sebagai kompatibilitas history bukan produsen queuebaru. Workflow n8n responseakhir tetap tanpa menambah antrean baru yang belum perlu. Tes hanya HTTPfake, runtimewebhook sudahaktif sehingga tidak boleh test kirimriil. Parent focused31 tests /144 assertions passed untuk directsend sebelum final event-email hooks. Sender diperketat agar processing tidak dapat dikirim oleh job lain; retry mengembalikan ke ready state sebelum atomicclaim tunggal. AGENTS.md sekarang memuat flow EmailDelivery::send, aftercommit, n8n-onlyqueuepolicy, statustruthfulness dan keamanan. Dua writer deleg_a231f092 menangani lifecycleemail dan bannerverifikasi form; Lifecycle observer/service dan UI selesai. Parent focused40 tests /199 assertions serta full516 /3154 passed. Pint, Node13 +organizer/region, build, Blade/diff passed. Directsender atomicclaim diperketat dan rendering/signature exceptions ditangani tanpa rollbackdomain. Review independen deleg_5479eeb2 selesai tanpa blocker; tidak mengirim ulang pesan nyata historis.
+
+#### Komunikasi email n8n (checkpoint berjalan)
+
+Modul Communication terpisah via App/Contracts/EmailDelivery, databasequeue khusus emails aftercommit, encrypted outboxpayload/recipient, status queued/processing/submitted/failed/unknown. N8N_EMAIL_ENABLED defaultfalse dan URL/secret baru tidak memakai credentialERP. Endpoint internal menggunakan setting.email existing, signedtemporary attachments dan verifikasi nativeLaravel auth/hash/expiry/throttle. Shared emailtemplate escaped inlineFalcon bukan BootstrapJS dalamemail. Tidak memblokir pengguna unverified sesuai pilihan pengguna. Writer deleg_8224c873 selesai. Parent runtime migration email_messages diterapkan, focused16 /73 passed. Ditemukan fatal Queueable afterCommitproperty, attachmentdatauninitialized dan header mismatch; parent fix nativeafterCommit(), dedicateddatabasequeue, atomicqueuedclaim, disableHTTPredirects, unknown connectioninterrupt dan failedworkerhook. Integration hardening deleg_cfedc902 selesai: private email-attachments scope/finfo MIME, redaksi verifikasilink, blockedverificationretry, filters dan multipart3files/signaturecoverage. Parent focused35/202 assertions passed. Full pertama menemukan fixtureemail tanpa transaction mencemari staffrole/userdata; diubah RefreshDatabase, fixtureCSV memakai nama actualseededuser, headerstatus authguard. Workflow fixer deleg_87f36234 selesai. Parent nodecheck production VM (plain/multi3/SSRF/path/signature/size/auth/schema branches) passed,13 UI Node checks danorganizer/region passed. Full496 tests /3033 assertions, Pint/build/Blade/diff passed. Implementasi aplikasi dan artifactworkflow selesai; remote n8n import/credentials/SMTP/queueworker activation belum dilakukan, tidak mengklaim inbox delivery. Workflow import/credential binding/SMTP real belum dilakukan.
+
+#### Lokasi komunitas dan kegiatan multi-cabor (checkpoint berjalan)
+
+Pakai kolom communities.latitude/longitude existing, validasi berpasangan null/clear dan -90..90/-180..180. Discovery mengonfirmasi community_activities sudah ada (title,description,venue_id,scheduled_at,duration_minutes,max_participants,status). Reuse model/table/adminCRUD; migration hanya menambah sport_category_id,schedule,location,is_active serta membolehkan scheduled_at nullable untuk program rutin. title tetap canonical; tidak membuat tabel kedua atau mengganti kegiatan bertanggal existing. sport_category_id komunitas tetap cabor utama legacy agar tidak diam-diam mengubah keanggotaan klub. Cabor tambahan berasal program aktual, tidak pivot duplikat. PanelCRUD scoped pengurus aktif+policyupdate. Report existing read-only DB exception, endpoint detail coverage.view internal, lazyload program/eventhistory. School-community matching exactNPSN; koordinat profil explicit lebih utama daripada master, master tidak ditimpa; marker dedupe bila layer sekolah/komunitas sama. Tiga writer deleg_3bbeca8c selesai. Parent migrasi runtime/test +full466/2884 assertions,Node13,Pint/build/Blade/diff passed. Resolver panel existing masih firstofficial; tasklanjutan deleg_af536c3a memakai current_community_id scoped activeofficial dan staleformexpectedid. Tidak memalsukan membershipakuncontoh. Switcher terpasang; parent focused8/52 passed, resolver session dibatasi authuserId untuk mencegah konteks pengguna lain terbawa. Full acceptance digabung setelah emailmodule siap. User menemukan profile500 karena kode join memakai sport_category_id sebelum migrasi runtime. Parent mereproduksi Schemafalse/query1054 lalu menjalankan 2026_10_14_010000_extend_community_activities_for_routine_programs.php di db_actstation; readback Schema true dan query profil community7 passed tanpa membaca isi/personaldata.
+
+#### Profil komunitas dan master sekolah lokal (selesai)
+
+Salin hanya master sekolah PERBASI ke artifact `database/data` dan artisan-generated seeder lokal idempotent NPSN. Source DB read-only melalui bootstrap aplikasi tanpa membaca/menampilkan credential; target tetap db_actstation. Mapping kolom berdasarkan schema nyata, bukan menyalin IDs/FKs/status pendaftaran. Writer UI/backend memakai pencarian sekolah lokal dan validasi NPSN resmi server-side, broad subtype school dipertahankan. Count source/export/import harus dibandingkan programmatically. Parent serialverification: source31325, exported31325, imported31325 exactmatchedNPSN; runtimeDB db_actstation. SchoolSeeder fallbackCSV/JSON idempotent tanpa truncate. Full448 tests /2777 assertions, focused11/90, Node9, build/Pint/Blade/diff passed. Review independen deleg_03765335 selesai tanpa blocker keamanan/fungsional. Catatan duplikasi artifact/parser dicatat, tidak mengubah behavior untuk cleanup yang tidak diminta. Dataset sumber campuran kemendikdasmen2026 dan opendata_jabar2023. Implementasi lokal selesai tanpa commit/push/deploy.
+
+#### Pendaftaran publik category-driven (selesai)
+
+Writer backend/UI menangani `allow_individual` boolean default false pada event_categories, kriteria asal tiga sumber, server-side gate individu sebelum mutasi identitas/session, dan UI kategori-dahulu. Kategori lama tidak otomatis menerima individu. Audit menemukan public store sebelumnya login akun dari kecocokan email/NIK tanpa autentikasi; writer memperbaiki jalur ini dalam batas pendaftaran publik. Tidak mengubah akses event/organizer/admin. Migrasi 2026_10_14_000000_add_allow_individual_to_event_categories_table.php runtime/test dijalankan writer, parent runtime statusRan. Full437 tests /2.684 assertions passed; Pint, build, Blade cache dan6 production-source Node tests passed. Fixture perorangan lama dibuat explicitallowtrue, bukan melonggarkan defaultfalse. Independentreview `deleg_49319a01` PASS tanpa blocker. Implementasi lokal selesai tanpa commit/push/deploy.
+
+#### Badge antrean review organizer
+
+Sidebar admin `Pengajuan Penyelenggara` menampilkan jumlah User `kyc_status=pending` lewat view composer sidebar di AppServiceProvider (satu COUNT per render, tanpa cache/polling). Query dan menu hanya bagi pemilik `user.view`; soft-deleted tidak dihitung. Badge hilang ketika count nol dan mengikuti keputusan review pada request berikutnya. Regression sidebar menguji pending-only count, exclude deleted, sesudah review count nol, serta izin baca. Verifikasi: focused 8 tests / 30 assertions passed; full 389 tests / 2.382 assertions passed; Pint, Blade cache, npm build dan git diff --check passed.
+
+#### Kebijakan awal upload organizer opsional
+
+`config/app.php` menambah `app.organizer_private_documents_required` dari `ORGANIZER_PRIVATE_DOCUMENTS_REQUIRED` default false. `OrganizerRequirements::requiredDocumentCodes()` dipakai request dan approval; `documentCodes()` tetap daftar untuk penyimpanan optional upload agar dokumen tidak dibuang diam-diam. UI Section 5 mengikuti konfigurasi yang sama; foto KTP tidak required ketika false. Pending/admin review, role gate GET/POST/payout, tipe file, privasi, Community legalitas/ownership dan participant requirements tidak dibypass. Tidak ada migrasi/backfill/pengubahan status user lama.
+
+Verifikasi parent fase awal: full 387 tests / 2.375 assertions passed; `OrganizerEarlyAccessTest` membuktikan individu/entitas tanpa upload organizer tetap pending hingga admin approve, forged entity/incomplete legal ditolak, MIME payload ditolak, file optional privat dan mode true kembali mewajibkan dokumen. Untuk memulihkan mode ketat set `ORGANIZER_PRIVATE_DOCUMENTS_REQUIRED=true` dan refresh config; tidak edit .env pada tugas ini.
+
+#### Perluasan data identitas PIC organizer — checkpoint teknis
+
+Skema tambahan nullable pada `users` (tanpa mengubah/menghapus data lama): `identity_name` VARCHAR(255), `identity_occupation` VARCHAR(255), `identity_address` VARCHAR(500), `npwp_number` VARCHAR(16), `npwp_name` VARCHAR(255), `bank_branch` VARCHAR(255), `province_id`/`city_id` VARCHAR(10), `subdistrict_id`/`village_id` VARCHAR(15), `postal_code` VARCHAR(5), `address` VARCHAR(500), `rt`/`rw` VARCHAR(3). `birth_place`, `birth_date`, NIK dan rekening memakai kolom eksisting, bukan identitas duplikat.
+
+PII identitas/alamat, NPWP, nomor/nama rekening, cabang, kontak darurat dan kode wilayah pengguna harus disembunyikan dari serialisasi publik serta direduksi menjadi `[REDACTED]` pada audit. Akses form milik pengguna sendiri; `/admin/*` tetap tertutup bagi role eksternal. Endpoint referensi wilayah panel berada dalam modul MasterData, memakai tabel `wilayah`/`wilayah_kodepos` lokal, bukan DB ERP.
+
+- [x] Desain field, aturan privasi, dan pemisahan endpoint panel/admin tercatat.
+- [x] Migrasi `2026_10_13_130204_add_expanded_kyc_fields_to_users_table` berstatus Ran pada runtime dan test DB; model, FormRequest, service penyimpanan, serta redaksi audit selesai dan diuji.
+- [x] Verifikasi KYC: 26 tests / 245 assertions passed (`OrganizerKycDetailsTest`, `OrganizerKycFormTest`, `OrganizerPanelFeatureTest`); `node tests/region-select.cjs`, Pint dan Blade compile passed. `npm run build` passed (warning opsional fontaine tetap ada).
+- [x] Robustness: payload array ditolak 422 bukan 500; respons AJAX lama tidak menghidupkan kembali kecamatan/kodepos setelah induk berubah.
+- [!] Full suite saat pekerjaan paralel lain mengubah onboarding komunitas belum hijau: dua ekspektasi redirect auth berbeda (`/panel/profile` versus `/panel/community/create`), error view komunitas `$valProvince`, serta satu deadlock test DB pada run terakhir. Tidak menimpa perubahan pekerjaan lain atau melaporkan full suite hijau. Detail UX dan checkpoint eksternal: `PRD_EXTERNAL.md` AC-01.
+
 ### 5.2 Tabel Spatie (auto-migrate)
 
 ```
@@ -808,7 +884,7 @@ event_categories
 ├── event_id            BIGINT UNSIGNED FK
 ├── name                VARCHAR(255) (contoh: "Putra U-18", "Putri Senior")
 ├── slug                VARCHAR(255)
-├── development_level_id BIGINT UNSIGNED FK NULLABLE (referensi jenjang; batas umur eksplisit kategori lebih utama)
+├── development_level_id BIGINT UNSIGNED FK NULLABLE (arsip/opsional; UI form disederhanakan memakai min_age dan max_age langsung)
 ├── min_age             SMALLINT UNSIGNED NULLABLE (umur minimum dalam tahun pada `events.starts_at`)
 ├── max_age             SMALLINT UNSIGNED NULLABLE (umur maksimum dalam tahun pada `events.starts_at`)
 ├── registration_fee    DECIMAL(12,2) NOT NULL DEFAULT 0 (rupiah per peserta/tim dalam kategori)
@@ -826,6 +902,7 @@ event_categories
 ├── max_roster          SMALLINT NULLABLE
 ├── max_teams           INT NULLABLE (pada screening_first berfungsi sebagai plafon kuota tim lolos kurasi, bukan penutup pendaftaran publik)
 ├── is_roster_public    BOOLEAN DEFAULT false (toggle privasi: daftar tim/roster dirahasiakan dari portal publik sampai dipublikasikan panitia)
+├── document_instructions VARCHAR(500) NULLABLE (instruksi verifikasi berkas/screening on-site, misal: 'KTP ditunjukkan langsung ketika TM dan Screening Player')
 ├── created_at          TIMESTAMP
 └── updated_at          TIMESTAMP
 
@@ -1146,7 +1223,7 @@ Transisi di luar tabel → 422. Event hanya soft delete; hard delete tidak dised
 **Pendaftaran Peserta (komunitas sebagai pendaftar utama):**
 
 - Pendaftar default adalah komunitas (`registrant_type = community`). Komunitas wajib `communities.status = verified` — komunitas `draft`/`pending`/`rejected` ditolak.
-- Satu komunitas hanya boleh satu tim per `event_category_id`. Mau dua tim? buat kategori berbeda.
+- Satu komunitas dapat mengirim beberapa tim dalam satu event, masing-masing pada `event_category_id` berbeda; contoh satu tim putra dan satu tim putri. Batas tetap satu tim komunitas per kategori, bukan satu tim per event. Jangan membuat kategori duplikat untuk mengakali batas. Spesifikasi optimasi alur **Tambah Tim Lain**, ringkasan tim, dan tagihan terpisah: `PRD_EXTERNAL.md` §4.6.1 (2026-10-14; spesifikasi saja, belum klaim implementasi).
 - Pendaftaran memerlukan event `published` dan `registration_open = true`; batas efektif daftar ialah irisan `events.registration_deadline` (jika terisi) dan `event_categories.registration_end` (jika berlaku). `registration_start` juga harus tercapai untuk kategori dengan jendela khusus. Event tanpa `registration_deadline` tetap memakai batas kategori; kategori tanpa jendela khusus memakai batas event. Kuota event (`max_participants`) dan kategori (`max_teams`) berlaku pada mode non-screening; pada `screening_first`, registrasi publik tidak dipatok kuota `max_teams` karena kurasi dilakukan pasca pendaftaran (kuota `max_teams` diterapkan saat konfirmasi lolos tim).
 - Kerahasiaan Tim Terdaftar (`is_roster_public`): default `false`. Nama tim dan roster yang mendaftar dirahasiakan di portal publik (`/events/{slug}`) hingga panitia menekan tombol toggle publikasi untuk menjaga fair-play dan privasi.
 - Kuota menghitung pendaftar aktif pada seluruh status proses (`registered`, `revision_needed`, `verified`, `pending_payment`, `confirmed`); `waiting_list`, `rejected`, dan `cancelled` tidak mengambil slot. Slot belum bayar pada saat invoice/jendela bayar berakhir dilepaskan sebelum memajukan antrean.
@@ -1694,7 +1771,7 @@ Validasi keanggotaan:
 - [x] Pengurus & pelatih dengan masa jabatan (`started_at`/`ended_at`)
 - [x] Pelatih bisa dibatasi per jenjang pembinaan & gender
 - [x] Roster atlet dua sumbu: persetujuan atlet + pengesahan wilayah
-- [x] Validasi dual-membership: 1 klub aktif eksklusif per cabor, namun multi-keanggotaan diizinkan untuk komunitas non-klub (sekolah/kampus/instansi/hobi)
+- [x] Validasi dual-membership diperbaiki pada `AthleteMembershipService::assertNoActiveDualMembership`: target non-klub diizinkan; benturan hanya klub aktif lain pada cabor sama. `AthleteMembershipMatrixTest` mencakup enam skenario dan parent memverifikasi bersama klasifikasi (16 tests / 64 assertions). Pending tidak mengambil slot klub aktif; riwayat dan persetujuan dua sumbu dipertahankan.
 - [x] Input penambahan atlet berbasis pencarian Email / WhatsApp / NIK (bukan input User ID manual)
 - [x] Riwayat keanggotaan tersimpan (`joined_at`/`left_at`), tidak dihapus
 - [x] Undangan privat & link global dengan kuota, expiry, dan revoke

@@ -25,7 +25,7 @@ class CoverageMarkersRequest extends FormRequest
             'city_id' => ['nullable', 'string', 'max:15'],
             'region_code' => ['nullable', 'string', 'max:15'],
             'sport_category_id' => ['nullable', 'integer'],
-            'school_level' => ['nullable', 'string', 'in:sd,smp,sma,smk'],
+            'school_level' => ['nullable', 'string', 'in:sd,smp,sma,smk,school_sd,school_smp,school_sma'],
             'layers' => ['nullable'],
         ];
     }

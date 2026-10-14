@@ -39,15 +39,33 @@
 
                 <div class="col-md-4">
                     <label class="form-label" for="subtype">Tipe Komunitas <span class="text-danger">*</span></label>
-                    <select class="form-select @error('subtype') is-invalid @enderror" id="subtype" name="subtype" required>
+                    <select class="form-select @error('subtype') is-invalid @enderror" id="subtype" name="subtype" required onchange="toggleCommunityFields()" @if(in_array($community->status, ['pending', 'verified'])) disabled @endif>
                         <option value="">-- Pilih Tipe --</option>
-                        <option value="school" {{ old('subtype', $community->subtype) === 'school' ? 'selected' : '' }}>Sekolah</option>
-                        <option value="university" {{ old('subtype', $community->subtype) === 'university' ? 'selected' : '' }}>Perguruan Tinggi</option>
-                        <option value="institution" {{ old('subtype', $community->subtype) === 'institution' ? 'selected' : '' }}>Instansi / Lembaga</option>
-                        <option value="club" {{ old('subtype', $community->subtype) === 'club' ? 'selected' : '' }}>Klub Olahraga</option>
-                        <option value="free_association" {{ old('subtype', $community->subtype) === 'free_association' ? 'selected' : '' }}>Komunitas Bebas</option>
+                        @foreach(\App\Contracts\EntityRequirements::SUBTYPES as $key => $label)
+                            <option value="{{ $key }}" {{ old('subtype', $community->subtype) === $key ? 'selected' : '' }}>{{ $label }}</option>
+                        @endforeach
                     </select>
+                    @if(in_array($community->status, ['pending', 'verified']))
+                        <input type="hidden" name="subtype" value="{{ $community->subtype }}">
+                        <div class="fs-11 text-muted mt-1"><span class="fas fa-lock me-1"></span>Tipe terverifikasi / dalam peninjauan terkunci.</div>
+                    @endif
                     @error('subtype')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                </div>
+
+                <div class="col-md-4" id="institutionTypeGroup" style="{{ old('subtype', $community->subtype) === 'institution' ? '' : 'display: none;' }}">
+                    <label class="form-label" for="institution_type">Tipe Instansi <span class="text-danger">*</span></label>
+                    <select class="form-select @error('institution_type') is-invalid @enderror" id="institution_type" name="institution_type" @if(in_array($community->status, ['pending', 'verified'])) disabled @endif>
+                        <option value="">-- Pilih Tipe Instansi --</option>
+                        @foreach(\App\Contracts\EntityRequirements::INSTITUTION_TYPES as $key => $label)
+                            <option value="{{ $key }}" {{ old('institution_type', $community->institution_type) === $key ? 'selected' : '' }}>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    @if(in_array($community->status, ['pending', 'verified']))
+                        <input type="hidden" name="institution_type" value="{{ $community->institution_type }}">
+                    @endif
+                    @error('institution_type')
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
                 </div>
@@ -195,3 +213,24 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+function toggleCommunityFields() {
+    var val = document.getElementById('subtype').value;
+    var instGroup = document.getElementById('institutionTypeGroup');
+    var npsnGroup = document.getElementById('npsnGroup');
+    if (instGroup) {
+        instGroup.style.display = (val === 'institution') ? '' : 'none';
+        var instInput = document.getElementById('institution_type');
+        if (instInput && !instInput.disabled) {
+            instInput.required = (val === 'institution');
+        }
+    }
+    if (npsnGroup) {
+        npsnGroup.style.display = (val === 'school') ? '' : 'none';
+    }
+}
+document.addEventListener('DOMContentLoaded', toggleCommunityFields);
+</script>
+@endpush

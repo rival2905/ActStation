@@ -36,6 +36,7 @@ Route::middleware(['auth', 'EnsurePanelAccess'])->group(function (): void {
         // Just-In-Time KYC
         Route::get('apply', [OrganizerKycController::class, 'show'])->name('apply');
         Route::post('apply', [OrganizerKycController::class, 'store'])->name('apply.store');
+        Route::get('apply/documents/{document}/download', [OrganizerKycController::class, 'downloadDocument'])->name('apply.documents.download');
 
         Route::get('events', [OrganizerEventController::class, 'index'])->name('events.index');
         Route::get('events/create', [OrganizerEventController::class, 'create'])->name('events.create');
@@ -100,6 +101,7 @@ Route::middleware(['auth', 'EnsurePanelAccess'])->group(function (): void {
 
         // Tim & Roster
         Route::get('events/{event}/teams', [OrganizerTeamController::class, 'index'])->name('teams.index');
+        Route::get('events/{event}/teams/{participant}/documents/{document}/download', [OrganizerTeamController::class, 'downloadDocument'])->name('teams.documents.download');
         Route::post('events/{event}/teams/{participant}/verify', [OrganizerTeamController::class, 'verify'])->name('teams.verify');
         Route::post('events/{event}/teams/{participant}/request-revision', [OrganizerTeamController::class, 'requestRevision'])->name('teams.requestRevision');
         Route::post('events/{event}/teams/{participant}/confirm-manual-payment', [OrganizerTeamController::class, 'confirmManualPayment'])->name('teams.confirmManualPayment');

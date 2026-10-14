@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
             PaymentMethodSeeder::class,
             SportCategorySeeder::class,
             DocumentTypeSeeder::class,
+            SchoolSeeder::class,
         ]);
     }
 }

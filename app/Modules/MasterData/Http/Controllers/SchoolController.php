@@ -4,13 +4,21 @@ declare(strict_types=1);
 
 namespace App\Modules\MasterData\Http\Controllers;
 
+use App\Contracts\SchoolLookup;
 use App\Http\Controllers\Controller;
 use App\Modules\MasterData\Models\School;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class SchoolController extends Controller
 {
+    public function __construct(
+        protected ?SchoolLookup $schoolLookup = null,
+    ) {
+        $this->schoolLookup ??= app(SchoolLookup::class);
+    }
+
     public function index(Request $request): View
     {
         $query = School::query()->with('city');
@@ -46,5 +54,33 @@ class SchoolController extends Controller
         $school->load(['province', 'city', 'subdistrict', 'village']);
 
         return view('admin.schools.show', compact('school'));
+    }
+
+    public function search(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'q' => ['required', 'string', 'min:2', 'max:100'],
+            'level' => ['nullable', 'string', 'in:sd,smp,sma,smk,school_sd,school_smp,school_sma'],
+            'city_id' => ['nullable', 'string', 'max:10'],
+        ]);
+
+        $results = $this->schoolLookup->search(
+            query: $validated['q'],
+            level: $validated['level'] ?? null,
+            cityId: $validated['city_id'] ?? null,
+            limit: 20
+        );
+
+        return response()->json(array_map(fn ($s) => [
+            'id' => $s->id,
+            'npsn' => $s->npsn,
+            'name' => $s->name,
+            'school_level' => $s->school_level,
+            'school_status' => $s->school_status,
+            'province_id' => $s->province_id,
+            'city_id' => $s->city_id,
+            'address' => $s->address,
+            'is_registered' => $s->is_registered,
+        ], $results));
     }
 }

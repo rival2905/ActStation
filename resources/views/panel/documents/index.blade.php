@@ -16,19 +16,55 @@
                 <p class="text-600 fs-10 mb-0">Unggah berkas legalitas atau perizinan {{ $community->name }}</p>
             </div>
             <div class="card-body">
+                @php
+                    $requiredLegalCodes = \App\Contracts\EntityRequirements::legalDocumentCodes((string) $community->subtype, $community->institution_type);
+                @endphp
+                @if(!empty($requiredLegalCodes))
+                <div class="alert alert-info py-2 px-3 mb-3 fs-11">
+                    <div class="fw-bold mb-1"><span class="fas fa-info-circle me-1"></span>Persyaratan Dokumen Legalitas:</div>
+                    <ul class="mb-0 ps-3">
+                        @foreach($requiredLegalCodes as $reqCode)
+                            @php
+                                $isUploaded = $documents->whereIn('category', [$reqCode, ($reqCode === 'legal_entity_proof' ? 'deed' : ($reqCode === 'institution_decree' ? 'decree' : $reqCode))])->where('status', '!=', 'rejected')->isNotEmpty();
+                            @endphp
+                            <li>
+                                <span class="{{ $isUploaded ? 'text-success fw-semi-bold' : 'text-700' }}">
+                                    <span class="fas {{ $isUploaded ? 'fa-check-circle text-success' : 'fa-circle text-400' }} me-1"></span>
+                                    {{ \App\Contracts\EntityRequirements::DOCUMENT_LABELS[$reqCode] ?? $reqCode }}
+                                </span>
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+                @endif
+
                 <form id="documentUploadForm" method="POST" action="{{ route('panel.documents.store') }}" enctype="multipart/form-data">
                     @csrf
+                    <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
 
                     <div class="mb-3">
                         <label class="form-label" for="category">Kategori Dokumen <span class="text-danger">*</span></label>
                         <select class="form-select @error('category') is-invalid @enderror" id="category" name="category" required>
                             <option value="">-- Pilih Kategori Dokumen --</option>
-                            <option value="deed" {{ old('category') === 'deed' ? 'selected' : '' }}>Akta Pendirian</option>
-                            <option value="decree" {{ old('category') === 'decree' ? 'selected' : '' }}>SK Kemenkumham / Penetapan</option>
-                            <option value="permit" {{ old('category') === 'permit' ? 'selected' : '' }}>Izin Operasional / Rekomendasi</option>
-                            <option value="id_card" {{ old('category') === 'id_card' ? 'selected' : '' }}>KTP Penanggung Jawab</option>
-                            <option value="birth_certificate" {{ old('category') === 'birth_certificate' ? 'selected' : '' }}>Akta Kelahiran</option>
-                            <option value="other" {{ old('category') === 'other' ? 'selected' : '' }}>Dokumen Pendukung Lainnya</option>
+                            <optgroup label="Dokumen Legalitas Resmi">
+                                @foreach(\App\Contracts\EntityRequirements::DOCUMENT_LABELS as $code => $lbl)
+                                    @php
+                                        $isStatutoryForThis = $community->isStatutoryCategory($code);
+                                        $isLockedStatutory = in_array($community->status, ['pending', 'verified'], true) && $isStatutoryForThis;
+                                    @endphp
+                                    <option value="{{ $code }}" {{ old('category') === $code ? 'selected' : '' }} @if($isLockedStatutory) disabled @endif>
+                                        {{ $lbl }}{{ $isLockedStatutory ? ' (Terkunci saat peninjauan/terverifikasi)' : '' }}
+                                    </option>
+                                @endforeach
+                            </optgroup>
+                            <optgroup label="Kategori Dokumen Umum">
+                                <option value="deed" {{ old('category') === 'deed' ? 'selected' : '' }}>Akta Pendirian</option>
+                                <option value="decree" {{ old('category') === 'decree' ? 'selected' : '' }}>SK Kemenkumham / Penetapan</option>
+                                <option value="permit" {{ old('category') === 'permit' ? 'selected' : '' }}>Izin Operasional / Rekomendasi</option>
+                                <option value="id_card" {{ old('category') === 'id_card' ? 'selected' : '' }}>KTP Penanggung Jawab</option>
+                                <option value="birth_certificate" {{ old('category') === 'birth_certificate' ? 'selected' : '' }}>Akta Kelahiran</option>
+                                <option value="other" {{ old('category') === 'other' ? 'selected' : '' }}>Dokumen Pendukung Lainnya</option>
+                            </optgroup>
                         </select>
                         @error('category')
                             <div class="invalid-feedback">{{ $message }}</div>
@@ -112,14 +148,14 @@
                                 </td>
                                 <td>
                                     @php
-                                        $categories = [
+                                        $categories = array_merge([
                                             'deed' => 'Akta',
                                             'decree' => 'SK / Penetapan',
                                             'permit' => 'Izin',
                                             'id_card' => 'Identitas',
                                             'birth_certificate' => 'Akta Lahir',
                                             'other' => 'Lainnya',
-                                        ];
+                                        ], \App\Contracts\EntityRequirements::DOCUMENT_LABELS);
                                     @endphp
                                     <span class="badge badge-subtle-info text-capitalize">{{ $categories[$doc->category] ?? $doc->category }}</span>
                                 </td>
@@ -144,13 +180,25 @@
                                         <a href="{{ route('panel.documents.download', $doc) }}" class="btn btn-link p-0 text-primary" data-bs-toggle="tooltip" title="Unduh Dokumen">
                                             <span class="fas fa-download fs-10"></span>
                                         </a>
-                                        <form method="POST" action="{{ route('panel.documents.destroy', $doc) }}" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin menghapus berkas ini?');">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button class="btn btn-link p-0 text-danger" type="submit" data-bs-toggle="tooltip" title="Hapus Dokumen">
-                                                <span class="fas fa-trash-alt fs-10"></span>
-                                            </button>
-                                        </form>
+                                        @php
+                                            $isPendingOrVerified = in_array($community->status, ['pending', 'verified'], true);
+                                            $isStatutory = $community->isStatutoryCategory($doc->category);
+                                            $cannotDelete = $doc->status === 'verified' || ($isPendingOrVerified && $isStatutory);
+                                        @endphp
+                                        @if($cannotDelete)
+                                            <span class="text-400 p-0" data-bs-toggle="tooltip" title="Dokumen terkunci dan tidak dapat dihapus">
+                                                <span class="fas fa-lock fs-10"></span>
+                                            </span>
+                                        @else
+                                            <form method="POST" action="{{ route('panel.documents.destroy', $doc) }}" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin menghapus berkas ini?');">
+                                                @csrf
+                                                @method('DELETE')
+                                                <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
+                                                <button class="btn btn-link p-0 text-danger" type="submit" data-bs-toggle="tooltip" title="Hapus Dokumen">
+                                                    <span class="fas fa-trash-alt fs-10"></span>
+                                                </button>
+                                            </form>
+                                        @endif
                                     </div>
                                 </td>
                             </tr>

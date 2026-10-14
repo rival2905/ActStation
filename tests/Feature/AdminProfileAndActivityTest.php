@@ -99,7 +99,7 @@ test('activity log export streams csv with expected headers and data', function 
     $content = $response->streamedContent();
 
     expect($content)->toContain('id,created_at,user_name,user_email,event,auditable_type,auditable_id,role_context,ip_address,user_agent')
-        ->and($content)->toContain('Superadmin Dev')
+        ->and($content)->toContain($superadmin->name)
         ->and($content)->toContain('superadmin@actstation.test')
         ->and($content)->toContain('192.168.1.100');
 });

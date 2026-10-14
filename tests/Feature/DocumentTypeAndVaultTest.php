@@ -139,7 +139,7 @@ test('organizer dapat menyetel required_documents per kategori (Instansi: BPJS &
         ->and($pelajarCat->required_documents)->toBe(['student_card', 'report_card', 'birth_certificate']);
 });
 
-test('pendaftaran roster menolak atlet tanpa dokumen wajib dan mengizinkan pakai ulang dokumen vault seumur hidup', function (): void {
+test('pendaftaran roster menolak atlet tanpa dokumen wajib dan mengizinkan pakai ulang berkas vault yang tersedia', function (): void {
     Storage::fake('public');
 
     $organizer = User::factory()->create();
@@ -167,6 +167,7 @@ test('pendaftaran roster menolak atlet tanpa dokumen wajib dan mengizinkan pakai
     $community = Community::create([
         'name' => 'Tim Basket Bank Mandiri',
         'slug' => 'tim-basket-bank-mandiri',
+        'subtype' => 'institution',
         'sport_category_id' => $this->sport->id,
         'status' => 'verified',
     ]);

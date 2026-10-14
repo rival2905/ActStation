@@ -3,6 +3,39 @@
 @section('title', 'Detail Komunitas: ' . $community->name . ' - ActStation')
 
 @section('content')
+@php
+    $requiredCodes = $community->canonicalRequiredDocumentCodes();
+    $legalChecklist = [];
+    $allLegalVerified = !empty($requiredCodes);
+
+    foreach ($requiredCodes as $code) {
+        $aliases = \App\Contracts\EntityRequirements::CODE_ALIASES[$code] ?? [$code];
+        $matchingDoc = $community->documents
+            ->first(function ($doc) use ($aliases) {
+                return in_array($doc->category, $aliases, true)
+                    && $doc->status === 'verified'
+                    && !empty($doc->file_path)
+                    && \Illuminate\Support\Facades\Storage::disk('local')->exists($doc->file_path);
+            });
+
+        $anyDoc = $community->documents->first(fn ($doc) => in_array($doc->category, $aliases, true));
+
+        $legalChecklist[] = [
+            'code' => $code,
+            'label' => \App\Contracts\EntityRequirements::DOCUMENT_LABELS[$code] ?? $code,
+            'is_verified' => (bool) $matchingDoc,
+            'doc' => $matchingDoc ?? $anyDoc,
+        ];
+
+        if (! $matchingDoc) {
+            $allLegalVerified = false;
+        }
+    }
+
+    if ($community->subtype === 'institution' && empty($community->institution_type)) {
+        $allLegalVerified = false;
+    }
+@endphp
 <div class="row gy-3 mb-3">
     <div class="col-12 d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div>
@@ -27,11 +60,11 @@
             @endcan
 
             @can('community.verify')
-                @if($community->status === 'pending' || $community->status === 'rejected')
+                @if($community->status === 'pending')
                     <form method="POST" action="{{ route('admin.communities.verify', $community) }}" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin memverifikasi komunitas ini?');">
                         @csrf
                         <input type="hidden" name="decision" value="verified">
-                        <button type="submit" class="btn btn-sm btn-success">
+                        <button type="submit" class="btn btn-sm btn-success" @if(!$allLegalVerified) disabled title="Dokumen legalitas wajib belum lengkap / belum terverifikasi" @endif>
                             <span class="fas fa-check-circle me-1"></span> Verifikasi Komunitas
                         </button>
                     </form>
@@ -97,13 +130,11 @@
                 <div class="fs-11 text-600 d-flex flex-wrap gap-3">
                     <span>
                         <span class="fas fa-tag me-1 text-500"></span>
-                        @switch($community->subtype)
-                            @case('school') Sekolah (NPSN: {{ $community->npsn ?? '-' }}) @break
-                            @case('university') Perguruan Tinggi @break
-                            @case('institution') Instansi @break
-                            @case('club') Klub Olahraga @break
-                            @default Komunitas Bebas
-                        @endswitch
+                        {{ \App\Contracts\EntityRequirements::SUBTYPES[$community->subtype] ?? ucfirst(str_replace('_', ' ', $community->subtype)) }}
+                        @if($community->subtype === 'school' && $community->npsn) (NPSN: {{ $community->npsn }}) @endif
+                        @if($community->subtype === 'institution' && $community->institution_type)
+                            · {{ \App\Contracts\EntityRequirements::INSTITUTION_TYPES[$community->institution_type] ?? $community->institution_type }}
+                        @endif
                     </span>
                     @if($community->sportCategory)
                         <span><span class="fas fa-running me-1 text-500"></span>{{ $community->sportCategory->name }}</span>
@@ -122,6 +153,81 @@
         </div>
     </div>
 </div>
+
+@if($community->status === 'pending')
+<div class="card mb-3 border border-warning">
+    <div class="card-header bg-warning-subtle py-2 d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fs-10 text-900 fw-bold">
+            <span class="fas fa-tasks me-1"></span> Checklist Dokumen Legalitas Wajib (Syarat Verifikasi)
+        </h6>
+        @if($allLegalVerified)
+            <span class="badge badge-subtle-success fs-11">
+                <span class="fas fa-check-circle me-1"></span>Semua Dokumen Terverifikasi (Siap Diverifikasi)
+            </span>
+        @else
+            <span class="badge badge-subtle-danger fs-11">
+                <span class="fas fa-exclamation-triangle me-1"></span>Belum Lengkap / Dokumen Belum Terverifikasi
+            </span>
+        @endif
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm fs-10 mb-0 align-middle">
+                <thead class="bg-200">
+                    <tr>
+                        <th class="ps-3">Kategori Dokumen Wajib</th>
+                        <th>Berkas Fisik</th>
+                        <th>Status Verifikasi</th>
+                        <th class="text-end pe-3">Aksi Dokumen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($legalChecklist as $item)
+                    <tr>
+                        <td class="ps-3 fw-semi-bold">
+                            {{ $item['label'] }}
+                        </td>
+                        <td>
+                            @if($item['doc'] && $item['doc']->file_path && \Illuminate\Support\Facades\Storage::disk('local')->exists($item['doc']->file_path))
+                                <span class="text-success"><span class="fas fa-file-pdf me-1"></span>{{ $item['doc']->name }}</span>
+                            @else
+                                <span class="badge badge-subtle-danger"><span class="fas fa-times me-1"></span>Missing / Berkas Tidak Ditemukan</span>
+                            @endif
+                        </td>
+                        <td>
+                            @if($item['is_verified'])
+                                <span class="badge badge-subtle-success"><span class="fas fa-check-circle me-1"></span>Terverifikasi</span>
+                            @elseif($item['doc'])
+                                <span class="badge badge-subtle-warning"><span class="fas fa-clock me-1"></span>{{ $item['doc']->status === 'rejected' ? 'Ditolak' : 'Menunggu Verifikasi (Pending)' }}</span>
+                            @else
+                                <span class="badge badge-subtle-danger"><span class="fas fa-times me-1"></span>Missing</span>
+                            @endif
+                        </td>
+                        <td class="text-end pe-3">
+                            @if($item['doc'])
+                                @can('community-document.verify')
+                                <a href="{{ route('admin.communities.documents.index', $community) }}" class="btn btn-xs btn-falcon-default">
+                                    <span class="fas fa-search me-1"></span>Buka Vault
+                                </a>
+                                @endcan
+                            @else
+                                <span class="text-600 fst-italic">Missing</span>
+                            @endif
+                        </td>
+                    </tr>
+                    @empty
+                    <tr>
+                        <td colspan="4" class="text-center py-2 text-warning">
+                            Tipe komunitas belum memiliki konfigurasi dokumen legalitas atau tipe instansi belum dipilih.
+                        </td>
+                    </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+@endif
 
 {{-- Falcon Tabs Navigation --}}
 <div class="card mb-3">
@@ -178,8 +284,14 @@
                             </tr>
                             <tr>
                                 <td class="text-600 text-nowrap">Tipe Subtype</td>
-                                <td class="text-800">: {{ ucfirst(str_replace('_', ' ', $community->subtype)) }}</td>
+                                <td class="text-800">: {{ \App\Contracts\EntityRequirements::SUBTYPES[$community->subtype] ?? ucfirst(str_replace('_', ' ', $community->subtype)) }}</td>
                             </tr>
+                            @if($community->subtype === 'institution' && $community->institution_type)
+                            <tr>
+                                <td class="text-600 text-nowrap">Tipe Instansi</td>
+                                <td class="text-800">: {{ \App\Contracts\EntityRequirements::INSTITUTION_TYPES[$community->institution_type] ?? $community->institution_type }}</td>
+                            </tr>
+                            @endif
                             @if($community->subtype === 'school')
                             <tr>
                                 <td class="text-600 text-nowrap">NPSN</td>
@@ -455,14 +567,14 @@
                         <tr>
                             <td class="fw-semi-bold">{{ $doc->name }}</td>
                             <td>
-                                @switch($doc->category)
-                                    @case('deed') Akta Notaris @break
-                                    @case('decree') SK Kemenkumham @break
-                                    @case('permit') Izin Operasional @break
-                                    @case('id_card') KTP Penanggung Jawab @break
-                                    @case('birth_certificate') Akta Lahir @break
-                                    @default Lainnya
-                                @endswitch
+                                {{ \App\Contracts\EntityRequirements::DOCUMENT_LABELS[$doc->category] ?? match($doc->category) {
+                                    'deed' => 'Akta Notaris',
+                                    'decree' => 'SK Kemenkumham',
+                                    'permit' => 'Izin Operasional',
+                                    'id_card' => 'KTP Penanggung Jawab',
+                                    'birth_certificate' => 'Akta Lahir',
+                                    default => 'Lainnya',
+                                } }}
                             </td>
                             <td>{{ $doc->document_number ?? '-' }}</td>
                             <td class="text-center">

@@ -233,22 +233,26 @@ class AthleteMembershipService
      */
     public function assertNoActiveDualMembership(int $userId, Community $targetCommunity, ?int $ignoreAthleteId = null): void
     {
+        if ($targetCommunity->subtype !== 'club') {
+            return;
+        }
+
         $sportCategoryId = $targetCommunity->sport_category_id;
 
         $query = CommunityAthlete::query()
             ->where('user_id', $userId)
             ->where('status', 'active')
             ->whereNull('left_at')
-            ->where('community_id', '!=', $targetCommunity->id);
+            ->where('community_id', '!=', $targetCommunity->id)
+            ->whereHas('community', function ($q) use ($sportCategoryId): void {
+                $q->where('subtype', 'club');
+                if ($sportCategoryId !== null) {
+                    $q->where('sport_category_id', $sportCategoryId);
+                }
+            });
 
         if ($ignoreAthleteId !== null) {
             $query->where('id', '!=', $ignoreAthleteId);
-        }
-
-        if ($sportCategoryId !== null) {
-            $query->whereHas('community', function ($q) use ($sportCategoryId): void {
-                $q->where('sport_category_id', $sportCategoryId);
-            });
         }
 
         $hasDual = $query->lockForUpdate()->exists();

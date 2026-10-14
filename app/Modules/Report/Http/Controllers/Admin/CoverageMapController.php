@@ -42,4 +42,18 @@ class CoverageMapController extends Controller
 
         return response()->json($result);
     }
+
+    public function details(string $type, int|string $id): JsonResponse
+    {
+        if (! in_array($type, ['school', 'community', 'venue'], true) || ! is_numeric($id) || (int) $id <= 0) {
+            abort(404);
+        }
+
+        $details = $this->coverageService->getEntityDetails($type, (int) $id);
+        if ($details === null) {
+            abort(404);
+        }
+
+        return response()->json($details);
+    }
 }

@@ -16,13 +16,19 @@ use App\Modules\Ticketing\Models\Ticket;
 use App\Modules\Ticketing\Models\TicketCategory;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 uses(DatabaseTransactions::class);
 
 beforeEach(function (): void {
-    Role::firstOrCreate(['name' => 'organizer', 'guard_name' => 'web', 'panel_access' => 'external']);
-    Role::firstOrCreate(['name' => 'member', 'guard_name' => 'web', 'panel_access' => 'external']);
+    app()[PermissionRegistrar::class]->forgetCachedPermissions();
+    Role::query()->firstOrCreate(['name' => 'organizer', 'guard_name' => 'web'], ['panel_access' => 'external']);
+    Role::query()->firstOrCreate(['name' => 'member', 'guard_name' => 'web'], ['panel_access' => 'external']);
 
     $this->sport = SportCategory::query()->firstOrCreate(
         ['slug' => 'basketball'],
@@ -41,24 +47,66 @@ beforeEach(function (): void {
         'is_active' => true,
     ]);
     $this->user->assignRole('member');
+
+    DB::table('wilayah')->insertOrIgnore([
+        ['kode' => '32', 'nama' => 'JAWA BARAT'],
+        ['kode' => '32.73', 'nama' => 'KOTA BANDUNG'],
+        ['kode' => '32.73.01', 'nama' => 'SUKASARI'],
+        ['kode' => '32.73.01.1001', 'nama' => 'SARIJADI'],
+    ]);
 });
 
-test('Just-In-Time KYC mengupgrade member menjadi organizer', function (): void {
+test('Just-In-Time KYC menyimpan pengajuan pending lalu disetujui admin menjadi organizer', function (): void {
+    Storage::fake('local');
+
+    $admin = User::factory()->create(['is_active' => true]);
+    $adminRole = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web', 'panel_access' => 'internal']);
+    $permUpdate = Permission::firstOrCreate(['name' => 'user.update', 'guard_name' => 'web']);
+    $adminRole->givePermissionTo($permUpdate);
+    $admin->assignRole('admin');
+
     $response = $this->actingAs($this->user)
         ->post(route('panel.organizer.apply.store'), [
+            'organizer_mode' => 'individual',
             'identity_number' => '3273998877665544',
+            'identity_name' => 'Doni Organizer',
+            'birth_place' => 'Bandung',
+            'birth_date' => '1990-01-01',
+            'identity_occupation' => 'Wiraswasta',
+            'identity_address' => 'Jl. Cikutra No. 201, Bandung',
             'bank_name' => 'BCA',
             'bank_account_number' => '8887776665',
             'bank_account_holder' => 'Doni Organizer',
+            'bank_branch' => 'KCP Cikutra',
+            'province_id' => '32',
+            'city_id' => '32.73',
+            'subdistrict_id' => '32.73.01',
+            'village_id' => '32.73.01.1001',
+            'postal_code' => '40151',
+            'address' => 'Jl. Cikutra No. 201, Bandung',
+            'rt' => '01',
+            'rw' => '02',
             'emergency_contact' => '081299887766',
+            'identity_image' => UploadedFile::fake()->image('ktp.jpg'),
+            'identity_selfie' => UploadedFile::fake()->image('selfie.jpg'),
+            'responsibility_statement' => UploadedFile::fake()->create('sptjm.pdf', 500, 'application/pdf'),
+            'bank_proof' => UploadedFile::fake()->create('buku_tabungan.pdf', 500, 'application/pdf'),
         ]);
+
+    $response->assertRedirect(route('panel.organizer.apply'));
+
+    $pending = $this->user->fresh();
+    expect($pending->kyc_status)->toBe('pending')
+        ->and($pending->hasRole('organizer'))->toBeFalse();
+
+    // Admin approves
+    $this->actingAs($admin)
+        ->post(route('admin.organizer-kyc.approve', $this->user));
 
     $updated = $this->user->fresh();
     expect($updated->hasRole('organizer'))->toBeTrue()
         ->and($updated->kyc_status)->toBe('verified')
         ->and($updated->bank_name)->toBe('BCA');
-
-    $response->assertRedirect(route('panel.organizer.events.create'));
 });
 
 test('organizer dapat membuat event draf dan mengajukan review moderasi', function (): void {
@@ -99,8 +147,9 @@ test('organizer dapat membuat event draf dan mengajukan review moderasi', functi
 });
 
 test('organizer menolak konfirmasi pembayaran manual tanpa bukti dan verifikasi berkas', function (): void {
-    $this->user->assignRole('organizer');
-
+    if (! $this->user->hasRole('organizer')) {
+        $this->user->assignRole('organizer');
+    }
     $event = Event::factory()->create([
         'sport_category_id' => $this->sport->id,
         'user_id' => $this->user->id,
@@ -137,8 +186,9 @@ test('organizer menolak konfirmasi pembayaran manual tanpa bukti dan verifikasi 
 });
 
 test('gate scanner memvalidasi tiket masuk penonton secara akurat', function (): void {
-    $this->user->assignRole('organizer');
-
+    if (! $this->user->hasRole('organizer')) {
+        $this->user->assignRole('organizer');
+    }
     $event = Event::factory()->create([
         'sport_category_id' => $this->sport->id,
         'user_id' => $this->user->id,
@@ -193,8 +243,9 @@ test('gate scanner memvalidasi tiket masuk penonton secara akurat', function ():
 });
 
 test('organizer dapat menghapus tim yang belum bayar dan invoice pending ikut dibatalkan', function (): void {
-    $this->user->assignRole('organizer');
-
+    if (! $this->user->hasRole('organizer')) {
+        $this->user->assignRole('organizer');
+    }
     $event = Event::factory()->create([
         'sport_category_id' => $this->sport->id,
         'user_id' => $this->user->id,
@@ -233,8 +284,9 @@ test('organizer dapat menghapus tim yang belum bayar dan invoice pending ikut di
 });
 
 test('organizer dilarang menghapus tim yang sudah bayar lunas', function (): void {
-    $this->user->assignRole('organizer');
-
+    if (! $this->user->hasRole('organizer')) {
+        $this->user->assignRole('organizer');
+    }
     $event = Event::factory()->create([
         'sport_category_id' => $this->sport->id,
         'user_id' => $this->user->id,
@@ -273,8 +325,9 @@ test('organizer dilarang menghapus tim yang sudah bayar lunas', function (): voi
 });
 
 test('organizer dapat membuat tiket per-game yang mengikat langsung ke jadwal pertandingan scheduling', function (): void {
-    $this->user->assignRole('organizer');
-
+    if (! $this->user->hasRole('organizer')) {
+        $this->user->assignRole('organizer');
+    }
     $event = Event::factory()->create([
         'sport_category_id' => $this->sport->id,
         'user_id' => $this->user->id,

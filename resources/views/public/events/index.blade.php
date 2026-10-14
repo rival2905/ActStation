@@ -1,11 +1,35 @@
 @extends('layouts.public')
 
-@section('title', 'Katalog Turnamen Olahraga — ActStation')
+@section('title', 'Katalog Turnamen Olahraga Terbuka — ActStation')
+@section('meta_description', 'Jelajahi dan daftar turnamen olahraga terbuka terverifikasi: Bola Basket, Futsal, Badminton, Sepak Bola, dan Voli bergaransi Rekening Bersama Escrow 100%.')
+@section('meta_keywords', 'katalog turnamen, turnamen basket, turnamen olahraga, pendaftaran turnamen, jadwal kompetisi, actstation')
+@section('og_title', 'Katalog Turnamen Olahraga Terbuka — ActStation')
+@section('og_description', 'Jelajahi kompetisi olahraga multi-cabor bergaransi Escrow 100% dan verifikasi atlet Digital Vault di ActStation.')
+@push('schema')
+<script type="application/ld+json">
+{!! json_encode([
+    chr(64) . 'context' => 'https://schema.org',
+    chr(64) . 'type' => 'CollectionPage',
+    'name' => 'Katalog Turnamen Olahraga Terbuka',
+    'description' => 'Daftar kompetisi dan turnamen olahraga multi-cabor bergaransi rekening bersama Escrow di ActStation.',
+    'url' => route('events.index'),
+    'mainEntity' => [
+        chr(64) . 'type' => 'ItemList',
+        'itemListElement' => $events->map(fn ($item, $idx) => [
+            chr(64) . 'type' => 'ListItem',
+            'position' => $idx + 1,
+            'url' => route('events.show', $item->slug),
+            'name' => $item->title,
+        ])->values()->all(),
+    ],
+], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}
+</script>
+@endpush
 
 @section('content')
 <div class="row mb-4 align-items-center">
     <div class="col-md-6">
-        <h2 class="fw-bolder mb-1">Turnamen Olahraga Terbuka</h2>
+        <h1 class="h2 fw-bolder mb-1">Turnamen Olahraga Terbuka</h1>
         <p class="text-muted mb-0">Jelajahi kompetisi multi-cabor (Basket, Futsal, Badminton, Sepak Bola, Voli) bergaransi Escrow.</p>
     </div>
     <div class="col-md-6 mt-3 mt-md-0">

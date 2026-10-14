@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Community\Models;
 
+use App\Contracts\EntityRequirements;
 use App\Models\Concerns\Auditable;
 use App\Models\User;
+use App\Modules\MasterData\Models\SportCategory;
 use Database\Factories\CommunityFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -24,6 +26,7 @@ class Community extends Model
     protected $fillable = [
         'sport_category_id',
         'subtype',
+        'institution_type',
         'name',
         'slug',
         'npsn',
@@ -75,6 +78,11 @@ class Community extends Model
         return $this->belongsTo(User::class, 'verified_by');
     }
 
+    public function sportCategory(): BelongsTo
+    {
+        return $this->belongsTo(SportCategory::class);
+    }
+
     public function officials(): HasMany
     {
         return $this->hasMany(CommunityOfficial::class);
@@ -103,5 +111,26 @@ class Community extends Model
     public function documents(): MorphMany
     {
         return $this->morphMany(Document::class, 'documentable');
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function canonicalRequiredDocumentCodes(): array
+    {
+        return EntityRequirements::legalDocumentCodes((string) $this->subtype, $this->institution_type);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function canonicalRequiredDocumentCategories(): array
+    {
+        return EntityRequirements::canonicalRequiredCategories((string) $this->subtype, $this->institution_type);
+    }
+
+    public function isStatutoryCategory(string $category): bool
+    {
+        return in_array($category, $this->canonicalRequiredDocumentCategories(), true);
     }
 }

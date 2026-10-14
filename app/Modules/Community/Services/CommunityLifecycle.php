@@ -4,16 +4,22 @@ declare(strict_types=1);
 
 namespace App\Modules\Community\Services;
 
+use App\Contracts\EntityRequirements;
 use App\Modules\Community\Models\Community;
 use DomainException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 
 class CommunityLifecycle
 {
     /**
+     * @var array<string, list<string>>
+     */
+    public const CODE_ALIASES = EntityRequirements::CODE_ALIASES;
+
+    /**
      * Submit community verification request (draft/rejected -> pending).
-     *
-     * // ponytail: Document count check expects at least 1 document; upgrade to category checks when legal requirements expand.
      */
     public function submit(Community $community): void
     {
@@ -29,8 +35,31 @@ class CommunityLifecycle
             throw new InvalidArgumentException('Komunitas sekolah wajib memiliki NPSN.');
         }
 
-        if ($community->documents()->count() === 0) {
-            throw new InvalidArgumentException('Minimal 1 dokumen legalitas wajib diunggah.');
+        if ($community->subtype === 'institution' && empty($community->institution_type)) {
+            throw new InvalidArgumentException('Tipe instansi wajib dipilih sebelum pengajuan verifikasi.');
+        }
+
+        $requiredCodes = EntityRequirements::legalDocumentCodes((string) $community->subtype, $community->institution_type);
+
+        if (empty($requiredCodes)) {
+            if ($community->documents()->count() === 0) {
+                throw new InvalidArgumentException('Minimal 1 dokumen legalitas wajib diunggah.');
+            }
+        } else {
+            foreach ($requiredCodes as $code) {
+                $categories = self::CODE_ALIASES[$code] ?? [$code];
+
+                $hasValidDoc = $community->documents()
+                    ->whereIn('category', $categories)
+                    ->where('status', '!=', 'rejected')
+                    ->get()
+                    ->contains(fn ($doc) => $doc->file_path && Storage::disk('local')->exists($doc->file_path));
+
+                if (! $hasValidDoc) {
+                    $label = EntityRequirements::DOCUMENT_LABELS[$code] ?? $code;
+                    throw new InvalidArgumentException("Dokumen legalitas [{$label}] wajib diunggah.");
+                }
+            }
         }
 
         $community->status = 'pending';
@@ -44,15 +73,46 @@ class CommunityLifecycle
      */
     public function verify(Community $community, ?int $verifiedBy = null): void
     {
-        if ($community->status !== 'pending') {
-            throw new DomainException("Transisi status tidak valid: hanya komunitas pending yang dapat diverifikasi (status saat ini: {$community->status}).");
-        }
+        DB::transaction(function () use ($community, $verifiedBy): void {
+            /** @var Community $locked */
+            $locked = Community::where('id', $community->id)->lockForUpdate()->firstOrFail();
 
-        $community->status = 'verified';
-        $community->verified_at = now();
-        $community->verified_by = $verifiedBy ?? (int) auth()->id();
-        $community->reject_reason = null;
-        $community->save();
+            if ($locked->status !== 'pending') {
+                throw new DomainException("Transisi status tidak valid: hanya komunitas pending yang dapat diverifikasi (status saat ini: {$locked->status}).");
+            }
+
+            if ($locked->subtype === 'institution' && empty($locked->institution_type)) {
+                throw new DomainException('Tipe instansi wajib dipilih sebelum verifikasi.');
+            }
+
+            $requiredCodes = EntityRequirements::legalDocumentCodes((string) $locked->subtype, $locked->institution_type);
+
+            foreach ($requiredCodes as $code) {
+                $categories = self::CODE_ALIASES[$code] ?? [$code];
+
+                $hasVerifiedDoc = $locked->documents()
+                    ->whereIn('category', $categories)
+                    ->where('status', 'verified')
+                    ->get()
+                    ->contains(fn ($doc) => $doc->file_path && Storage::disk('local')->exists($doc->file_path));
+
+                if (! $hasVerifiedDoc) {
+                    $label = EntityRequirements::DOCUMENT_LABELS[$code] ?? $code;
+                    throw new DomainException("Dokumen legalitas [{$label}] belum diverifikasi.");
+                }
+            }
+
+            $locked->status = 'verified';
+            $locked->verified_at = now();
+            $locked->verified_by = $verifiedBy ?? (int) auth()->id();
+            $locked->reject_reason = null;
+            $locked->save();
+
+            $community->status = 'verified';
+            $community->verified_at = $locked->verified_at;
+            $community->verified_by = $locked->verified_by;
+            $community->reject_reason = null;
+        });
     }
 
     /**

@@ -9,6 +9,8 @@ use App\Modules\MasterData\Http\Requests\DocumentTypeRequest;
 use App\Modules\MasterData\Models\DocumentType;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class DocumentTypeController extends Controller
@@ -67,7 +69,34 @@ class DocumentTypeController extends Controller
         $data = $request->validated();
         $data['is_active'] = $request->boolean('is_active');
 
-        $documentType->update($data);
+        DB::transaction(function () use ($data, $documentType): void {
+            /** @var DocumentType $locked */
+            $locked = DocumentType::query()->whereKey($documentType->getKey())->lockForUpdate()->firstOrFail();
+
+            if ($locked->isInUse()) {
+                $errors = [];
+
+                if (array_key_exists('code', $data) && $data['code'] !== $locked->code) {
+                    $errors['code'] = 'Kode jenis dokumen tidak dapat diubah karena sedang digunakan.';
+                }
+
+                if (array_key_exists('scope', $data) && $data['scope'] !== $locked->scope) {
+                    $errors['scope'] = 'Scope jenis dokumen tidak dapat diubah karena sedang digunakan.';
+                }
+
+                if (array_key_exists('applicable_entities', $data)) {
+                    if (DocumentType::normalizeEntities($data['applicable_entities']) !== DocumentType::normalizeEntities($locked->applicable_entities)) {
+                        $errors['applicable_entities'] = 'Entitas yang berlaku tidak dapat diubah karena sedang digunakan.';
+                    }
+                }
+
+                if (! empty($errors)) {
+                    throw ValidationException::withMessages($errors);
+                }
+            }
+
+            $locked->update($data);
+        });
 
         return redirect()
             ->route('admin.document-types.index')
@@ -76,10 +105,19 @@ class DocumentTypeController extends Controller
 
     public function destroy(DocumentType $documentType): RedirectResponse
     {
-        $documentType->delete();
+        return DB::transaction(function () use ($documentType): RedirectResponse {
+            /** @var DocumentType $locked */
+            $locked = DocumentType::query()->whereKey($documentType->getKey())->lockForUpdate()->firstOrFail();
 
-        return redirect()
-            ->route('admin.document-types.index')
-            ->with('success', 'Jenis dokumen berhasil dihapus.');
+            if ($locked->isInUse()) {
+                return back()->with('error', 'Jenis dokumen tidak dapat dihapus karena sedang digunakan.');
+            }
+
+            $locked->delete();
+
+            return redirect()
+                ->route('admin.document-types.index')
+                ->with('success', 'Jenis dokumen berhasil dihapus.');
+        });
     }
 }

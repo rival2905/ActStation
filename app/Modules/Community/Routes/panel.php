@@ -5,11 +5,14 @@ declare(strict_types=1);
 use App\Modules\Community\Http\Controllers\Panel\AthleteController;
 use App\Modules\Community\Http\Controllers\Panel\Auth\PanelAuthController;
 use App\Modules\Community\Http\Controllers\Panel\CoachController;
+use App\Modules\Community\Http\Controllers\Panel\CommunityActivityController;
+use App\Modules\Community\Http\Controllers\Panel\CommunitySwitchController;
 use App\Modules\Community\Http\Controllers\Panel\DocumentController;
 use App\Modules\Community\Http\Controllers\Panel\InvitationController;
 use App\Modules\Community\Http\Controllers\Panel\MyRequestController;
 use App\Modules\Community\Http\Controllers\Panel\OfficialController;
 use App\Modules\Community\Http\Controllers\Panel\ProfileController;
+use App\Modules\Community\Http\Middleware\EnsureValidCommunityContext;
 use Illuminate\Support\Facades\Route;
 
 // Guest auth routes
@@ -26,11 +29,24 @@ Route::post('logout', [PanelAuthController::class, 'logout'])
     ->name('logout');
 
 // Panel access protected routes
-Route::middleware(['auth', 'EnsurePanelAccess'])->group(function (): void {
+Route::middleware(['auth', 'EnsurePanelAccess', EnsureValidCommunityContext::class])->group(function (): void {
+    // Switch active community entity
+    Route::post('switch', [CommunitySwitchController::class, 'switch'])->name('switch');
+    Route::post('community/switch', [CommunitySwitchController::class, 'switch'])->name('community.switch');
+
     // Community profile & lifecycle verification
+    // Community onboarding
+    Route::get('community/create', [ProfileController::class, 'create'])->name('community.create');
+    Route::post('community', [ProfileController::class, 'store'])->name('community.store');
+
     Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');
     Route::put('profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::post('verification', [ProfileController::class, 'requestVerification'])->name('verification.request');
+
+    // Community routine programs (activities)
+    Route::post('profile/activities', [CommunityActivityController::class, 'store'])->name('activities.store');
+    Route::put('profile/activities/{activity}', [CommunityActivityController::class, 'update'])->name('activities.update');
+    Route::delete('profile/activities/{activity}', [CommunityActivityController::class, 'destroy'])->name('activities.destroy');
 
     // Community officials
     Route::get('officials', [OfficialController::class, 'index'])->name('officials.index');

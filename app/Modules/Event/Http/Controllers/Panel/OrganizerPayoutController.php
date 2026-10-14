@@ -52,7 +52,7 @@ class OrganizerPayoutController extends Controller
         /** @var User|null $user */
         $user = request()->routeIs('admin.*') ? $event->organizer : Auth::user();
 
-        if (! $user || empty($user->bank_account_number) || empty($user->bank_name) || (request()->routeIs('admin.*') && $user->kyc_status !== 'verified')) {
+        if (! $user || empty($user->bank_account_number) || empty($user->bank_name) || $user->kyc_status !== 'verified') {
             return back()->with('error', 'Rekening bank PIC terverifikasi belum tersedia. Lengkapi profil KYC organizer sebelum mengajukan payout.');
         }
 

@@ -1,11 +1,15 @@
 @extends('layouts.public')
 
-@section('title', 'Hasil Pertandingan & Klasemen — ' . $event->title)
+@section('title', 'Hasil Pertandingan &amp; Klasemen — ' . $event->title . ' — ActStation')
+@section('meta_description', 'Skor akhir, hasil pertandingan resmi, dan klasemen perolehan medali untuk turnamen ' . $event->title . ' di ActStation.')
+@section('meta_keywords', 'hasil pertandingan, live score, skor basket, klasemen akhir, ' . $event->title)
+@section('og_title', 'Hasil Pertandingan — ' . $event->title)
+@section('og_description', 'Hasil pertandingan resmi dan klasemen turnamen ' . $event->title . '.')
 
 @section('content')
 <div class="card mb-4 overflow-hidden border">
     <div class="card-body p-4">
-        <h2 class="fw-bolder mb-1">{{ $event->title }}</h2>
+        <h1 class="h2 fw-bolder mb-1">{{ $event->title }}</h1>
         <p class="text-muted fs-10 mb-0">Live Score, Hasil Pertandingan Resmi, dan Podium Juara</p>
     </div>
 </div>

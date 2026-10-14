@@ -1,6 +1,56 @@
 @extends('layouts.public')
 
-@section('title', $event->title . ' — ActStation')
+@php
+    $plainDescription = Str::limit(strip_tags($event->description ?? 'Turnamen resmi ' . $event->title . ' diselenggarakan di ' . ($event->venue?->name ?? 'Venue Mandiri') . ' dengan garansi rekening bersama Escrow 100%.'), 160);
+@endphp
+@section('title', $event->title . ' — Turnamen ' . ($event->sportCategory?->name ?? 'Olahraga') . ' ActStation')
+@section('meta_description', $plainDescription)
+@section('meta_keywords', $event->title . ', ' . ($event->sportCategory?->name ?? 'olahraga') . ', turnamen ' . strtolower($event->sportCategory?->name ?? 'olahraga') . ', pendaftaran turnamen, jadwal pertandingan, tiket turnamen, ' . ($event->venue?->name ?? ''))
+@section('og_type', 'article')
+@section('og_title', $event->title . ' — ActStation')
+@section('og_description', $plainDescription)
+@if($event->banner_image)
+    @section('og_image', asset('storage/' . $event->banner_image))
+@endif
+
+@push('schema')
+<script type="application/ld+json">
+{!! json_encode([
+    chr(64) . 'context' => 'https://schema.org',
+    chr(64) . 'type' => 'SportsEvent',
+    'name' => $event->title,
+    'description' => $plainDescription,
+    'startDate' => $event->starts_at?->toIso8601String() ?? now()->toIso8601String(),
+    'endDate' => $event->ends_at?->toIso8601String() ?? now()->addDays(1)->toIso8601String(),
+    'eventStatus' => 'https://schema.org/EventScheduled',
+    'eventAttendanceMode' => 'https://schema.org/OfflineEventAttendanceMode',
+    'location' => [
+        chr(64) . 'type' => 'Place',
+        'name' => $event->venue?->name ?? 'Venue Pertandingan',
+        'address' => [
+            chr(64) . 'type' => 'PostalAddress',
+            'streetAddress' => $event->venue?->address ?? 'Indonesia',
+            'addressLocality' => $event->venue?->city?->nama ?? 'Indonesia',
+            'addressCountry' => 'ID',
+        ],
+    ],
+    'organizer' => [
+        chr(64) . 'type' => 'Organization',
+        'name' => $event->user?->name ?? 'Panitia Penyelenggara',
+    ],
+    'image' => [
+        $event->banner_image ? asset('storage/' . $event->banner_image) : asset('assets/img/logo_fix.png'),
+    ],
+    'offers' => [
+        chr(64) . 'type' => 'Offer',
+        'priceCurrency' => 'IDR',
+        'price' => (string) ((float) ($event->categories->min('registration_fee') ?? 0)),
+        'availability' => $event->registration_open ? 'https://schema.org/InStock' : 'https://schema.org/SoldOut',
+        'url' => route('events.show', $event->slug),
+    ],
+], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}
+</script>
+@endpush
 
 @section('content')
 @php
@@ -47,7 +97,7 @@
         <div class="row align-items-center">
             <div class="col-md-8">
                 <div class="badge bg-success mb-2"><span class="{{ $event->sportCategory?->icon ?? 'fas fa-trophy' }} me-1"></span>{{ $event->sportCategory?->name ?? 'Multi-Sport' }}</div>
-                <h2 class="fw-bolder mb-2">{{ $event->title }}</h2>
+                <h1 class="h2 fw-bolder mb-2">{{ $event->title }}</h1>
                 <div class="d-flex flex-wrap gap-3 text-muted fs-10 mb-3">
                     <span><span class="fas fa-calendar-alt text-primary me-1"></span>{{ $event->starts_at?->format('d M Y') }} s.d. {{ $event->ends_at?->format('d M Y') }}</span>
                     <span><span class="fas fa-money-bill-wave text-success me-1"></span>Biaya Pendaftaran: {{ $event->registrationPriceLabel() }}</span>
@@ -155,7 +205,14 @@
                 @foreach($event->categories as $category)
                 <div class="p-3 border-bottom">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="fw-bold mb-0 text-primary">{{ $category->name }} ({{ $category->match_type }} - {{ ucfirst($category->gender) }}) · {{ $category->ageRangeLabel() }}</h6>
+                        <div>
+                            <h6 class="fw-bold mb-1 text-primary">{{ $category->name }} ({{ $category->match_type }} - {{ ucfirst($category->gender) }}) · {{ $category->ageRangeLabel() }}</h6>
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach($category->allowedEntityLabels() as $lbl)
+                                    <span class="badge bg-light text-dark border fs-11">{{ $lbl }}</span>
+                                @endforeach
+                            </div>
+                        </div>
                         <div class="text-end">
                             <span class="badge bg-primary-subtle text-primary border mb-1">{{ $category->registrationPriceLabel() }}</span>
                             <br>
@@ -166,8 +223,22 @@
                                     {{ $category->participants->count() }} Tim Terdaftar / Kuota: {{ $category->max_teams ?? 'Tanpa Batas' }}
                                 @endif
                             </span>
+                            @if($event->registration_open)
+                                <div class="mt-1">
+                                    <a href="{{ route('events.register', [$event->slug, 'event_category_id' => $category->id]) }}" class="btn btn-xs btn-outline-primary">
+                                        <span class="fas fa-arrow-right me-1"></span>Daftar
+                                    </a>
+                                </div>
+                            @endif
                         </div>
                     </div>
+
+                    @if($category->document_instructions)
+                        <div class="mb-2 fs-10 text-muted">
+                            <span class="fas fa-clipboard-check text-primary me-1"></span>
+                            <strong>Catatan Screening / TM:</strong> {{ $category->document_instructions }}
+                        </div>
+                    @endif
 
                     @if(! $category->is_roster_public)
                         <div class="alert alert-subtle-warning py-2 px-3 mb-0 fs-10 border-0">

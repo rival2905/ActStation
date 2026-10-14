@@ -58,7 +58,7 @@ test('admin dan organizer mengelola kategori identik pada event yang sama', func
     $this->actingAs($this->admin)
         ->get(route('admin.events.categories.index', $this->event))
         ->assertOk()->assertSee('Instansi KU 35+')->assertSee('bpjs_tk')
-        ->assertSee('Screening First')->assertSee('Komunitas: institution');
+        ->assertSee('Screening First')->assertSee('Instansi / Lembaga');
 
     $regStart = $this->event->starts_at->copy()->subDays(6)->format('Y-m-d H:i:s');
     $payStart = $this->event->starts_at->copy()->subDays(5)->format('Y-m-d H:i:s');
@@ -97,8 +97,8 @@ test('admin dan organizer mengelola kategori identik pada event yang sama', func
         ->assertOk()->assertSee('Payment First')->assertSee('bpjs_tk');
 });
 
-test('validasi kategori menolak subtipe komunitas yang tidak didukung seperti school_sd dan mewajibkan subtipe jika komunitas aktif', function (): void {
-    // Penolakan subtipe school_sd oleh organizer
+test('validasi kategori menolak subtipe tidak dikenal dan mewajibkan subtipe jika komunitas aktif', function (): void {
+    // Penolakan jenjang tidak dikenal oleh organizer
     $this->actingAs($this->organizer)
         ->post(route('panel.organizer.categories.store', $this->event), [
             'name' => 'Kategori Sekolah SD',
@@ -108,10 +108,10 @@ test('validasi kategori menolak subtipe komunitas yang tidak didukung seperti sc
             'registration_fee' => 0,
             'allow_community' => 1,
             'allow_club' => 0,
-            'community_subtype' => 'school_sd',
+            'community_subtype' => 'school_unknown',
         ])->assertSessionHasErrors(['community_subtype']);
 
-    // Penolakan subtipe school_smp oleh admin
+    // Penolakan tipe tidak dikenal oleh admin
     $this->actingAs($this->admin)
         ->post(route('admin.events.categories.store', $this->event), [
             'name' => 'Kategori Sekolah SMP',
@@ -121,7 +121,7 @@ test('validasi kategori menolak subtipe komunitas yang tidak didukung seperti sc
             'registration_fee' => 0,
             'allow_community' => 1,
             'allow_club' => 0,
-            'community_subtype' => 'school_smp',
+            'community_subtype' => 'unknown_entity',
         ])->assertSessionHasErrors(['community_subtype']);
 
     // Penolakan ketika allow_community aktif tapi subtipe kosong

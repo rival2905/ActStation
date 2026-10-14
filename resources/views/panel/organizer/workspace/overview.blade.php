@@ -17,6 +17,9 @@
     };
     $canEditEvent = ($workspace === 'organizer' && ($event->user_id === auth()->id() || auth()->user()?->hasRole('superadmin')))
                     || ($workspace === 'admin' && (auth()->user()?->can('event.update') || auth()->user()?->hasRole('superadmin')));
+    $canVerifyDoc = ($workspace === 'admin') && (auth()->user()?->can('event.publish') || auth()->user()?->hasRole('superadmin'));
+    $canDeleteDoc = ($workspace === 'organizer') || ($workspace === 'admin' && (auth()->user()?->can('event.delete') || auth()->user()?->hasRole('superadmin')));
+    $canUploadDoc = ($workspace === 'organizer') || ($workspace === 'admin' && (auth()->user()?->can('event.update') || auth()->user()?->hasRole('superadmin')));
     $editEventUrl = $workspace === 'admin' ? route('admin.events.edit', $event->id) : route('panel.organizer.events.edit', $event->id);
 @endphp
 @extends($workspace === 'admin' ? 'layouts.app' : 'layouts.panel')
@@ -397,9 +400,11 @@
                 Wajib: Rekomendasi induk cabor ({{ $federationName }}) &amp; Technical Handbook (THB). Dokumen lainnya bersifat dinamis dan dapat diatur apakah tampil di halaman publik atau internal.
             </small>
         </div>
+        @if($canUploadDoc)
         <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadEventDocModal">
             <span class="fas fa-cloud-upload-alt me-1"></span>+ Unggah Dokumen
         </button>
+        @endif
     </div>
     <div class="card-body">
         @php
@@ -554,12 +559,14 @@
                                 @else
                                     <span class="badge bg-secondary"><span class="fas fa-lock me-1"></span>Internal</span>
                                 @endif
+                                @if($canUploadDoc)
                                 <form action="{{ route($workspaceRoutePrefix.'documents.togglePublic', [$event->id, $doc->id]) }}" method="POST" class="d-inline">
                                     @csrf
                                     <button type="submit" class="btn btn-xs {{ $doc->is_public ? 'btn-outline-secondary' : 'btn-outline-info' }} py-0 px-1" title="{{ $doc->is_public ? 'Sembunyikan dari Publik' : 'Tampilkan di Halaman Publik' }}">
                                         <span class="fas {{ $doc->is_public ? 'fa-eye-slash' : 'fa-eye' }}" style="font-size: 10px;"></span>
                                     </button>
                                 </form>
+                                @endif
                             </div>
                         </td>
                         <td>
@@ -577,16 +584,15 @@
                                 <a href="{{ route($workspaceRoutePrefix.'documents.download', [$event->id, $doc->id]) }}" class="btn btn-xs btn-outline-primary" target="_blank" title="Unduh Berkas">
                                     <span class="fas fa-download me-1"></span>Unduh
                                 </a>
-                                @if($workspace === 'admin')
-                                    @if($doc->status !== 'verified')
-                                    <form action="{{ route('admin.events.workspace.documents.verify', [$event->id, $doc->id]) }}" method="POST" class="d-inline">
-                                        @csrf
-                                        <button type="submit" class="btn btn-xs btn-success" title="Verifikasi Dokumen">
-                                            <span class="fas fa-check"></span>
-                                        </button>
-                                    </form>
-                                    @endif
+                                @if($canVerifyDoc && $doc->status !== 'verified')
+                                <form action="{{ route('admin.events.workspace.documents.verify', [$event->id, $doc->id]) }}" method="POST" class="d-inline">
+                                    @csrf
+                                    <button type="submit" class="btn btn-xs btn-success" title="Verifikasi Dokumen">
+                                        <span class="fas fa-check"></span>
+                                    </button>
+                                </form>
                                 @endif
+                                @if($canDeleteDoc)
                                 <form action="{{ route($workspaceRoutePrefix.'documents.destroy', [$event->id, $doc->id]) }}" method="POST" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin menghapus dokumen [{{ $doc->name }}]?');">
                                     @csrf
                                     @method('DELETE')
@@ -594,6 +600,7 @@
                                         <span class="fas fa-trash-alt"></span>
                                     </button>
                                 </form>
+                                @endif
                             </div>
                         </td>
                     </tr>
@@ -605,14 +612,17 @@
         <div class="text-center py-4 bg-light rounded border border-dashed">
             <span class="fas fa-folder-open fa-2x text-muted mb-2 d-block"></span>
             <p class="text-muted fs-10 mb-2">Belum ada dokumen yang diunggah untuk turnamen ini.</p>
+            @if($canUploadDoc)
             <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#uploadEventDocModal">
                 <span class="fas fa-cloud-upload-alt me-1"></span>Unggah Dokumen Pertama
             </button>
+            @endif
         </div>
         @endif
     </div>
 </div>
 
+@if($canUploadDoc)
 <!-- Modal Upload Dokumen Event -->
 <div class="modal fade" id="uploadEventDocModal" tabindex="-1" aria-labelledby="uploadEventDocModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -685,6 +695,7 @@
         </div>
     </div>
 </div>
+@endif
 
 <script>
 function onEventDocCategoryChange(select) {

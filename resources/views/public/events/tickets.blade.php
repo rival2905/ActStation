@@ -1,11 +1,15 @@
 @extends('layouts.public')
 
-@section('title', 'Beli Tiket Masuk Pertandingan — ' . $event->title)
+@section('title', 'Beli Tiket Masuk Pertandingan — ' . $event->title . ' — ActStation')
+@section('meta_description', 'Beli tiket penonton dan suporter turnamen ' . $event->title . ' secara online resmi bergaransi 100% Escrow Platform ActStation.')
+@section('meta_keywords', 'tiket turnamen, beli tiket basket, tiket pertandingan, ' . $event->title . ', tiket masuk penonton')
+@section('og_title', 'Beli Tiket Masuk Pertandingan — ' . $event->title)
+@section('og_description', 'Tiket resmi pertandingan ' . $event->title . ' bergaransi Rekening Bersama Escrow Platform ActStation.')
 
 @section('content')
 <div class="card mb-4 overflow-hidden border">
     <div class="card-body p-4">
-        <h2 class="fw-bolder mb-1">{{ $event->title }}</h2>
+        <h1 class="h2 fw-bolder mb-1">{{ $event->title }}</h1>
         <p class="text-muted fs-10 mb-0">Tiket Masuk Penonton & Suporter Pertandingan (Bergaransi Escrow Platform)</p>
     </div>
 </div>
@@ -71,7 +75,8 @@
                                     </div>
                                 </div>
                             @endif
-                            <p class="fs-10 text-muted mb-0">{{ $tc->description ?? 'Tiket sah menonton turnamen basket.' }}</p>
+                            <p class="fs-10 text-muted mb-0">{{ $tc->description ?? 'Tiket sah menonton turnamen.' }}</p>
+                        </div>
                         <div class="text-end">
                             <h4 class="text-primary fw-bolder mb-1">
                                 Rp {{ number_format((float) $tc->price, 0, ',', '.') }}

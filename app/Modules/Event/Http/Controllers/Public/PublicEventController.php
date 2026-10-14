@@ -10,6 +10,7 @@ use App\Modules\Event\Models\Event;
 use App\Modules\MasterData\Models\SportCategory;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -85,5 +86,81 @@ class PublicEventController extends Controller
         }
 
         abort(404, 'File fisik dokumen tidak ditemukan.');
+    }
+
+    public function sitemap(): Response
+    {
+        $events = Event::query()
+            ->whereIn('status', ['published', 'ongoing', 'completed'])
+            ->get(['slug', 'updated_at']);
+
+        $urls = [
+            [
+                'loc' => route('landing'),
+                'lastmod' => now()->toAtomString(),
+                'changefreq' => 'daily',
+                'priority' => '1.0',
+            ],
+            [
+                'loc' => route('events.index'),
+                'lastmod' => now()->toAtomString(),
+                'changefreq' => 'daily',
+                'priority' => '0.9',
+            ],
+            [
+                'loc' => route('panduan.event'),
+                'lastmod' => now()->toAtomString(),
+                'changefreq' => 'weekly',
+                'priority' => '0.8',
+            ],
+        ];
+
+        foreach ($events as $event) {
+            $lastmod = $event->updated_at?->toAtomString() ?? now()->toAtomString();
+            $urls[] = [
+                'loc' => route('events.show', $event->slug),
+                'lastmod' => $lastmod,
+                'changefreq' => 'daily',
+                'priority' => '0.8',
+            ];
+            $urls[] = [
+                'loc' => route('events.tournament', $event->slug),
+                'lastmod' => $lastmod,
+                'changefreq' => 'daily',
+                'priority' => '0.7',
+            ];
+            $urls[] = [
+                'loc' => route('events.schedule', $event->slug),
+                'lastmod' => $lastmod,
+                'changefreq' => 'daily',
+                'priority' => '0.7',
+            ];
+            $urls[] = [
+                'loc' => route('events.results', $event->slug),
+                'lastmod' => $lastmod,
+                'changefreq' => 'daily',
+                'priority' => '0.7',
+            ];
+            $urls[] = [
+                'loc' => route('events.tickets', $event->slug),
+                'lastmod' => $lastmod,
+                'changefreq' => 'daily',
+                'priority' => '0.7',
+            ];
+        }
+
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>'."\n";
+        $xml .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'."\n";
+        foreach ($urls as $u) {
+            $xml .= '    <url>'."\n";
+            $xml .= '        <loc>'.htmlspecialchars($u['loc'], ENT_XML1, 'UTF-8').'</loc>'."\n";
+            $xml .= '        <lastmod>'.$u['lastmod'].'</lastmod>'."\n";
+            $xml .= '        <changefreq>'.$u['changefreq'].'</changefreq>'."\n";
+            $xml .= '        <priority>'.$u['priority'].'</priority>'."\n";
+            $xml .= '    </url>'."\n";
+        }
+        $xml .= '</urlset>';
+
+        return response($xml, 200, ['Content-Type' => 'application/xml; charset=utf-8']);
     }
 }

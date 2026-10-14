@@ -51,6 +51,17 @@
                         </div>
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('admin.organizer-kyc.*') ? 'active' : '' }}" href="{{ route('admin.organizer-kyc.index') }}" role="button">
+                        <div class="d-flex align-items-center">
+                            <span class="nav-link-icon"><span class="fas fa-id-card"></span></span>
+                            <span class="nav-link-text ps-1">Pengajuan Penyelenggara</span>
+                            @if($pendingOrganizerCount > 0)
+                                <span id="organizer-kyc-pending-badge" class="badge rounded-pill bg-warning text-dark ms-auto" aria-label="{{ $pendingOrganizerCount }} pengajuan menunggu review">{{ $pendingOrganizerCount }}</span>
+                            @endif
+                        </div>
+                    </a>
+                </li>
                 @endcan
 
                 @can('role.view')
@@ -586,6 +597,14 @@
                 @endcan
 
                 @can('setting.email')
+                <li class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('admin.emails.*') ? 'active' : '' }}" href="{{ Route::has('admin.emails.index') ? route('admin.emails.index') : url('/admin/emails') }}" role="button">
+                        <div class="d-flex align-items-center">
+                            <span class="nav-link-icon"><span class="fas fa-paper-plane"></span></span>
+                            <span class="nav-link-text ps-1">Riwayat & Composer Email</span>
+                        </div>
+                    </a>
+                </li>
                 <li class="nav-item">
                     <a class="nav-link {{ request()->routeIs('admin.settings.email*') ? 'active' : '' }}" href="{{ route('admin.settings.email') }}" role="button">
                         <div class="d-flex align-items-center">

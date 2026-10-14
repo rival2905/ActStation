@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Event\Http\Controllers\Panel;
 
+use App\Contracts\CommunityLookup;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Modules\Community\Models\Document;
@@ -17,12 +18,17 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class OrganizerTeamController extends Controller
 {
-    public function __construct(private readonly RosterValidator $rosterValidator) {}
+    public function __construct(
+        private readonly RosterValidator $rosterValidator,
+        private readonly CommunityLookup $communityLookup,
+    ) {}
 
     public function index(Request $request, Event $event): View
     {
@@ -51,7 +57,160 @@ class OrganizerTeamController extends Controller
             ->pluck('payable_id')
             ->all();
 
-        return view('panel.organizer.teams.index', compact('event', 'participants', 'categories', 'workspace', 'paidParticipantIds'));
+        $allReferencedCodes = $categories->flatMap(fn ($c) => (array) ($c->required_documents ?? []))
+            ->unique()
+            ->filter()
+            ->values()
+            ->all();
+
+        $participantDocumentTypes = DocumentType::query()
+            ->where(function ($q) use ($allReferencedCodes): void {
+                $q->where('is_active', true);
+                if (! empty($allReferencedCodes)) {
+                    $q->orWhereIn('code', $allReferencedCodes);
+                }
+            })
+            ->orderBy('sort_order')
+            ->get()
+            ->keyBy('code');
+
+        $currentParticipantIds = $participants->pluck('id')->all();
+        $allMemberUserIds = $participants->flatMap(fn ($p) => $p->members->pluck('user_id'))
+            ->unique()
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+
+        $allPageDocs = collect();
+        if (! empty($currentParticipantIds) || ! empty($allMemberUserIds)) {
+            $allPageDocs = Document::query()
+                ->where(function ($q) use ($currentParticipantIds, $allMemberUserIds): void {
+                    if (! empty($currentParticipantIds)) {
+                        $q->where(function ($teamQ) use ($currentParticipantIds): void {
+                            $teamQ->where('documentable_type', EventParticipant::class)
+                                ->whereIn('documentable_id', $currentParticipantIds);
+                        });
+                    }
+                    if (! empty($allMemberUserIds)) {
+                        $q->orWhere(function ($athQ) use ($allMemberUserIds): void {
+                            $athQ->where('documentable_type', User::class)
+                                ->whereIn('documentable_id', $allMemberUserIds);
+                        });
+                    }
+                })
+                ->get();
+        }
+
+        $participantDocuments = [];
+
+        foreach ($participants as $participant) {
+            $actualSubtype = '';
+            if ($participant->community_id) {
+                $communitySummary = $this->communityLookup->find((int) $participant->community_id);
+                $actualSubtype = (string) ($communitySummary?->subtype ?? '');
+            }
+
+            $reqDocs = $participant->category?->required_documents ?? [];
+            $applicableTeamCodes = [];
+            $applicableAthleteCodes = [];
+
+            foreach ($reqDocs as $docCode) {
+                $dt = $participantDocumentTypes->get($docCode);
+                if ($dt && (empty($actualSubtype) || $dt->appliesToEntity($actualSubtype))) {
+                    if ($dt->scope === 'team') {
+                        $applicableTeamCodes[] = $docCode;
+                    } elseif ($dt->scope === 'athlete') {
+                        $applicableAthleteCodes[] = $docCode;
+                    }
+                }
+            }
+
+            $pMemberIds = $participant->members->pluck('user_id')->map(fn ($id): int => (int) $id)->all();
+
+            $pDocs = $allPageDocs->filter(function ($doc) use ($participant, $applicableTeamCodes, $applicableAthleteCodes, $pMemberIds): bool {
+                if ($doc->documentable_type === EventParticipant::class && (int) $doc->documentable_id === (int) $participant->id) {
+                    return in_array($doc->category, $applicableTeamCodes, true);
+                }
+                if ($doc->documentable_type === User::class && in_array((int) $doc->documentable_id, $pMemberIds, true)) {
+                    return in_array($doc->category, $applicableAthleteCodes, true);
+                }
+
+                return false;
+            })->values();
+
+            $participantDocuments[$participant->id] = $pDocs;
+        }
+
+        return view('panel.organizer.teams.index', compact(
+            'event',
+            'participants',
+            'categories',
+            'workspace',
+            'paidParticipantIds',
+            'participantDocuments',
+            'participantDocumentTypes',
+        ));
+    }
+
+    public function downloadDocument(Event $event, EventParticipant $participant, int $document): StreamedResponse
+    {
+        $this->authorizeOrganizer($event);
+        $this->authorizeParticipant($event, $participant);
+
+        $participant->loadMissing(['category', 'members']);
+        $category = $participant->category;
+        abort_unless($category, 404, 'Kategori tidak ditemukan.');
+
+        /** @var Document|null $doc */
+        $doc = Document::query()->find($document);
+        abort_unless($doc, 404, 'Berkas tidak ditemukan.');
+
+        // Private files only
+        abort_if((bool) $doc->is_public, 403, 'Akses ditolak: bukan berkas privat.');
+
+        // Scope check: must belong to participant or roster member
+        $memberIds = $participant->members->pluck('user_id')->map(fn ($id): int => (int) $id)->all();
+        $isTeamDoc = $doc->documentable_type === EventParticipant::class && (int) $doc->documentable_id === (int) $participant->id;
+        $isAthleteDoc = $doc->documentable_type === User::class && in_array((int) $doc->documentable_id, $memberIds, true);
+
+        abort_unless($isTeamDoc || $isAthleteDoc, 403, 'Akses ditolak: berkas tidak terikat dengan tim ini.');
+
+        // Scope doc code: must be a required applicable document for this category and entity
+        $requiredDocuments = $category->required_documents ?? [];
+        abort_unless(in_array($doc->category, $requiredDocuments, true), 403, 'Akses ditolak: jenis dokumen tidak termasuk persyaratan kategori.');
+
+        $docType = DocumentType::query()->where('code', $doc->category)->first();
+        abort_unless($docType, 404, 'Jenis dokumen tidak ditemukan.');
+
+        $actualSubtype = '';
+        if ($participant->community_id) {
+            $communitySummary = $this->communityLookup->find((int) $participant->community_id);
+            $actualSubtype = (string) ($communitySummary?->subtype ?? '');
+        }
+
+        if (! empty($actualSubtype)) {
+            abort_unless($docType->appliesToEntity($actualSubtype), 403, 'Akses ditolak: dokumen tidak berlaku untuk entitas ini.');
+        }
+
+        if ($isTeamDoc) {
+            abort_unless($docType->scope === 'team', 403, 'Akses ditolak: scope dokumen tidak sesuai tim.');
+        } else {
+            abort_unless($docType->scope === 'athlete', 403, 'Akses ditolak: scope dokumen tidak sesuai atlet.');
+        }
+
+        $filePath = (string) $doc->file_path;
+        abort_if(empty($filePath), 404, 'Berkas fisik tidak ditemukan.');
+
+        $name = $doc->name ?? $doc->category;
+
+        if (Storage::disk('local')->exists($filePath)) {
+            return Storage::disk('local')->download($filePath, $name);
+        }
+
+        if (Storage::disk('public')->exists($filePath)) {
+            return Storage::disk('public')->download($filePath, $name);
+        }
+
+        abort(404, 'Berkas fisik tidak ditemukan.');
     }
 
     public function verify(Event $event, EventParticipant $participant): RedirectResponse
@@ -88,32 +247,68 @@ class OrganizerTeamController extends Controller
         $requiredDocuments = $category->required_documents ?? [];
         if (! empty($requiredDocuments)) {
             $documentTypes = DocumentType::query()->whereIn('code', $requiredDocuments)->get()->keyBy('code');
-            $memberIds = $participant->members->pluck('user_id')->map(fn ($id): int => (int) $id)->all();
-            $athleteDocuments = Document::query()
-                ->where('documentable_type', User::class)
-                ->whereIn('documentable_id', $memberIds)
-                ->whereIn('category', $requiredDocuments)
-                ->where('status', 'verified')
-                ->get();
-            $teamDocuments = Document::query()
-                ->where('documentable_type', EventParticipant::class)
-                ->where('documentable_id', $participant->id)
-                ->whereIn('category', $requiredDocuments)
-                ->where('status', 'verified')
-                ->get();
 
-            foreach ($requiredDocuments as $documentCode) {
-                if ($documentTypes->get($documentCode)?->scope === 'team') {
-                    if (! $teamDocuments->contains('category', $documentCode)) {
-                        return back()->with('error', "Dokumen tim [{$documentCode}] belum diverifikasi.");
-                    }
+            foreach ($requiredDocuments as $docCode) {
+                if (! $documentTypes->has($docCode)) {
+                    return back()->with('error', "Jenis dokumen [{$docCode}] tidak valid atau tidak terdaftar di sistem.");
+                }
+            }
 
-                    continue;
+            $actualSubtype = '';
+            if ($participant->community_id) {
+                $communitySummary = $this->communityLookup->find((int) $participant->community_id);
+                $actualSubtype = (string) ($communitySummary?->subtype ?? '');
+            }
+
+            $applicableRequiredDocs = [];
+            foreach ($requiredDocuments as $docCode) {
+                $docMeta = $documentTypes->get($docCode);
+                if (! in_array($docMeta->scope, ['team', 'athlete'], true)) {
+                    return back()->with('error', "Scope dokumen [{$docCode}] tidak valid.");
                 }
 
-                $coveredMembers = $athleteDocuments->where('category', $documentCode)->pluck('documentable_id')->map(fn ($id): int => (int) $id);
-                if ($coveredMembers->unique()->count() !== count(array_unique($memberIds))) {
-                    return back()->with('error', "Dokumen atlet [{$documentCode}] belum diverifikasi untuk seluruh roster.");
+                if (empty($actualSubtype) || $docMeta->appliesToEntity($actualSubtype)) {
+                    $applicableRequiredDocs[] = $docCode;
+                }
+            }
+
+            if (! empty($applicableRequiredDocs)) {
+                $memberIds = $participant->members->pluck('user_id')->map(fn ($id): int => (int) $id)->all();
+
+                $athleteDocuments = Document::query()
+                    ->where('documentable_type', User::class)
+                    ->whereIn('documentable_id', $memberIds)
+                    ->whereIn('category', $applicableRequiredDocs)
+                    ->where('status', 'verified')
+                    ->get()
+                    ->filter(fn (Document $d) => ! empty($d->file_path) && (Storage::disk('local')->exists($d->file_path) || Storage::disk('public')->exists($d->file_path)));
+
+                $teamDocuments = Document::query()
+                    ->where('documentable_type', EventParticipant::class)
+                    ->where('documentable_id', $participant->id)
+                    ->whereIn('category', $applicableRequiredDocs)
+                    ->where('status', 'verified')
+                    ->get()
+                    ->filter(fn (Document $d) => ! empty($d->file_path) && (Storage::disk('local')->exists($d->file_path) || Storage::disk('public')->exists($d->file_path)));
+
+                foreach ($applicableRequiredDocs as $documentCode) {
+                    $docMeta = $documentTypes->get($documentCode);
+                    if ($docMeta->scope === 'team') {
+                        if (! $teamDocuments->contains('category', $documentCode)) {
+                            return back()->with('error', "Dokumen tim [{$documentCode}] belum diverifikasi atau berkas fisik tidak ditemukan.");
+                        }
+
+                        continue;
+                    }
+
+                    if ($docMeta->scope === 'athlete') {
+                        $coveredMembers = $athleteDocuments->where('category', $documentCode)->pluck('documentable_id')->map(fn ($id): int => (int) $id);
+                        if ($coveredMembers->unique()->count() !== count(array_unique($memberIds))) {
+                            return back()->with('error', "Dokumen atlet [{$documentCode}] belum diverifikasi untuk seluruh roster.");
+                        }
+
+                        continue;
+                    }
                 }
             }
         }

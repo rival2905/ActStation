@@ -36,16 +36,21 @@ return Application::configure(basePath: dirname(__DIR__))
                     require app_path('Modules/Payment/Routes/admin.php');
                     require app_path('Modules/Marketplace/Routes/admin.php');
                     require app_path('Modules/Report/Routes/admin.php');
+                    require app_path('Modules/Communication/Routes/admin.php');
                 });
 
             Route::middleware('web')
                 ->group(app_path('Modules/Community/Routes/web.php'));
 
             Route::middleware('web')
+                ->group(app_path('Modules/Communication/Routes/web.php'));
+
+            Route::middleware('web')
                 ->prefix('panel')
                 ->name('panel.')
                 ->group(function (): void {
                     require app_path('Modules/Community/Routes/panel.php');
+                    require app_path('Modules/MasterData/Routes/panel.php');
                     if (file_exists(app_path('Modules/Event/Routes/panel.php'))) {
                         require app_path('Modules/Event/Routes/panel.php');
                     }
