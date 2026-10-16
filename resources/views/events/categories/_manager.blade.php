@@ -111,7 +111,12 @@
                                 <span class="badge bg-100 text-dark border">{{ $category->ageRangeLabel() }}</span>
                             </td>
                             <td>{{ $category->min_roster ?? '–' }}–{{ $category->max_roster ?? '–' }}</td>
-                            <td>{{ $category->participants_count }} / {{ $category->max_teams ?? 'Tanpa batas' }}</td>
+                            <td>
+                                <div>{{ $category->participants_count }} / {{ $category->max_teams ?? 'Tanpa batas' }}</div>
+                                <small class="text-muted d-block" title="Maksimal pendaftaran tim per entitas/komunitas dalam kategori ini">
+                                    Maks {{ $category->max_teams_per_entity ?? 1 }} tim/entitas
+                                </small>
+                            </td>
                             <td>
                                 <div>{{ ucwords(str_replace('_', ' ', $category->registration_flow)) }}</div>
                                 @if($category->registration_flow === 'screening_first' && (float) $category->registration_fee > 0)

@@ -119,13 +119,19 @@ class RegistrationGuard
                 }
             }
 
-            $hasRegistered = $this->activeParticipants($category->participants(), $now)
+            $maxTeamsPerEntity = max(1, (int) ($category->max_teams_per_entity ?? 1));
+
+            $activeCount = $this->activeEntityParticipants($category->participants(), $now)
                 ->when($ignoring, fn ($query) => $query->where('id', '!=', $ignoring->id))
                 ->where('community_id', $communityId)
-                ->exists();
+                ->count();
 
-            if ($hasRegistered) {
-                throw new RegistrationGuardException('Komunitas hanya diperbolehkan mendaftarkan 1 tim per kategori event.');
+            if ($activeCount >= $maxTeamsPerEntity) {
+                $message = $maxTeamsPerEntity === 1
+                    ? 'Komunitas hanya diperbolehkan mendaftarkan 1 tim per kategori event.'
+                    : "Komunitas hanya diperbolehkan mendaftarkan maksimal {$maxTeamsPerEntity} tim per kategori event.";
+
+                throw new RegistrationGuardException($message);
             }
         } else {
             if (! $category->allow_individual) {
@@ -182,6 +188,20 @@ class RegistrationGuard
         if ($nameConflict) {
             throw new RegistrationGuardException("Nama tim [{$trimmedName}] sudah terdaftar di kategori ini.");
         }
+    }
+
+    public function activeEntityParticipants(HasMany $query, Carbon $now): HasMany
+    {
+        return $query->where(function ($active) use ($now): void {
+            $active->whereIn('status', ['registered', 'revision_needed', 'verified', 'confirmed', 'waiting_list'])
+                ->orWhere(function ($pending) use ($now): void {
+                    $pending->where('status', 'pending_payment')
+                        ->where(function ($deadline) use ($now): void {
+                            $deadline->whereNull('payment_deadline_at')
+                                ->orWhere('payment_deadline_at', '>=', $now);
+                        });
+                });
+        });
     }
 
     private function activeParticipants(HasMany $query, Carbon $now): HasMany

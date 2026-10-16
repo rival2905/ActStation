@@ -21,6 +21,7 @@ use App\Modules\Event\Http\Controllers\Panel\OrganizerScheduleController;
 use App\Modules\Event\Http\Controllers\Panel\OrganizerTeamController;
 use App\Modules\Event\Http\Controllers\Panel\OrganizerTicketController;
 use App\Modules\Event\Http\Controllers\Panel\OrganizerWorkspaceController;
+use App\Modules\Event\Http\Controllers\Panel\TeamInspectionController;
 use Illuminate\Support\Facades\Route;
 
 // Events Blade UI Routes
@@ -72,6 +73,9 @@ Route::scopeBindings()->prefix('events/{event}')->name('events.workspace.')->gro
     Route::post('documents/{document}/reject', [OrganizerDocumentController::class, 'reject'])->middleware('permission:event.publish')->name('documents.reject');
     Route::delete('documents/{document}', [OrganizerDocumentController::class, 'destroy'])->middleware('permission:event.delete')->name('documents.destroy');
     Route::post('documents/{document}/toggle-public', [OrganizerDocumentController::class, 'togglePublic'])->middleware('permission:event.update')->name('documents.togglePublic');
+    Route::get('team-inspections/{kind}/{id}', [TeamInspectionController::class, 'show'])->middleware('permission:event-participant.view')->name('teams.inspection.show');
+    Route::get('team-inspections/{kind}/{id}/documents/{owner}/{code}/download', [TeamInspectionController::class, 'download'])->middleware('permission:event-participant.view')->name('teams.inspection.download');
+    Route::post('team-inspections/{kind}/{id}/documents/{owner}/{code}/review', [TeamInspectionController::class, 'review'])->middleware('permission:event-participant.confirm')->name('teams.inspection.review');
     Route::get('teams', [OrganizerTeamController::class, 'index'])->middleware('permission:event-participant.view')->name('teams.index');
     Route::get('teams/{participant}/documents/{document}/download', [OrganizerTeamController::class, 'downloadDocument'])->middleware('permission:event-participant.view')->name('teams.documents.download');
     Route::post('teams/{participant}/verify', [OrganizerTeamController::class, 'verify'])->middleware('permission:event-participant.confirm')->name('teams.verify');

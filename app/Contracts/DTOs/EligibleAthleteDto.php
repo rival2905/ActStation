@@ -17,6 +17,8 @@ final readonly class EligibleAthleteDto implements JsonSerializable
         public ?CarbonInterface $birthDate,
         public ?string $gender,
         public ?int $developmentLevelId,
+        public ?string $studentIdentifierType = null,
+        public ?string $studentIdentifierValue = null,
     ) {}
 
     public function jsonSerialize(): mixed

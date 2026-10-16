@@ -429,6 +429,9 @@ test('panel events register view passes school_level to acceptsCommunityType for
         'documentTypes' => collect(),
         'vaultDocuments' => collect(),
         'legalDocuments' => [],
+        'registrations' => collect(),
+        'registrationDrafts' => collect(),
+        'maxTeamsPerEntity' => [],
     ])->render();
 
     // SMP category is in eligible select options

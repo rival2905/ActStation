@@ -38,6 +38,7 @@
             </a>
             <div class="dropdown-menu dropdown-caret dropdown-menu-end py-0" aria-labelledby="navbarDropdownUser">
                 <div class="bg-white dark__bg-1000 rounded-2 py-2">
+                    <a class="dropdown-item mt-1" href="{{ route('user-profile.edit') }}"><span class="fas fa-user me-2 text-primary"></span>Profil Saya</a>
                     <div class="px-3 py-2 border-bottom">
                         <h6 class="mb-0 text-900 fw-bold">{{ auth()->user()->name ?? 'User' }}</h6>
                         <small class="text-600 fs-11">{{ auth()->user()->email ?? '' }}</small>

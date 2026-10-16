@@ -19,7 +19,7 @@ class SchoolController extends Controller
         $this->schoolLookup ??= app(SchoolLookup::class);
     }
 
-    public function index(Request $request): View
+    public function index(Request $request): View|JsonResponse
     {
         $query = School::query()->with('city');
 
@@ -43,7 +43,38 @@ class SchoolController extends Controller
             $query->where('city_id', $request->input('city_id'));
         }
 
-        $schools = $query->paginate(20)->withQueryString();
+        $sort = (string) $request->input('sort', 'name');
+        $direction = strtolower((string) $request->input('direction', 'asc')) === 'desc' ? 'desc' : 'asc';
+        $allowedSorts = ['npsn', 'name', 'school_level', 'school_status', 'city_id'];
+        if (in_array($sort, $allowedSorts, true)) {
+            $query->orderBy($sort, $direction);
+        } else {
+            $query->orderBy('name', 'asc');
+        }
+
+        $perPage = (int) $request->input('per_page', 10);
+        $schools = $query->paginate($perPage)->withQueryString();
+
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json([
+                'data' => $schools->map(fn (School $s) => [
+                    'id' => $s->id,
+                    'npsn' => $s->npsn,
+                    'name' => $s->name,
+                    'school_level' => $s->school_level,
+                    'school_status' => $s->school_status,
+                    'city_name' => $s->city?->nama ?? $s->city_id ?? '-',
+                    'show_url' => route('admin.schools.show', $s),
+                ]),
+                'current_page' => $schools->currentPage(),
+                'last_page' => $schools->lastPage(),
+                'per_page' => $schools->perPage(),
+                'total' => $schools->total(),
+                'from' => $schools->firstItem() ?? 0,
+                'to' => $schools->lastItem() ?? 0,
+            ]);
+        }
+
         $filters = $request->only(['search', 'school_level', 'school_status', 'city_id']);
 
         return view('admin.schools.index', compact('schools', 'filters'));

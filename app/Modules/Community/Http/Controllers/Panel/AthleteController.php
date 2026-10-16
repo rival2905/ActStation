@@ -25,18 +25,21 @@ class AthleteController extends PanelBaseController
         $this->authorize('view', $community);
 
         $athletes = $community->athletes()
-            ->with(['user', 'community'])
+            ->with(['user.province', 'user.city', 'community', 'developmentLevel'])
             ->whereIn('status', ['active', 'left'])
             ->latest()
             ->get();
 
         $pendingAthletes = $community->athletes()
-            ->with(['user', 'community'])
+            ->with(['user.province', 'user.city', 'community', 'developmentLevel'])
             ->where('status', 'pending')
             ->latest()
             ->get();
 
-        $invitations = $community->invitations()
+        $incomingRegistrations = $pendingAthletes->where('initiated_by', 'athlete')->values();
+        $pendingRequests = $pendingAthletes->where('initiated_by', 'community')->values();
+
+        $rawInvitations = $community->invitations()
             ->select([
                 'id',
                 'community_id',
@@ -50,6 +53,7 @@ class AthleteController extends PanelBaseController
                 'expires_at',
                 'registered_at',
                 'registered_user_id',
+                'encrypted_token',
                 'created_by',
                 'created_at',
                 'updated_at',
@@ -57,13 +61,18 @@ class AthleteController extends PanelBaseController
             ->latest()
             ->get();
 
+        $globalLinks = $rawInvitations->where('is_global', true)->where('status', 'pending')->values();
+        $invitations = $rawInvitations->where('is_global', false)->values();
         $developmentLevels = DB::table('development_levels')->get();
 
         return view('panel.athletes.index', compact(
             'community',
             'athletes',
             'pendingAthletes',
+            'incomingRegistrations',
+            'pendingRequests',
             'invitations',
+            'globalLinks',
             'developmentLevels'
         ));
     }

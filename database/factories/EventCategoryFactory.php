@@ -37,6 +37,7 @@ class EventCategoryFactory extends Factory
             'min_roster' => 5,
             'max_roster' => 12,
             'max_teams' => 16,
+            'max_teams_per_entity' => 1,
         ];
     }
 }

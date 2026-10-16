@@ -204,6 +204,8 @@ test('registration view filters school letter out for institution while renderin
 
     $athleteObj = (object) [
         'userId' => 501,
+        'studentIdentifierType' => null,
+        'studentIdentifierValue' => null,
         'name' => 'Pegawai Atlet',
         'gender' => 'male',
         'birthDate' => '2005-01-01',
@@ -216,6 +218,9 @@ test('registration view filters school letter out for institution while renderin
         'documentTypes' => $documentTypes,
         'vaultDocuments' => collect(),
         'legalDocuments' => [],
+        'registrations' => collect(),
+        'registrationDrafts' => collect(),
+        'maxTeamsPerEntity' => [],
     ]);
 
     $instHtml = (string) $instView;
@@ -241,6 +246,9 @@ test('registration view filters school letter out for institution while renderin
         'documentTypes' => $documentTypes,
         'vaultDocuments' => collect(),
         'legalDocuments' => [],
+        'registrations' => collect(),
+        'registrationDrafts' => collect(),
+        'maxTeamsPerEntity' => [],
     ]);
 
     $schoolHtml = (string) $schoolView;
@@ -295,8 +303,8 @@ test('registration athlete vault UI does not blindly treat rejected documents as
     ]);
     $community->exists = true;
 
-    $athlete1 = (object) ['userId' => 101, 'name' => 'Atlet Terverifikasi', 'gender' => 'male', 'birthDate' => '2008-01-01'];
-    $athlete2 = (object) ['userId' => 102, 'name' => 'Atlet Ditolak', 'gender' => 'male', 'birthDate' => '2008-01-01'];
+    $athlete1 = (object) ['userId' => 101, 'studentIdentifierType' => null, 'studentIdentifierValue' => null, 'name' => 'Atlet Terverifikasi', 'gender' => 'male', 'birthDate' => '2008-01-01'];
+    $athlete2 = (object) ['userId' => 102, 'studentIdentifierType' => null, 'studentIdentifierValue' => null, 'name' => 'Atlet Ditolak', 'gender' => 'male', 'birthDate' => '2008-01-01'];
 
     // Put valid file in storage for athlete 1
     Storage::disk('local')->put('vault/ktp_101.pdf', 'dummy content');
@@ -326,6 +334,9 @@ test('registration athlete vault UI does not blindly treat rejected documents as
         'documentTypes' => $documentTypes,
         'vaultDocuments' => $vaultDocuments,
         'legalDocuments' => [],
+        'registrations' => collect(),
+        'registrationDrafts' => collect(),
+        'maxTeamsPerEntity' => [],
     ]);
 
     $html = (string) $view;

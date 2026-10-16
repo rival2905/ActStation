@@ -134,7 +134,8 @@ test('manager komunitas dapat mengakses halaman daftar turnamen dan form pendaft
         ->assertSee('KU-16 Putra');
 });
 
-test('manager dapat mendaftarkan tim dan roster atlet secara sah', function (): void {
+test('manager dapat mendaftarkan tim tanpa prasyarat verifikasi wilayah atlet', function (string $regionStatus): void {
+    CommunityAthlete::where('community_id', $this->community->id)->update(['region_status' => $regionStatus]);
     $membersPayload = [];
     foreach ($this->athletes as $index => $ath) {
         $membersPayload[] = [
@@ -163,7 +164,8 @@ test('manager dapat mendaftarkan tim dan roster atlet secara sah', function (): 
         ->and($participant->status)->toBe('pending_payment');
 
     $response->assertRedirect(route('panel.community-events.checkout', $participant->id));
-});
+    expect(CommunityAthlete::where('community_id', $this->community->id)->pluck('region_status')->unique()->all())->toBe([$regionStatus]);
+})->with(['pending', 'rejected', 'verified']);
 
 test('manager dapat mengunggah bukti bayar manual dengan waiver hukum', function (): void {
     Storage::fake('public');

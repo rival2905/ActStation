@@ -380,6 +380,7 @@ test('registration UI JS: filterAthletesByCategory enables only selected categor
     const mockDoc = createMockDocument(root);
     const sandbox = {
         document: mockDoc,
+        window: {},
         Math,
         JSON,
         console,
@@ -449,6 +450,7 @@ test('registration UI JS: toggleAthleteRow dynamically sets required on checked 
     const mockDoc = createMockDocument(root);
     const sandbox = {
         document: mockDoc,
+        window: {},
         Math,
         JSON,
         console,

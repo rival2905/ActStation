@@ -15,6 +15,7 @@ use App\Modules\Payment\Models\Transaction;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class CategoryController extends Controller
@@ -57,7 +58,24 @@ class CategoryController extends Controller
     {
         abort_unless((int) $category->event_id === (int) $event->id, 404);
 
-        $category->update($request->categoryData());
+        $data = $request->categoryData();
+
+        DB::transaction(function () use ($category, $data): void {
+            /** @var EventCategory $lockedCategory */
+            $lockedCategory = EventCategory::query()->whereKey($category->id)->lockForUpdate()->firstOrFail();
+
+            if (array_key_exists('max_teams_per_entity', $data)) {
+                $newLimit = (int) $data['max_teams_per_entity'];
+                $maxActive = $lockedCategory->maxActiveTeamsPerCommunity();
+                if ($newLimit < $maxActive) {
+                    throw ValidationException::withMessages([
+                        'max_teams_per_entity' => "Batas maksimal tim per komunitas ({$newLimit}) tidak boleh lebih kecil dari jumlah tim aktif yang sudah terdaftar ({$maxActive} tim).",
+                    ]);
+                }
+            }
+
+            $lockedCategory->update($data);
+        });
 
         return back()->with('success', 'Kategori event berhasil diperbarui.');
     }

@@ -8,6 +8,7 @@ use App\Models\Concerns\Auditable;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Crypt;
 
 class CommunityInvitation extends Model
 {
@@ -18,7 +19,10 @@ class CommunityInvitation extends Model
      */
     protected $fillable = [
         'community_id',
+        'registration_draft_id',
+        'event_category_id',
         'token',
+        'encrypted_token',
         'invite_type',
         'is_global',
         'name',
@@ -37,6 +41,7 @@ class CommunityInvitation extends Model
      */
     protected $hidden = [
         'token',
+        'encrypted_token',
     ];
 
     /**
@@ -66,5 +71,18 @@ class CommunityInvitation extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function getInvitationUrlAttribute(): ?string
+    {
+        if (empty($this->encrypted_token)) {
+            return null;
+        }
+
+        try {
+            return url('/invite/'.Crypt::decryptString($this->encrypted_token));
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }

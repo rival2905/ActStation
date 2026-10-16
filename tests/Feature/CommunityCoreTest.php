@@ -300,6 +300,7 @@ test('undangan privat dengan email lain ditolak', function (): void {
     );
 
     $response = $this->post(route('invitations.public.submit', $result['plain_token']), [
+        'consent' => '1',
         'name' => 'Imposter User',
         'email' => 'other@actstation.test',
         'password' => 'password123',
@@ -326,6 +327,7 @@ test('email existing tidak ter-attach', function (): void {
     );
 
     $response = $this->post(route('invitations.public.submit', $result['plain_token']), [
+        'consent' => '1',
         'name' => 'Existing User',
         'email' => 'existing@actstation.test',
         'password' => 'password123',

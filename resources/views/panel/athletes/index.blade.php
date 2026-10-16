@@ -1,6 +1,6 @@
 @extends('layouts.panel')
 
-@section('title', 'Roster & Anggota Atlet - ' . config('app.name', 'ActStation'))
+@section('title', 'Anggota Komunitas & Roster - ' . config('app.name', 'ActStation'))
 
 @section('content')
 @if(session('invite_url'))
@@ -17,16 +17,160 @@
     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Tutup"></button>
 </div>
 @endif
+
+<div class="alert alert-subtle-info d-flex gap-2 align-items-start mb-3">
+    <span class="fas fa-info-circle mt-1"></span>
+    <div>
+        <strong>Penambahan atlet memerlukan persetujuan atlet yang bersangkutan.</strong>
+        <div class="fs-11">
+            {{ ($community->subtype ?? null) === 'club' ? 'Satu atlet hanya boleh aktif di satu klub.' : 'Atlet dapat bergabung di komunitas ini.' }}
+            Gunakan fitur <strong>Link Global</strong> untuk mengundang calon atlet yang dapat mendaftar mandiri.
+        </div>
+    </div>
+</div>
+
+@if(isset($globalLinks) && $globalLinks->isNotEmpty())
+<div class="card mb-3">
+    <div class="card-header bg-body-tertiary d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 text-900"><span class="fas fa-link me-2 text-primary"></span>Link Global Atlet</h6>
+        <span class="badge badge-subtle-primary">{{ $globalLinks->count() }} link aktif</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-striped fs-10 mb-0 align-middle">
+            <thead class="bg-200 text-900">
+                <tr>
+                    <th class="ps-3" style="min-width: 280px;">Link</th>
+                    <th>Pendaftar</th>
+                    <th>Kadaluarsa</th>
+                    <th class="text-end pe-3">Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($globalLinks as $link)
+                <tr>
+                    <td class="ps-3">
+                        @if($link->invitation_url)
+                        <div class="input-group input-group-sm">
+                            <input class="form-control font-monospace fs-11" value="{{ $link->invitation_url }}" readonly aria-label="Link global" id="global-link-{{ $link->id }}">
+                            <button class="btn btn-outline-primary" type="button" onclick="copyInvitationLink('{{ $link->invitation_url }}', this)" aria-label="Salin link global" title="Salin link">
+                                <span class="fas fa-copy"></span>
+                            </button>
+                        </div>
+                        @else
+                        <span class="text-400 font-monospace fs-11">-</span>
+                        @endif
+                    </td>
+                    <td class="text-700">
+                        <span class="fw-semi-bold">{{ $link->registrations_count }}</span>{{ $link->max_registrations ? ' / ' . $link->max_registrations : '' }} pendaftar
+                    </td>
+                    <td class="text-700">{{ $link->expires_at?->format('d M Y') ?: 'Tanpa Batas' }}</td>
+                    <td class="text-end pe-3">
+                        <form method="POST" action="{{ route('panel.invitations.revoke', $link) }}" class="d-inline" onsubmit="return confirm('Hapus / cabut link global ini?')">
+                            @csrf
+                            @method('DELETE')
+                            <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
+                            <button class="btn btn-sm btn-outline-danger py-0 px-2 fs-11" aria-label="Hapus link global" title="Hapus link">
+                                <span class="fas fa-times me-1"></span>Hapus
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+</div>
+@endif
+
+@if(isset($incomingRegistrations) && $incomingRegistrations->isNotEmpty())
+<div class="card mb-3 border border-primary-subtle">
+    <div class="card-header bg-primary-subtle d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 text-primary">
+            <span class="fas fa-user-clock me-2"></span>Pendaftaran Atlet Baru
+        </h6>
+        <span class="badge badge-subtle-primary">{{ $incomingRegistrations->count() }} menunggu persetujuan</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0 align-middle fs-10">
+            <thead class="bg-200 text-900">
+                <tr>
+                    <th class="ps-3">Atlet</th>
+                    <th>Tgl Lahir / Usia</th>
+                    <th>Domisili</th>
+                    <th>Tanggal Daftar</th>
+                    <th>Status</th>
+                    <th class="text-end pe-3">Persetujuan Pengurus</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($incomingRegistrations as $reg)
+                <tr>
+                    <td class="ps-3">
+                        <div class="fw-bold text-900">{{ $reg->user?->name ?? 'User #' . $reg->user_id }}</div>
+                        <small class="text-600">{{ $reg->user?->email }}</small>
+                        @if($reg->user?->phone_number)
+                            <small class="text-500 d-block">{{ $reg->user->phone_number }}</small>
+                        @endif
+                    </td>
+                    <td>
+                        @if($reg->user?->birth_date)
+                            @php $age = \Carbon\Carbon::parse($reg->user->birth_date)->age; @endphp
+                            <div class="fw-semibold text-900 fs-11">
+                                <span class="fas fa-birthday-cake text-primary me-1"></span>{{ \Carbon\Carbon::parse($reg->user->birth_date)->translatedFormat('d M Y') }}
+                            </div>
+                            <small class="badge badge-subtle-info fs-11">{{ $age }} tahun</small>
+                        @else
+                            <span class="text-400 fs-11">-</span>
+                        @endif
+                    </td>
+                    <td>
+                        <div class="fs-10 text-900">{{ $reg->user?->city?->nama ?? '-' }}</div>
+                        <small class="text-600">{{ $reg->user?->province?->nama ?? '-' }}</small>
+                    </td>
+                    <td class="text-700">{{ $reg->created_at?->diffForHumans() }}</td>
+                    <td><span class="badge badge-subtle-info">Pendaftaran Baru</span></td>
+                    <td class="text-end pe-3">
+                        <div class="d-inline-flex gap-2">
+                            <form method="POST" action="{{ route('panel.athletes.approve', $reg) }}" onsubmit="return confirm('Setujui pendaftaran atlet {{ $reg->user?->name }}?')">
+                                @csrf
+                                <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
+                                <button class="btn btn-sm btn-success py-0 px-2 fs-11" type="submit" title="Setujui pendaftaran">
+                                    <span class="fas fa-check me-1"></span>Setujui
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ route('panel.athletes.reject', $reg) }}" onsubmit="return confirm('Tolak pendaftaran atlet {{ $reg->user?->name }}?')">
+                                @csrf
+                                <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
+                                <button class="btn btn-sm btn-outline-danger py-0 px-2 fs-11" type="submit" title="Tolak pendaftaran">
+                                    <span class="fas fa-times me-1"></span>Tolak
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+</div>
+@endif
+
 <div class="card mb-3">
     <div class="card-header bg-body-tertiary">
         <div class="row align-items-center">
             <div class="col">
-                <h5 class="mb-0">Manajemen Roster &amp; Atlet</h5>
-                <p class="text-600 fs-10 mb-0">Kelola atlet terdaftar, permohonan gabung, dan undangan klub {{ $community->name }}</p>
+                <h5 class="mb-0">Anggota Komunitas &amp; Roster</h5>
+                <p class="text-600 fs-10 mb-0">
+                    @if(($community->subtype ?? null) === 'school')
+                        Kelola Anggota Ekskul {{ $community->name }}. Keanggotaan ini bukan roster tim kompetisi; pemilihan tim dilakukan terpisah.
+                    @else
+                        Kelola Anggota Komunitas {{ $community->name }}. Keanggotaan ini bukan roster tim kompetisi; pemilihan tim dilakukan terpisah.
+                    @endif
+                </p>
             </div>
             <div class="col-auto d-flex gap-2">
-                <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#modalCreateInvitation">
-                    <span class="fas fa-link me-1"></span>Buat Undangan
+                <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#globalLinkModal">
+                    <span class="fas fa-link me-1"></span>Link Global
                 </button>
                 <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#modalAddAthlete">
                     <span class="fas fa-user-plus me-1"></span>Tambah Atlet
@@ -161,7 +305,9 @@
                             <tr>
                                 <th class="ps-3" style="width: 50px;">No</th>
                                 <th>Nama Atlet</th>
-                                <th>Email / Kontak</th>
+                                <th>Tgl Lahir / Usia</th>
+                                <th>Domisili</th>
+                                <th>Kontak</th>
                                 <th>Inisiator</th>
                                 <th>Posisi / Jersey</th>
                                 <th>Tanggal Pengajuan</th>
@@ -174,6 +320,21 @@
                                 <td class="ps-3 text-700">{{ $index + 1 }}</td>
                                 <td>
                                     <h6 class="mb-0 text-900 fw-semi-bold">{{ $pending->user?->name ?? 'User #' . $pending->user_id }}</h6>
+                                </td>
+                                <td>
+                                    @if($pending->user?->birth_date)
+                                        @php $age = \Carbon\Carbon::parse($pending->user->birth_date)->age; @endphp
+                                        <div class="fw-semibold text-900 fs-11">
+                                            <span class="fas fa-birthday-cake text-primary me-1"></span>{{ \Carbon\Carbon::parse($pending->user->birth_date)->translatedFormat('d M Y') }}
+                                        </div>
+                                        <small class="badge badge-subtle-info fs-11">{{ $age }} tahun</small>
+                                    @else
+                                        <span class="text-400 fs-11">-</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    <div class="fs-10 text-900">{{ $pending->user?->city?->nama ?? '-' }}</div>
+                                    <small class="text-600">{{ $pending->user?->province?->nama ?? '-' }}</small>
                                 </td>
                                 <td class="text-700">
                                     <div>{{ $pending->user?->email ?? '-' }}</div>
@@ -233,7 +394,7 @@
                             </tr>
                             @empty
                             <tr>
-                                <td colspan="7" class="text-center py-4 text-600">
+                                <td colspan="9" class="text-center py-4 text-600">
                                     <span class="fas fa-inbox fs-4 d-block mb-2 text-400"></span>
                                     Tidak ada permohonan masuk atau undangan menunggu saat ini.
                                 </td>
@@ -246,13 +407,19 @@
 
             <!-- Tab 3: Daftar Undangan -->
             <div class="tab-pane fade {{ session('invite_url') ? 'show active' : '' }}" id="invitations-pane" role="tabpanel" aria-labelledby="invitations-tab">
+                <div class="d-flex justify-content-between align-items-center p-3 bg-light border-bottom">
+                    <span class="fs-11 text-700">Daftar undangan privat / khusus calon anggota.</span>
+                    <button class="btn btn-sm btn-outline-secondary py-0 px-2 fs-11" type="button" data-bs-toggle="modal" data-bs-target="#modalCreateInvitation">
+                        <span class="fas fa-envelope me-1"></span>Undangan Privat / Khusus
+                    </button>
+                </div>
                 <div class="table-responsive">
                     <table class="table table-sm table-striped fs-10 mb-0 align-middle">
                         <thead class="bg-200 text-900">
                             <tr>
-                                <th class="ps-3">Tipe</th>
+                                <th class="ps-3">Nama / Email</th>
+                                <th>Tautan Undangan</th>
                                 <th>Peran</th>
-                                <th>Target / Kuota</th>
                                 <th>Kadaluarsa</th>
                                 <th>Status</th>
                                 <th class="text-end pe-3">Aksi</th>
@@ -262,21 +429,23 @@
                             @forelse($invitations as $inv)
                             <tr>
                                 <td class="ps-3">
-                                    @if($inv->is_global)
-                                        <span class="badge badge-subtle-primary"><span class="fas fa-globe me-1"></span>Terbuka (Massal)</span>
+                                    <div class="fw-semi-bold text-900">{{ $inv->name ?: '-' }}</div>
+                                    <small class="text-600">{{ $inv->email }}</small>
+                                </td>
+                                <td>
+                                    @if($inv->invitation_url)
+                                        <div class="input-group input-group-sm" style="max-width: 260px;">
+                                            <input class="form-control font-monospace fs-11" value="{{ $inv->invitation_url }}" readonly aria-label="Link undangan" id="invitation-link-{{ $inv->id }}">
+                                            <button class="btn btn-outline-primary" type="button" onclick="copyInvitationLink('{{ $inv->invitation_url }}', this)" title="Salin link">
+                                                <span class="fas fa-copy"></span>
+                                            </button>
+                                        </div>
                                     @else
-                                        <span class="badge badge-subtle-secondary"><span class="fas fa-lock me-1"></span>Privat (Personal)</span>
+                                        <span class="text-400 font-monospace fs-11">-</span>
                                     @endif
                                 </td>
                                 <td class="text-capitalize text-700">{{ $inv->invite_type }}</td>
-                                <td class="text-700">
-                                    @if($inv->is_global)
-                                        <span>Terdaftar: {{ $inv->registrations_count }} / {{ $inv->max_registrations ?? '∞' }}</span>
-                                    @else
-                                        <span>{{ $inv->email ?? $inv->name ?? '-' }}</span>
-                                    @endif
-                                </td>
-                                <td class="text-700">{{ $inv->expires_at ? \Carbon\Carbon::parse($inv->expires_at)->format('d/m/Y H:i') : 'Tanpa Batas' }}</td>
+                                <td class="text-700">{{ $inv->expires_at ? \Carbon\Carbon::parse($inv->expires_at)->format('d M Y') : 'Tanpa Batas' }}</td>
                                 <td>
                                     @if($inv->status === 'registered')
                                         <span class="badge badge-subtle-success">Terdaftar</span>
@@ -440,10 +609,93 @@
     </div>
 </div>
 
+<!-- Modal Link Global Atlet -->
+<div class="modal fade" id="globalLinkModal" tabindex="-1" aria-labelledby="globalLinkModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="POST" action="{{ route('panel.invitations.store') }}">
+                @csrf
+                <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
+                <input type="hidden" name="is_global" value="1">
+                <input type="hidden" name="invite_type" value="athlete">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="globalLinkModalLabel">Link Global Atlet</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-subtle-info fs-10 mb-3">
+                        <span class="fas fa-info-circle me-1"></span>Satu link dapat dipakai banyak atlet untuk mendaftar sendiri.
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <label class="form-label" for="maxReg">Maks. Pendaftar</label>
+                            <input class="form-control" id="maxReg" type="number" name="max_registrations" min="1" max="1000" placeholder="Tak terbatas">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label" for="expiresDays">Kadaluarsa (hari)</label>
+                            <input class="form-control" id="expiresDays" type="number" name="expires_days" min="1" max="365" value="30">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
+                    <button class="btn btn-primary btn-sm" type="submit">Buat Link</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@endsection
+
+@push('scripts')
 <script>
     function toggleInvitationFields(isGlobal) {
-        document.getElementById('privateFields').style.display = isGlobal ? 'none' : 'block';
-        document.getElementById('globalFields').style.display = isGlobal ? 'block' : 'none';
+        var privateFields = document.getElementById('privateFields');
+        var globalFields = document.getElementById('globalFields');
+        if (privateFields) privateFields.style.display = isGlobal ? 'none' : 'block';
+        if (globalFields) globalFields.style.display = isGlobal ? 'block' : 'none';
     }
+
+    function copyInvitationLink(url, btn) {
+        var originalHtml = btn ? btn.innerHTML : '';
+        var showSuccess = function () {
+            if (btn) {
+                btn.innerHTML = '<span class="fas fa-check text-success"></span>';
+                setTimeout(function () {
+                    btn.innerHTML = originalHtml;
+                }, 2000);
+            }
+        };
+
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(url).then(showSuccess).catch(function () {
+                fallbackCopy(url, showSuccess);
+            });
+        } else {
+            fallbackCopy(url, showSuccess);
+        }
+    }
+
+    function fallbackCopy(url, callback) {
+        var temp = document.createElement('textarea');
+        temp.value = url;
+        temp.setAttribute('readonly', '');
+        temp.style.position = 'absolute';
+        temp.style.left = '-9999px';
+        document.body.appendChild(temp);
+        temp.select();
+        try {
+            document.execCommand('copy');
+            if (callback) callback();
+        } catch (e) {
+            console.error('Gagal menyalin link:', e);
+        }
+        document.body.removeChild(temp);
+    }
+
+    // Aliases to guarantee no call sites break
+    window.copyInvitationLink = copyInvitationLink;
+    window.copyLink = copyInvitationLink;
 </script>
-@endsection
+@endpush

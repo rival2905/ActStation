@@ -7,10 +7,12 @@ namespace App\Models;
 use App\Contracts\EmailDelivery;
 use App\Models\Concerns\Auditable;
 use App\Modules\Community\Models\Document;
+use App\Modules\MasterData\Models\Wilayah;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -121,6 +123,11 @@ class User extends Authenticatable implements MustVerifyEmail
         ];
     }
 
+    public function educations(): HasMany
+    {
+        return $this->hasMany(UserEducation::class);
+    }
+
     protected static function booted(): void
     {
         parent::booted();
@@ -180,6 +187,16 @@ class User extends Authenticatable implements MustVerifyEmail
     public function documents(): MorphMany
     {
         return $this->morphMany(Document::class, 'documentable');
+    }
+
+    public function province(): BelongsTo
+    {
+        return $this->belongsTo(Wilayah::class, 'province_id', 'kode');
+    }
+
+    public function city(): BelongsTo
+    {
+        return $this->belongsTo(Wilayah::class, 'city_id', 'kode');
     }
 
     /**

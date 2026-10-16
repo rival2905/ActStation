@@ -18,6 +18,8 @@ class ActivityLog extends Model
         'password',
         'remember_token',
         'identity_number',
+        'nisn',
+        'nim',
         'identity_image',
         'birth_certificate',
         'token',
@@ -152,6 +154,19 @@ class ActivityLog extends Model
 
         if (! empty($filters['date_to'])) {
             $query->where('created_at', '<=', $filters['date_to'].' 23:59:59');
+        }
+        if (! empty($filters['search'])) {
+            $search = (string) $filters['search'];
+            $query->where(function ($q) use ($search): void {
+                $q->where('ip_address', 'like', "%{$search}%")
+                    ->orWhere('event', 'like', "%{$search}%")
+                    ->orWhere('auditable_type', 'like', "%{$search}%")
+                    ->orWhere('auditable_id', 'like', "%{$search}%")
+                    ->orWhereHas('user', function ($uq) use ($search): void {
+                        $uq->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
+            });
         }
 
         return $query;

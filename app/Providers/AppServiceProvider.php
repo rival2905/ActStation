@@ -2,25 +2,33 @@
 
 namespace App\Providers;
 
+use App\Contracts\AthleteDocumentVault;
 use App\Contracts\CommunityLookup;
+use App\Contracts\ContextualAthleteInvitation;
 use App\Contracts\DevelopmentLevelLookup;
 use App\Contracts\EventLookup;
 use App\Contracts\Events\PaymentRefunded;
 use App\Contracts\Events\PaymentSucceeded;
 use App\Contracts\OfficialDirectory;
+use App\Contracts\RegistrationDraftProvider;
 use App\Contracts\RosterProvider;
 use App\Contracts\SchoolLookup;
+use App\Contracts\TeamDocumentInspection;
 use App\Listeners\AuthActivitySubscriber;
 use App\Models\User;
 use App\Modules\Community\Models\Community;
 use App\Modules\Community\Models\CommunityOfficial;
 use App\Modules\Community\Policies\CommunityPolicy;
+use App\Modules\Community\Services\AthleteDocumentVaultService;
 use App\Modules\Community\Services\CommunityLookupService;
+use App\Modules\Community\Services\InvitationService;
 use App\Modules\Community\Services\RosterProviderService;
+use App\Modules\Community\Services\TeamDocumentInspectionService;
 use App\Modules\Event\Listeners\HandleRegistrationPaymentRefunded as EventPaymentRefunded;
 use App\Modules\Event\Listeners\HandleRegistrationPaymentSucceeded as EventPaymentSucceeded;
 use App\Modules\Event\Services\EventLookupService;
 use App\Modules\Event\Services\EventRegistrationEmailService;
+use App\Modules\Event\Services\RegistrationDraftService;
 use App\Modules\Marketplace\Listeners\HandlePaymentRefunded as MarketplacePaymentRefunded;
 use App\Modules\Marketplace\Listeners\HandlePaymentSucceeded as MarketplacePaymentSucceeded;
 use App\Modules\MasterData\Services\DevelopmentLevelLookupService;
@@ -40,9 +48,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(TeamDocumentInspection::class, TeamDocumentInspectionService::class);
+        $this->app->bind(AthleteDocumentVault::class, AthleteDocumentVaultService::class);
         $this->app->bind(EventLookup::class, EventLookupService::class);
         $this->app->bind(CommunityLookup::class, CommunityLookupService::class);
+        $this->app->bind(ContextualAthleteInvitation::class, InvitationService::class);
         $this->app->bind(RosterProvider::class, RosterProviderService::class);
+        $this->app->bind(RegistrationDraftProvider::class, RegistrationDraftService::class);
         $this->app->bind(OfficialDirectory::class, OfficialDirectoryService::class);
         $this->app->bind(DevelopmentLevelLookup::class, DevelopmentLevelLookupService::class);
         $this->app->bind(SchoolLookup::class, SchoolLookupService::class);

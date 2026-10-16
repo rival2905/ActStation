@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreUserRequest;
 use App\Http\Requests\Admin\UpdateUserRequest;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -15,16 +16,19 @@ use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request): View|JsonResponse
     {
         $filters = $request->only(['search', 'role', 'is_active']);
 
-        $users = User::with('roles')
+        $query = User::with('roles')
             ->filter($request)
-            ->latest('id')
-            ->paginate(15)
-            ->withQueryString();
+            ->latest('id');
 
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json($query->paginate(100)->withQueryString());
+        }
+
+        $users = $query->paginate(100)->withQueryString();
         $roles = Role::orderBy('name')->get();
 
         return view('admin.users.index', compact('users', 'roles', 'filters'));

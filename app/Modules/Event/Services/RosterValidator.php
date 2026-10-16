@@ -181,7 +181,7 @@ class RosterValidator
                 /** @var ?EligibleAthleteDto $athlete */
                 $athlete = $eligibleMap->get($userId);
                 if (! $athlete) {
-                    $errors["members.{$index}.user_id"][] = "Atlet [{$userId}] tidak eligible atau bukan anggota aktif terverifikasi komunitas.";
+                    $errors["members.{$index}.user_id"][] = "Atlet [{$userId}] tidak memenuhi syarat keanggotaan aktif komunitas.";
 
                     continue;
                 }

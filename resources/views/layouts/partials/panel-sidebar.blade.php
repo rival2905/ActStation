@@ -161,6 +161,22 @@
 
                 <!-- Permintaan Saya -->
                 <li class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('panel.my-communities.*') ? 'active' : '' }}" href="{{ route('panel.my-communities.index') }}">
+                        <div class="d-flex align-items-center">
+                            <span class="nav-link-icon"><span class="fas fa-users"></span></span>
+                            <span class="nav-link-text ps-1">Komunitas Saya</span>
+                        </div>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('my-events.*') ? 'active' : '' }}" href="{{ route('my-events.index') }}">
+                        <div class="d-flex align-items-center">
+                            <span class="nav-link-icon"><span class="fas fa-calendar-check"></span></span>
+                            <span class="nav-link-text ps-1">Turnamen Saya</span>
+                        </div>
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a class="nav-link {{ request()->routeIs('panel.my-requests.*') ? 'active' : '' }}" href="{{ Route::has('panel.my-requests.index') ? route('panel.my-requests.index') : '#' }}" role="button">
                         <div class="d-flex align-items-center">
                             <span class="nav-link-icon"><span class="fas fa-inbox"></span></span>

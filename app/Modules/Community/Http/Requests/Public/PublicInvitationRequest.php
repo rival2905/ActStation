@@ -19,6 +19,12 @@ class PublicInvitationRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'consent' => ['required', 'accepted'],
+            'birth_place' => ['nullable', 'string', 'max:255'],
+            'birth_date' => ['nullable', 'date_format:Y-m-d'],
+            'gender' => ['nullable', 'string', 'in:male,female'],
+            'identity_number' => ['nullable', 'string', 'max:50'],
+            'education_detail' => ['nullable', 'string', 'max:150'],
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],

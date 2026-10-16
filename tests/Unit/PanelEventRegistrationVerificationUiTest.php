@@ -56,6 +56,9 @@ test('unverified user renders email verification warning with resend form and no
         'eligibleRosterByCategory' => [],
         'vaultDocuments' => collect(),
         'legalDocuments' => [],
+        'registrations' => collect(),
+        'registrationDrafts' => collect(),
+        'maxTeamsPerEntity' => [],
     ]);
 
     $html = (string) $view;
@@ -137,6 +140,9 @@ test('verified user renders email terverifikasi banner without resend form', fun
         'eligibleRosterByCategory' => [],
         'vaultDocuments' => collect(),
         'legalDocuments' => [],
+        'registrations' => collect(),
+        'registrationDrafts' => collect(),
+        'maxTeamsPerEntity' => [],
     ]);
 
     $html = (string) $view;

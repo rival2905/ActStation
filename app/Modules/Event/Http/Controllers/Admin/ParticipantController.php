@@ -198,6 +198,7 @@ class ParticipantController extends Controller
         RosterValidator $validator
     ): RedirectResponse {
         abort_unless((int) $participant->event_id === (int) $event->id, 404);
+        abort_if($participant->status === 'confirmed', 403, 'Roster yang sudah terkonfirmasi tidak dapat diubah.');
 
         $members = (array) $request->validated('members');
 
@@ -205,10 +206,17 @@ class ParticipantController extends Controller
             $validator->validate($participant, $members);
 
             DB::transaction(function () use ($participant, $members): void {
-                $participant->members()->delete();
+                $lockedParticipant = EventParticipant::query()
+                    ->where('id', $participant->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                abort_if($lockedParticipant->status === 'confirmed', 403, 'Roster yang sudah terkonfirmasi tidak dapat diubah.');
+
+                $lockedParticipant->members()->delete();
 
                 foreach ($members as $memberData) {
-                    $participant->members()->create([
+                    $lockedParticipant->members()->create([
                         'user_id' => (int) $memberData['user_id'],
                         'team_role' => $memberData['team_role'] ?? 'player',
                         'jersey_number' => isset($memberData['jersey_number']) && $memberData['jersey_number'] !== ''

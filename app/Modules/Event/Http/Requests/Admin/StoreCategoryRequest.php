@@ -91,6 +91,7 @@ class StoreCategoryRequest extends FormRequest
             'min_roster' => ['nullable', 'integer', 'min:1'],
             'max_roster' => $maxRosterRules,
             'max_teams' => ['nullable', 'integer', 'min:2'],
+            'max_teams_per_entity' => ['nullable', 'integer', 'min:1'],
             'is_roster_public' => ['nullable', 'boolean'],
             'registration_flow' => ['required', 'in:screening_first,payment_first,instant_free,by_invitation'],
             'enable_waiting_list' => ['nullable', 'boolean'],
@@ -125,6 +126,7 @@ class StoreCategoryRequest extends FormRequest
             $this->validateScheduleAndDeadlines($validator);
             $this->validateRiskyEdits($validator);
             $this->validateActiveRequiredDocuments($validator);
+            $this->validateMaxTeamsPerEntity($validator);
         });
     }
 
@@ -141,6 +143,31 @@ class StoreCategoryRequest extends FormRequest
                 ->count();
             if ($inactiveCount > 0) {
                 $validator->errors()->add('required_documents', 'Dokumen wajib baru yang dipilih harus berstatus aktif.');
+            }
+        }
+    }
+
+    protected function validateMaxTeamsPerEntity(Validator $validator): void
+    {
+        if ($this->filled('max_teams_per_entity') && $this->filled('max_teams')) {
+            if ((int) $this->input('max_teams_per_entity') > (int) $this->input('max_teams')) {
+                $validator->errors()->add('max_teams_per_entity', 'Batas maksimal tim per komunitas tidak boleh melebihi total kuota tim kategori.');
+            }
+        }
+
+        $category = $this->getCategory();
+        if (! $category) {
+            return;
+        }
+
+        if ($this->filled('max_teams_per_entity')) {
+            $newMax = (int) $this->input('max_teams_per_entity');
+            $maxActive = $category->maxActiveTeamsPerCommunity();
+            if ($newMax < $maxActive) {
+                $validator->errors()->add(
+                    'max_teams_per_entity',
+                    "Batas maksimal tim per komunitas ({$newMax}) tidak boleh lebih kecil dari jumlah tim aktif yang sudah terdaftar ({$maxActive} tim)."
+                );
             }
         }
     }
@@ -535,6 +562,16 @@ class StoreCategoryRequest extends FormRequest
         $data['document_instructions'] = $this->filled('document_instructions') ? trim((string) $this->input('document_instructions')) : null;
         $data['required_documents'] = $data['required_documents'] ?? [];
         $data['registration_fee'] = (float) ($data['registration_fee'] ?? 0);
+
+        if ($this->has('max_teams_per_entity') && $this->input('max_teams_per_entity') !== null && $this->input('max_teams_per_entity') !== '') {
+            $data['max_teams_per_entity'] = max(1, (int) $this->input('max_teams_per_entity'));
+        } elseif ($storeDefaults) {
+            $data['max_teams_per_entity'] = 1;
+        } elseif ($category !== null) {
+            $data['max_teams_per_entity'] = (int) ($category->max_teams_per_entity ?? 1);
+        } else {
+            $data['max_teams_per_entity'] = 1;
+        }
 
         $flow = $data['registration_flow'];
         $fee = (float) $data['registration_fee'];

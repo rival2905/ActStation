@@ -11,6 +11,7 @@ use App\Modules\MasterData\Models\SportCategory;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -33,7 +34,13 @@ class PublicEventController extends Controller
     {
         $query = Event::query()
             ->where('status', 'published')
-            ->with(['categories', 'user', 'sportCategory']);
+            ->with([
+                'categories',
+                'user',
+                'sportCategory',
+                'venue.province',
+                'venue.city',
+            ]);
 
         if ($request->filled('q')) {
             $searchTerm = '%'.trim((string) $request->input('q')).'%';
@@ -47,10 +54,58 @@ class PublicEventController extends Controller
             $query->where('sport_category_id', $request->input('sport_category_id'));
         }
 
-        $events = $query->latest('starts_at')->paginate(12)->withQueryString();
-        $sportCategories = SportCategory::query()->where('is_active', true)->orderBy('name')->get();
+        if ($request->filled('province_id')) {
+            $provinceId = (string) $request->input('province_id');
+            $query->whereHas('venue', function ($vq) use ($provinceId): void {
+                $vq->where('province_id', $provinceId);
+            });
+        }
 
-        return view('public.events.index', compact('events', 'sportCategories'));
+        if ($request->filled('city_id')) {
+            $cityId = (string) $request->input('city_id');
+            $cleanCityId = str_replace('.', '', $cityId);
+            $dotCityId = strlen($cleanCityId) === 4 ? substr($cleanCityId, 0, 2).'.'.substr($cleanCityId, 2) : $cityId;
+            $query->whereHas('venue', function ($vq) use ($cityId, $cleanCityId, $dotCityId): void {
+                $vq->whereIn('city_id', array_unique([$cityId, $cleanCityId, $dotCityId]));
+            });
+        }
+
+        $sort = (string) $request->input('sort', 'date_asc');
+        match ($sort) {
+            'date_desc' => $query->latest('starts_at'),
+            'newest' => $query->latest('created_at'),
+            default => $query->orderByRaw('CASE WHEN starts_at IS NULL THEN 1 ELSE 0 END, starts_at ASC'),
+        };
+
+        $events = $query->paginate(12)->withQueryString();
+        $sportCategories = SportCategory::query()->where('is_active', true)->orderBy('name')->get();
+        $provinces = DB::table('wilayah')->whereRaw('LENGTH(kode) = 2')->orderBy('nama')->get(['kode as id', 'nama as name']);
+
+        $cities = collect();
+        if ($request->filled('province_id')) {
+            $pId = (string) $request->input('province_id');
+            $cities = DB::table('wilayah')
+                ->whereRaw('LENGTH(kode) = 5')
+                ->where('kode', 'like', $pId.'.%')
+                ->orderBy('nama')
+                ->get(['kode as id', 'nama as name']);
+        } else {
+            $activeCityIds = DB::table('venues')
+                ->whereNotNull('city_id')
+                ->pluck('city_id')
+                ->map(fn ($id) => strlen((string) $id) === 4 ? substr((string) $id, 0, 2).'.'.substr((string) $id, 2) : (string) $id)
+                ->unique()
+                ->all();
+
+            if (! empty($activeCityIds)) {
+                $cities = DB::table('wilayah')
+                    ->whereIn('kode', $activeCityIds)
+                    ->orderBy('nama')
+                    ->get(['kode as id', 'nama as name']);
+            }
+        }
+
+        return view('public.events.index', compact('events', 'sportCategories', 'provinces', 'cities', 'sort'));
     }
 
     public function show(string $slug): View

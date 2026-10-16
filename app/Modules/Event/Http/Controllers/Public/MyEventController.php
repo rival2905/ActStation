@@ -5,26 +5,23 @@ declare(strict_types=1);
 namespace App\Modules\Event\Http\Controllers\Public;
 
 use App\Http\Controllers\Controller;
-use App\Modules\Event\Models\EventParticipant;
+use App\Modules\Event\Http\Requests\Public\StoreAthleteEventDocumentRequest;
+use App\Modules\Event\Services\AthleteEventWorkspace;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
 class MyEventController extends Controller
 {
-    public function index(): View
+    public function index(AthleteEventWorkspace $workspace): View
     {
-        $userId = (int) Auth::id();
+        return view('public.my.events', $workspace->getWorkspaceData((int) Auth::id()));
+    }
 
-        // Cari partisipasi sebagai PIC atau sebagai anggota roster
-        $participants = EventParticipant::query()
-            ->where(function ($q) use ($userId): void {
-                $q->where('user_id', $userId)
-                    ->orWhereHas('members', fn ($mq) => $mq->where('user_id', $userId));
-            })
-            ->with(['event', 'category', 'members.user'])
-            ->latest('registered_at')
-            ->get();
+    public function upload(StoreAthleteEventDocumentRequest $request, AthleteEventWorkspace $workspace, string $kind, string $id, string $code): RedirectResponse
+    {
+        $workspace->uploadDocument((int) $request->user()->id, $kind, $id, $code, $request->file('document'));
 
-        return view('public.my.events', compact('participants'));
+        return redirect()->route('my-events.index')->with('success', 'Dokumen tersimpan. Menunggu pemeriksaan.');
     }
 }

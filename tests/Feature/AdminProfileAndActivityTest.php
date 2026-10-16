@@ -135,3 +135,49 @@ test('audit log on update redacts sensitive fields and does not log plain values
         ->and(json_encode($updateLog->old_values))->not->toContain('3201000000000001')
         ->and(json_encode($updateLog->new_values))->not->toContain('3201000000000002');
 });
+
+test('activity logs returns json pagination when requested via ajax', function (): void {
+    $this->seed(RolePermissionSeeder::class);
+
+    $superadmin = User::where('email', 'superadmin@actstation.test')->first();
+
+    ActivityLog::create([
+        'user_id' => $superadmin->id,
+        'event' => 'login',
+        'ip_address' => '10.0.0.1',
+    ]);
+
+    $response = $this->actingAs($superadmin)->getJson(route('admin.activity-logs.index'));
+
+    $response->assertOk();
+    $response->assertJsonStructure([
+        'data' => [
+            '*' => ['id', 'created_at_formatted', 'user_name', 'event', 'event_badge_type', 'auditable_type_short', 'auditable_id', 'ip_address', 'has_details'],
+        ],
+        'current_page',
+        'last_page',
+        'per_page',
+        'total',
+        'from',
+        'to',
+    ]);
+    expect($response->json('total'))->toBeGreaterThanOrEqual(1);
+});
+
+test('activity logs search filters ip and event properly via ajax', function (): void {
+    $this->seed(RolePermissionSeeder::class);
+
+    $superadmin = User::where('email', 'superadmin@actstation.test')->first();
+
+    ActivityLog::create([
+        'user_id' => $superadmin->id,
+        'event' => 'login',
+        'ip_address' => '172.16.99.88',
+    ]);
+
+    $response = $this->actingAs($superadmin)->getJson(route('admin.activity-logs.index', ['search' => '172.16.99.88']));
+
+    $response->assertOk();
+    $items = collect($response->json('data'));
+    expect($items->pluck('ip_address'))->toContain('172.16.99.88');
+});

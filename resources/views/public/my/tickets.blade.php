@@ -17,6 +17,9 @@
 </div>
 @endif
 
+<div class="row g-4">
+    @forelse($tickets as $ticket)
+    <div class="col-md-6 col-lg-4 mb-3">
         <div class="card border border-2 {{ in_array($ticket->status, ['active', 'valid']) ? 'border-primary' : 'border-secondary' }} shadow-sm h-100">
             <div class="card-header {{ in_array($ticket->status, ['active', 'valid']) ? 'bg-primary text-white' : 'bg-secondary text-white' }} d-flex justify-content-between align-items-center">
                 <span class="fw-bold fs-10"><span class="fas fa-ticket-alt me-1"></span>E-TICKET RESMI</span>

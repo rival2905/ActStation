@@ -74,7 +74,7 @@
         </div>
         <div class="card-body py-2 px-3">
             <div class="row g-2">
-                <div class="col-md-5">
+                <div class="col-md-4">
                     <label class="form-label fs-10 fw-bold mb-1" for="{{ $fieldPrefix }}_name">Nama Kategori <span class="text-danger">*</span></label>
                     <input class="form-control form-control-sm" id="{{ $fieldPrefix }}_name" type="text" name="name" value="{{ $fieldValue('name') }}" placeholder="Contoh: KU-18 Putra, Instansi 3x3" required>
                 </div>
@@ -99,12 +99,27 @@
                         <input type="hidden" name="gender" value="{{ $fieldValue('gender', 'mixed') }}">
                     @endif
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label fs-10 fw-bold mb-1" for="{{ $fieldPrefix }}_max_teams">Kuota Maksimal Tim</label>
+                <div class="col-md-2">
+                    <label class="form-label fs-10 fw-bold mb-1" for="{{ $fieldPrefix }}_max_teams">Kuota Total Tim</label>
                     <div class="input-group input-group-sm">
                         <input class="form-control form-control-sm" id="{{ $fieldPrefix }}_max_teams" type="number" name="max_teams" min="2" value="{{ $fieldValue('max_teams', 16) }}" placeholder="Bebas">
                         <span class="input-group-text">tim</span>
                     </div>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fs-10 fw-bold mb-1" for="{{ $fieldPrefix }}_max_teams_per_entity">Maksimal Tim per Entitas <span class="text-danger">*</span></label>
+                    <div class="input-group input-group-sm">
+                        <input class="form-control form-control-sm" id="{{ $fieldPrefix }}_max_teams_per_entity" type="number" name="max_teams_per_entity" min="1" value="{{ $fieldValue('max_teams_per_entity', 1) }}" required>
+                        <span class="input-group-text">tim</span>
+                    </div>
+                </div>
+            </div>
+            <div class="row g-2 mt-1">
+                <div class="col-12">
+                    <small class="text-muted fs-11">
+                        <span class="fas fa-info-circle text-primary me-1"></span>
+                        <strong>Perbedaan Kuota Total vs Maksimal Tim per Entitas:</strong> Kuota total membatasi kapasitas seluruh peserta turnamen. <em>Maksimal Tim per Entitas</em> membatasi jumlah tim yang boleh didaftarkan oleh satu komunitas/sekolah/klub dalam kategori ini (default 1; misal disetel 2 untuk mengizinkan pendaftaran Tim A dan Tim B). Server memberlakukan batas bawah: nilai ini tidak boleh diturunkan di bawah jumlah tim aktif terbanyak yang sudah terdaftar oleh satu entitas.
+                    </small>
                 </div>
             </div>
         </div>
@@ -170,7 +185,7 @@
                     </label>
                     <select class="form-select form-select-sm" id="{{ $fieldPrefix }}_registration_flow" name="registration_flow" required @disabled($hasParticipants)>
                         <option value="screening_first" @selected($fieldValue('registration_flow', 'screening_first') === 'screening_first')>
-                            📋 Kurasi Berkas Dulu &rarr; Bayar Setelah Lolos &rarr; Konfirmasi (screening_first)
+                            📋 Pemeriksaan Berkas Dulu &rarr; Bayar Setelah Memenuhi Syarat &rarr; Konfirmasi (screening_first)
                         </option>
                         <option value="payment_first" @selected($fieldValue('registration_flow', 'screening_first') === 'payment_first')>
                             💳 Bayar di Kasir &rarr; Kunci Slot &rarr; Verifikasi Berkas (payment_first)
@@ -251,7 +266,7 @@
                 <div class="row g-2 align-items-center">
                     <div class="col-md-4">
                         <label class="form-label fs-10 fw-bold text-dark mb-1" for="{{ $fieldPrefix }}_payment_time_limit_hours">
-                            <span class="fas fa-hourglass-half me-1"></span> Tenggat Bayar Setelah Kurasi Lolos <span class="text-danger">*</span>
+                            <span class="fas fa-hourglass-half me-1"></span> Tenggat Bayar Setelah Memenuhi Syarat <span class="text-danger">*</span>
                         </label>
                         <div class="input-group input-group-sm">
                             <input class="form-control" id="{{ $fieldPrefix }}_payment_time_limit_hours" type="number" name="payment_time_limit_hours" min="1" max="168" value="{{ $fieldValue('payment_time_limit_hours', 24) }}" @readonly($hasParticipants)>
@@ -260,7 +275,7 @@
                     </div>
                     <div class="col-md-8">
                         <div class="fs-11 text-dark">
-                            <strong>Kurasi Berkas:</strong> Invoice pembayaran baru diterbitkan panitia setelah tim dinyatakan eligible. Tim memiliki waktu sesuai tenggat jam di atas untuk melunasi tagihan (maksimal hingga tanggal mulai turnamen).
+                            <strong>Pemeriksaan Berkas:</strong> Invoice pembayaran baru diterbitkan panitia setelah tim dinyatakan memenuhi syarat. Tim memiliki waktu sesuai tenggat jam di atas untuk melunasi tagihan (maksimal hingga tanggal mulai turnamen).
                         </div>
                     </div>
                 </div>

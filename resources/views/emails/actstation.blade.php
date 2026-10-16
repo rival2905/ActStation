@@ -147,7 +147,7 @@
                                             Pemberitahuan Otomatis ActStation (actstation.net)
                                         </p>
                                         <p style="margin: 0 0 8px 0;">
-                                            Email ini dikirimkan secara otomatis dari sistem platform ActStation (actstation.net). Mohon untuk tidak membalas langsung ke alamat email ini (noreply@actstation.net).
+                                            Email ini dikirimkan secara otomatis dari sistem platform ActStation (actstation.net). Mohon untuk tidak membalas langsung ke alamat email ini (no-reply@actstation.net).
                                         </p>
                                         <p style="margin: 0; font-size: 11px; color: #9da9bb;">
                                             &copy; {{ date('Y') }} <a href="https://actstation.net" target="_blank" rel="noopener noreferrer" style="color: #9da9bb; text-decoration: underline;">actstation.net</a>. Hak cipta dilindungi undang-undang.

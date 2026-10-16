@@ -4,14 +4,26 @@ declare(strict_types=1);
 
 namespace App\Modules\Event\Http\Controllers\Panel;
 
+use App\Contracts\CommunityLookup;
+use App\Contracts\RosterProvider;
 use App\Http\Controllers\Controller;
 use App\Modules\Community\Models\CommunityOfficial;
+use App\Modules\Event\Exceptions\RosterValidationException;
+use App\Modules\Event\Http\Requests\Panel\ResubmitRosterRequest;
 use App\Modules\Event\Models\EventParticipant;
+use App\Modules\Event\Services\RegistrationInspectionSummary;
+use App\Modules\Event\Services\RegistrationRosterRevisionService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
 class CommunityRosterController extends Controller
 {
+    public function __construct(
+        private readonly RosterProvider $rosterProvider,
+        private readonly CommunityLookup $communityLookup,
+    ) {}
+
     public function show(EventParticipant $participant): View
     {
         $this->authorizeParticipantAccess($participant);
@@ -23,7 +35,64 @@ class CommunityRosterController extends Controller
             'paymentVerifiedBy',
         ]);
 
-        return view('panel.registrations.roster', compact('participant'));
+        $viewerId = (int) Auth::id();
+        $activeCommunity = $this->communityLookup->findForUser($viewerId);
+        $isManager = Auth::user()?->hasRole('superadmin')
+            || ($activeCommunity && (int) $activeCommunity->id === (int) $participant->community_id);
+        $canRevise = $isManager && $participant->status === 'revision_needed';
+        $inspection = app(RegistrationInspectionSummary::class)->inspect($participant);
+
+        return view('panel.registrations.roster', compact('participant', 'viewerId', 'isManager', 'canRevise', 'inspection'));
+    }
+
+    public function revise(EventParticipant $participant): View
+    {
+        $this->authorizeRevisionAccess($participant);
+
+        $participant->loadMissing([
+            'event',
+            'category',
+            'members.user',
+        ]);
+
+        $category = $participant->category;
+        $eligibleAthletes = $participant->community_id !== null
+            ? $this->rosterProvider->eligibleAthletes((int) $participant->community_id, (int) $participant->event_category_id)
+            : collect();
+
+        return view('panel.registrations.revise', compact('participant', 'category', 'eligibleAthletes'));
+    }
+
+    public function resubmit(
+        ResubmitRosterRequest $request,
+        EventParticipant $participant,
+        RegistrationRosterRevisionService $revisionService
+    ): RedirectResponse {
+        $this->authorizeRevisionAccess($participant);
+
+        $members = (array) $request->validated('members');
+        $teamDocuments = (array) ($request->file('team_documents') ?? []);
+        $athleteDocuments = (array) ($request->file('athlete_documents') ?? []);
+
+        try {
+            $user = $request->user();
+            $revisionService->resubmit(
+                $participant,
+                $members,
+                $teamDocuments,
+                $athleteDocuments,
+                $user,
+                session('current_community_id') ? (int) session('current_community_id') : null
+            );
+
+            return redirect()
+                ->route('panel.community-events.roster', $participant)
+                ->with('success', 'Roster dan berkas perbaikan berhasil dikirim ulang.');
+        } catch (RosterValidationException $e) {
+            $errors = ! empty($e->errors) ? $e->errors : ['error' => $e->getMessage()];
+
+            return back()->withInput()->withErrors($errors)->with('error', $e->getMessage());
+        }
     }
 
     private function authorizeParticipantAccess(EventParticipant $participant): void
@@ -53,5 +122,28 @@ class CommunityRosterController extends Controller
         }
 
         abort(403, 'Anda tidak memiliki hak akses pada berkas pendaftaran ini.');
+    }
+
+    private function authorizeRevisionAccess(EventParticipant $participant): void
+    {
+        abort_if($participant->status !== 'revision_needed', 403, 'Pendaftaran ini tidak dalam status revisi.');
+
+        $user = Auth::user();
+        if (! $user) {
+            abort(403);
+        }
+
+        if ($user->hasRole('superadmin')) {
+            return;
+        }
+
+        if (! $participant->community_id) {
+            abort(403, 'Hanya manajer aktif komunitas yang dapat merevisi pendaftaran ini.');
+        }
+
+        $userCommunity = $this->communityLookup->findForUser((int) $user->id);
+        if (! $userCommunity || (int) $userCommunity->id !== (int) $participant->community_id) {
+            abort(403, 'Hanya manajer aktif komunitas terpilih yang dapat merevisi pendaftaran ini.');
+        }
     }
 }

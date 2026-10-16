@@ -32,7 +32,7 @@ beforeEach(function (): void {
     $this->seed(RolePermissionSeeder::class);
 });
 
-test('RosterProvider hanya mengembalikan atlet active dan region_status verified', function (): void {
+test('RosterProvider mengembalikan atlet active tanpa prasyarat region_status', function (): void {
     $sport = SportCategory::query()->firstOrCreate(
         ['slug' => 'basketball'],
         ['name' => 'Basketball', 'is_active' => true]
@@ -70,7 +70,7 @@ test('RosterProvider hanya mengembalikan atlet active dan region_status verified
         'region_status' => 'verified',
     ]);
 
-    // Ineligible athlete: pending region_status
+    // Active athlete remains eligible with pending regional verification.
     $user3 = User::factory()->create(['name' => 'Atlet Pending Region']);
     CommunityAthlete::factory()->create([
         'community_id' => $community->id,
@@ -101,11 +101,11 @@ test('RosterProvider hanya mengembalikan atlet active dan region_status verified
     $rosterProvider = app(RosterProvider::class);
     $athletes = $rosterProvider->eligibleAthletes($community->id, 1);
 
-    expect($athletes)->toHaveCount(1)
+    expect($athletes)->toHaveCount(2)
+        ->and($athletes->pluck('userId')->all())->toEqualCanonicalizing([$user1->id, $user3->id])
         ->and($athletes->first())->toBeInstanceOf(EligibleAthleteDto::class)
-        ->and($athletes->first()->userId)->toBe($user1->id)
-        ->and($athletes->first()->name)->toBe('Atlet Lolos')
-        ->and($athletes->first()->gender)->toBe('male');
+        ->and($athletes->keyBy('userId')->get($user1->id)->name)->toBe('Atlet Lolos')
+        ->and($athletes->keyBy('userId')->get($user1->id)->gender)->toBe('male');
 
     // DTO must not be JSON serializable (contract: cannot be serialized to response)
     expect(fn () => json_encode($athletes->first()))

@@ -124,3 +124,24 @@ test('user can update profile details', function (): void {
         ->and($user->email)->toBe('new@actstation.test')
         ->and($user->phone_normalized)->toBe('+62822222222');
 });
+
+test('admin users index renders falcon advance table and supports ajax json', function (): void {
+    $this->seed(RolePermissionSeeder::class);
+
+    $superadmin = User::where('email', 'superadmin@actstation.test')->first();
+
+    // HTML view test
+    $response = $this->actingAs($superadmin)->get(route('admin.users.index'));
+    $response->assertOk();
+    $response->assertSee('data-list=', false);
+    $response->assertSee('search-box', false);
+    $response->assertSee('data-sort="name"', false);
+    $response->assertSee('data-list-pagination="prev"', false);
+    $response->assertSee('data-list-pagination="next"', false);
+
+    // AJAX JSON test
+    $ajaxResponse = $this->actingAs($superadmin)
+        ->getJson(route('admin.users.index'));
+    $ajaxResponse->assertOk();
+    $ajaxResponse->assertJsonStructure(['data', 'current_page', 'total']);
+});

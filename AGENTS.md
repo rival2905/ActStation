@@ -51,6 +51,12 @@ Login (`/admin/login` & `/panel/login`) menerapkan Smart Auto-Redirect via `User
      * `Event`: Dokumen turnamen lengkap (Rekomendasi Cabor, Izin Keramaian Polres, Technical Handbook / THB, Izin Venue / Lapangan, Izin Medis, Asuransi, serta berkas dinamis lainnya).
    - Pengelolaan dokumen turnamen bersifat dinamis dan terintegrasi di Workspace Organizer (`/panel/organizer/events/{event}/manage` & `/documents`) serta Workspace Admin.
 
+## Verifikasi Wilayah Atlet
+
+- Fitur, izin pengawas, status dan riwayat verifikasi wilayah tetap tersedia untuk kebutuhan induk cabor masing-masing.
+- `community_athletes.region_status` hanya informasi, bukan syarat roster draft/final, unggahan dokumen, submit, revisi, pemeriksaan atau ikut kejuaraan. Jangan auto-verify atau menulis ulang status lama.
+- Keanggotaan aktif/non-ended, akun aktif, consent, usia/gender kategori, dokumen, kapasitas, konflik roster, dan verifikasi legalitas komunitas tetap berlaku.
+
 ## Modularity
 
 Fitur hidup di `app/Modules/<Domain>/` — micro-services ready, siap dicabut:
@@ -90,7 +96,7 @@ Shape response error konsisten:
 - Status `submitted` berarti n8n menerima proses, bukan bukti email masuk inbox. Timeout/koneksi terputus berstatus `unknown`; jangan otomatis retry karena dapat menghasilkan email ganda. Riwayat `queued` lama berarti belum dikirim, bukan alasan mengaktifkan kembali queue baru.
 - Kirim ulang manual hanya admin/superadmin dengan `setting.email`; `submitted`/`unknown` wajib konfirmasi risiko duplikasi. Tolak pesan sedang diproses. Verifikasi email memakai resend milik pengguna dengan tautan signed baru, bukan retry tautan lama oleh admin.
 - Verifikasi email memakai autentikasi, signed URL, expiry, dan throttle Laravel. Fase awal: status/kirim ulang tersedia tanpa middleware `verified` yang memblokir akses. Perubahan email membatalkan status verifikasi lama.
-- Lampiran maksimal 3 berkas, masing-masing 5 MB, PDF/PNG/JPEG. Simpan pada private local `email-attachments`; verifikasi MIME aktual dan path, lalu unduh lewat temporary signed route. n8n remote memerlukan APP_URL HTTPS yang dapat dijangkau serta `ACTSTATION_APP_URL` sesuai origin. Jangan membuka vault/storage privat ke publik.
+- Lampiran maksimal 3 berkas, masing-masing 5 MB, PDF/PNG/JPEG. Simpan pada private local `email-attachments`; verifikasi MIME aktual dan path, lalu unduh lewat temporary signed route. n8n remote memerlukan APP_URL HTTPS yang dapat dijangkau. Workflow memvalidasi origin tetap `https://actstation.net` tanpa `$env`, karena akses environment Code node dapat diblokir n8n. Jika origin berubah, ubah allowlist workflow secara eksplisit; jangan mengambil origin dari payload pengirim. Jangan membuka vault/storage privat ke publik.
 - Gunakan template email inline bertema Falcon; escape konten dan jangan memasukkan NIK, dokumen atlet, token, atau data roster pribadi ke notifikasi event. Pengirim resmi: `ActStation <no-reply@actstation.net>`, sesuai izin SMTP.
 - Notifikasi event memakai `EventParticipantObserver` dan `EventRegistrationEmailService`, dengan snapshot perubahan lalu trigger setelah commit untuk perubahan bisnis penting: pendaftaran, revisi, kurasi/tagihan, konfirmasi pembayaran, konfirmasi peserta, dan pembatalan. Jangan mengirim untuk setiap render/klik/save tanpa perubahan. Detail implementasi dan acceptance dicatat di PRD.
 - Tes menggunakan `Http::fake()`/mock kontrak dan mencegah request liar. Jangan menguji email nyata atau mengirim ulang pesan historis tanpa izin pengguna.

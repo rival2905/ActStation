@@ -6,9 +6,14 @@
 <div class="card mb-3">
     <div class="card-body">
         <div class="d-flex align-items-center">
-            <a href="{{ route('panel.community-events.roster', $participant->id) }}" class="btn btn-sm btn-outline-secondary me-3">
-                <span class="fas fa-arrow-left"></span>
+            <a href="{{ route('panel.community-events.roster', $participant->id) }}" class="btn btn-sm btn-outline-secondary me-2" title="Kembali ke Roster Tim {{ $participant->team_name }}">
+                <span class="fas fa-arrow-left me-1"></span>Roster
             </a>
+            @if($event)
+                <a href="{{ route('panel.community-events.create', $event->slug) }}" class="btn btn-sm btn-outline-secondary me-3" title="Kembali ke Ringkasan Tim Event {{ $event->title }}">
+                    <span class="fas fa-users me-1"></span>Ringkasan Event
+                </a>
+            @endif
             <div>
                 <h5 class="mb-0">Invoice Pembayaran Pendaftaran Turnamen</h5>
                 <small class="text-muted">Turnamen: <strong>{{ $event->title }}</strong> | Tim: <strong>{{ $participant->team_name }}</strong></small>

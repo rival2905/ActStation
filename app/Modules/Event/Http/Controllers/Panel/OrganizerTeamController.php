@@ -11,6 +11,7 @@ use App\Modules\Community\Models\Document;
 use App\Modules\Event\Exceptions\RosterValidationException;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventParticipant;
+use App\Modules\Event\Models\RegistrationDraft;
 use App\Modules\Event\Services\RosterValidator;
 use App\Modules\MasterData\Models\DocumentType;
 use App\Modules\Payment\Models\Transaction;
@@ -140,6 +141,35 @@ class OrganizerTeamController extends Controller
             $participantDocuments[$participant->id] = $pDocs;
         }
 
+        $activeTab = (string) $request->input('tab', 'registered');
+        if (! in_array($activeTab, ['registered', 'drafts'], true)) {
+            $activeTab = 'registered';
+        }
+
+        $draftsQuery = RegistrationDraft::query()
+            ->where('event_id', $event->id)
+            ->whereNull('participant_id')
+            ->with(['user', 'category'])
+            ->latest('updated_at');
+
+        if ($request->filled('category_id')) {
+            $draftsQuery->where('event_category_id', $request->input('category_id'));
+        }
+
+        if ($request->input('status') === 'draft_expired') {
+            $draftsQuery->where('expires_at', '<=', now());
+        } elseif ($request->input('status') === 'draft_active') {
+            $draftsQuery->unexpired();
+        }
+
+        $drafts = $draftsQuery->paginate(20, ['*'], 'drafts_page')->withQueryString();
+
+        $draftCommunityIds = $drafts->pluck('community_id')->filter()->unique()->all();
+        $draftCommunities = [];
+        foreach ($draftCommunityIds as $cid) {
+            $draftCommunities[$cid] = $this->communityLookup->find((int) $cid);
+        }
+
         return view('panel.organizer.teams.index', compact(
             'event',
             'participants',
@@ -148,6 +178,9 @@ class OrganizerTeamController extends Controller
             'paidParticipantIds',
             'participantDocuments',
             'participantDocumentTypes',
+            'drafts',
+            'draftCommunities',
+            'activeTab',
         ));
     }
 
@@ -369,6 +402,10 @@ class OrganizerTeamController extends Controller
     {
         $this->authorizeOrganizer($event);
         $this->authorizeParticipant($event, $participant);
+
+        if (in_array($participant->status, ['confirmed', 'cancelled', 'rejected'], true)) {
+            return back()->with('error', 'Status pendaftaran saat ini tidak dapat diminta revisi.');
+        }
 
         $validated = $request->validate([
             'revision_notes' => ['required', 'string', 'max:1000'],

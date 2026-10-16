@@ -19,6 +19,8 @@ use App\Modules\Event\Http\Controllers\Panel\OrganizerScheduleController;
 use App\Modules\Event\Http\Controllers\Panel\OrganizerTeamController;
 use App\Modules\Event\Http\Controllers\Panel\OrganizerTicketController;
 use App\Modules\Event\Http\Controllers\Panel\OrganizerWorkspaceController;
+use App\Modules\Event\Http\Controllers\Panel\RegistrationDraftController;
+use App\Modules\Event\Http\Controllers\Panel\TeamInspectionController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'EnsurePanelAccess'])->group(function (): void {
@@ -30,6 +32,16 @@ Route::middleware(['auth', 'EnsurePanelAccess'])->group(function (): void {
     Route::get('registrations/{participant}/checkout', [CommunityCheckoutController::class, 'show'])->name('community-events.checkout');
     Route::post('registrations/{participant}/pay-manual', [CommunityCheckoutController::class, 'payManual'])->name('community-events.pay-manual');
     Route::get('registrations/{participant}/roster', [CommunityRosterController::class, 'show'])->name('community-events.roster');
+    Route::get('registrations/{participant}/revise', [CommunityRosterController::class, 'revise'])->name('community-events.revise');
+    Route::put('registrations/{participant}/revise', [CommunityRosterController::class, 'resubmit'])->name('community-events.resubmit');
+
+    // Registration Drafts
+    Route::post('events/{slug}/registration-drafts', [RegistrationDraftController::class, 'store'])->name('registration-drafts.store');
+    Route::get('events/{slug}/registration-drafts/{draft}', [RegistrationDraftController::class, 'show'])->name('registration-drafts.show');
+    Route::put('events/{slug}/registration-drafts/{draft}', [RegistrationDraftController::class, 'update'])->name('registration-drafts.update');
+    Route::delete('events/{slug}/registration-drafts/{draft}', [RegistrationDraftController::class, 'destroy'])->name('registration-drafts.destroy');
+    Route::post('events/{slug}/registration-drafts/{draft}/athlete-invitations', [RegistrationDraftController::class, 'storeAthleteInvitation'])->name('registration-drafts.athlete-invitations.store');
+    Route::get('events/{slug}/registration-drafts/{draft}/candidates', [RegistrationDraftController::class, 'candidates'])->name('registration-drafts.candidates.index');
 
     // 2. Panel Organizer (PRD_EXTERNAL §6.2)
     Route::prefix('organizer')->name('organizer.')->group(function (): void {
@@ -98,6 +110,10 @@ Route::middleware(['auth', 'EnsurePanelAccess'])->group(function (): void {
         Route::get('events/{event}/documents/{document}/download', [OrganizerDocumentController::class, 'download'])->name('documents.download');
         Route::post('events/{event}/documents/{document}/toggle-public', [OrganizerDocumentController::class, 'togglePublic'])->name('documents.togglePublic');
         Route::delete('events/{event}/documents/{document}', [OrganizerDocumentController::class, 'destroy'])->name('documents.destroy');
+
+        Route::get('events/{event}/team-inspections/{kind}/{id}', [TeamInspectionController::class, 'show'])->name('teams.inspection.show');
+        Route::get('events/{event}/team-inspections/{kind}/{id}/documents/{owner}/{code}/download', [TeamInspectionController::class, 'download'])->name('teams.inspection.download');
+        Route::post('events/{event}/team-inspections/{kind}/{id}/documents/{owner}/{code}/review', [TeamInspectionController::class, 'review'])->name('teams.inspection.review');
 
         // Tim & Roster
         Route::get('events/{event}/teams', [OrganizerTeamController::class, 'index'])->name('teams.index');

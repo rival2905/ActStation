@@ -21,9 +21,14 @@ class InvitationController extends PanelBaseController
         $community = $this->currentCommunity($request);
         $this->authorize('update', $community);
 
+        $data = $request->validated();
+        if (! empty($data['expires_days']) && empty($data['expires_at'])) {
+            $data['expires_at'] = now()->addDays((int) $data['expires_days']);
+        }
+
         $result = $this->invitationService->createInvitation(
             $community,
-            $request->validated(),
+            $data,
             $request->user()
         );
 

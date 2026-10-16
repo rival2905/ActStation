@@ -15,7 +15,9 @@ use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventCategory;
 use App\Modules\Event\Models\EventParticipant;
 use App\Modules\Event\Models\EventParticipantMember;
+use App\Modules\Event\Models\RegistrationDraft;
 use App\Modules\Event\Services\EventInvitationService;
+use App\Modules\Event\Services\RegistrationDraftService;
 use App\Modules\Event\Services\RegistrationGuard;
 use App\Modules\Event\Services\RosterValidator;
 use App\Modules\MasterData\Models\DocumentType;
@@ -38,6 +40,7 @@ class CommunityEventRegistrationController extends Controller
         private readonly RegistrationGuard $registrationGuard,
         private readonly RosterValidator $rosterValidator,
         private readonly EventInvitationService $eventInvitationService,
+        private readonly RegistrationDraftService $registrationDraftService,
     ) {}
 
     public function index(): View
@@ -124,7 +127,64 @@ class CommunityEventRegistrationController extends Controller
 
         $legalDocuments = $this->communityLookup->legalDocumentsForUser((int) Auth::id(), (int) $community->id);
 
-        return view('panel.events.register', compact('event', 'community', 'eligibleRosterByCategory', 'documentTypes', 'vaultDocuments', 'legalDocuments'));
+        $registrations = EventParticipant::query()
+            ->where('community_id', $community->id)
+            ->where('event_id', $event->id)
+            ->with(['category'])
+            ->withCount('members')
+            ->latest()
+            ->get();
+
+        $participantIds = $registrations->pluck('id')->filter()->all();
+        $invoices = empty($participantIds) ? collect() : Transaction::query()
+            ->where('payable_type', 'event_participant')
+            ->whereIn('payable_id', $participantIds)
+            ->where('type', 'registration')
+            ->latest()
+            ->get()
+            ->unique('payable_id')
+            ->keyBy('payable_id');
+
+        foreach ($registrations as $reg) {
+            $inv = $invoices->get($reg->id);
+            $reg->setAttribute('currentinvoice', $inv);
+            $reg->setAttribute('current_invoice', $inv);
+            $reg->setRelation('currentInvoice', $inv);
+        }
+
+        $registrationDrafts = RegistrationDraft::query()
+            ->where('user_id', Auth::id())
+            ->where('community_id', $community->id)
+            ->where('event_id', $event->id)
+            ->whereNull('participant_id')
+            ->where(function ($q): void {
+                $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            })
+            ->with('category')
+            ->latest()
+            ->get()
+            ->reject(fn (RegistrationDraft $d) => $d->isSubmitted());
+
+        $maxTeamsPerEntity = $event->categories->mapWithKeys(function (EventCategory $category) {
+            return [$category->id => (int) ($category->getAttribute('max_teams_per_entity') ?? 1)];
+        });
+        foreach ($event->categories as $cat) {
+            if ($cat->getAttribute('max_teams_per_entity') === null) {
+                $cat->setAttribute('max_teams_per_entity', 1);
+            }
+        }
+
+        return view('panel.events.register', compact(
+            'event',
+            'community',
+            'eligibleRosterByCategory',
+            'documentTypes',
+            'vaultDocuments',
+            'legalDocuments',
+            'registrations',
+            'registrationDrafts',
+            'maxTeamsPerEntity',
+        ));
     }
 
     public function store(Request $request, string $slug): RedirectResponse
@@ -139,7 +199,74 @@ class CommunityEventRegistrationController extends Controller
             return back()->with('error', 'Akun Anda tidak terasosiasi dengan komunitas aktif.');
         }
 
+        abort_if($request->filled('panel_community_id')
+            && (string) $request->input('panel_community_id') !== (string) $community->id,
+            422, 'Panel aktif telah berubah. Muat ulang halaman.');
+
+        $draftId = $request->input('draft_id');
+        $draft = null;
+        if ($draftId !== null && $draftId !== '') {
+            if (! is_string($draftId) || ! Str::isUuid($draftId)) {
+                return $this->validationFail($request, 'draft_id', 'Format ID draft pendaftaran tidak valid.');
+            }
+
+            $draft = RegistrationDraft::find($draftId);
+            if (! $draft) {
+                return $this->validationFail($request, 'draft_id', 'Draft pendaftaran tidak ditemukan.');
+            }
+
+            if ((int) $draft->user_id !== (int) Auth::id()
+                || (int) $draft->community_id !== (int) $community->id
+                || (int) $draft->event_id !== (int) $event->id
+            ) {
+                abort(403, 'Akses draft pendaftaran ditolak.');
+            }
+
+            if ($draft->isExpired()) {
+                if ($request->expectsJson()) {
+                    abort(410, 'Draft pendaftaran sudah kedaluwarsa.');
+                }
+
+                return back()->withInput()->with('error', 'Draft pendaftaran sudah kedaluwarsa.');
+            }
+
+            if ($draft->isSubmitted()) {
+                $existingParticipant = $draft->participant_id ? EventParticipant::find($draft->participant_id) : null;
+                if ($existingParticipant) {
+                    if ($request->expectsJson()) {
+                        return response()->json([
+                            'message' => 'Pendaftaran tim sudah pernah diserahkan.',
+                            'participant_id' => $existingParticipant->id,
+                            'redirect_url' => route('panel.community-events.create', $event->slug),
+                        ]);
+                    }
+
+                    return redirect()
+                        ->route('panel.community-events.create', $event->slug)
+                        ->with('info', "Pendaftaran tim '{$existingParticipant->team_name}' sudah pernah diserahkan.");
+                }
+
+                if ($request->expectsJson()) {
+                    abort(409, 'Draft telah diserahkan dan tidak dapat diserahkan ulang.');
+                }
+
+                return redirect()
+                    ->route('panel.community-events.create', $event->slug)
+                    ->with('error', 'Draft telah diserahkan dan tidak dapat diserahkan ulang.');
+            }
+
+            if ($draft->event_category_id !== null && $request->filled('event_category_id')) {
+                if ((int) $draft->event_category_id !== (int) $request->input('event_category_id')) {
+                    return $this->validationFail($request, 'event_category_id', 'Kategori turnamen tidak sesuai dengan kategori draft pendaftaran.');
+                }
+            }
+
+            $this->registrationDraftService->resolveStagedFiles($draft, $request);
+        }
+
         $validated = $request->validate([
+            'draft_id' => ['nullable', 'string'],
+            'draft_revision' => [($draftId !== null && $draftId !== '') ? 'required' : 'nullable', 'integer'],
             'event_category_id' => ['required', 'integer', 'exists:event_categories,id'],
             'registration_source' => ['nullable', 'in:club,community'],
             'community_subtype' => ['nullable', 'in:school,university,institution,club,free_association'],
@@ -314,11 +441,40 @@ class CommunityEventRegistrationController extends Controller
                 $request,
                 $docTypeModels,
                 $applicableTeamRequiredDocs,
+                $draftId,
                 &$newlyStoredFiles
             ): EventParticipant {
                 Event::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
                 /** @var EventCategory $lockedCategory */
                 $lockedCategory = EventCategory::query()->whereKey($category->id)->lockForUpdate()->firstOrFail();
+
+                $lockedDraft = null;
+                if ($draftId !== null) {
+                    /** @var RegistrationDraft $lockedDraft */
+                    $lockedDraft = RegistrationDraft::query()->where('id', $draftId)->lockForUpdate()->firstOrFail();
+                    if ($lockedDraft->isExpired()) {
+                        abort(410, 'Draft pendaftaran sudah kedaluwarsa.');
+                    }
+                    if ($lockedDraft->isSubmitted()) {
+                        $existing = $lockedDraft->participant_id ? EventParticipant::find($lockedDraft->participant_id) : null;
+                        if ($existing) {
+                            return $existing;
+                        }
+
+                        abort(409, 'Draft telah diserahkan dan tidak dapat diserahkan ulang.');
+                    }
+                    if (! $request->filled('draft_revision')) {
+                        abort(409, 'Konflik revisi: draft_revision wajib disertakan.');
+                    }
+                    if ((int) $request->input('draft_revision') !== (int) $lockedDraft->revision) {
+                        abort(409, 'Konflik revisi: draft telah diperbarui oleh sesi lain.');
+                    }
+                    if ($lockedDraft->event_category_id !== null && (int) $lockedDraft->event_category_id !== (int) $lockedCategory->id) {
+                        throw ValidationException::withMessages([
+                            'event_category_id' => 'Kategori turnamen tidak sesuai dengan kategori draft pendaftaran.',
+                        ]);
+                    }
+                }
                 $invitation = null;
                 if ($lockedCategory->registration_flow === 'by_invitation') {
                     $invitation = $this->eventInvitationService->authorize(
@@ -491,6 +647,17 @@ class CommunityEventRegistrationController extends Controller
                     ]);
                 }
 
+                if ($lockedDraft !== null) {
+                    $tombstonePayload = (array) ($lockedDraft->payload ?? []);
+                    $tombstonePayload['_tombstone'] = true;
+                    $tombstonePayload['_submitted'] = true;
+                    $tombstonePayload['_participant_id'] = $participant->id;
+                    $lockedDraft->payload = $tombstonePayload;
+                    $lockedDraft->files = ['team_documents' => [], 'athlete_documents' => []];
+                    $lockedDraft->participant_id = $participant->id;
+                    $lockedDraft->save();
+                }
+
                 return $participant;
             });
         } catch (\Throwable $e) {
@@ -515,6 +682,22 @@ class CommunityEventRegistrationController extends Controller
             }
 
             throw $e;
+        }
+
+        if ($draft !== null) {
+            $this->registrationDraftService->cleanStagedFiles($draft);
+        }
+
+        if ($participant->wasRecentlyCreated === false) {
+            return redirect()
+                ->route('panel.community-events.create', $event->slug)
+                ->with('info', "Pendaftaran tim '{$participant->team_name}' sudah pernah diserahkan.");
+        }
+
+        if ($draftId !== null || $request->input('redirect_to') === 'summary') {
+            return redirect()
+                ->route('panel.community-events.create', $event->slug)
+                ->with('success', "Pendaftaran tim '{$participant->team_name}' berhasil disimpan.");
         }
 
         $initialStatus = (string) $participant->status;

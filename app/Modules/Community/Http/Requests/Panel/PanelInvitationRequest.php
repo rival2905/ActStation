@@ -24,6 +24,7 @@ class PanelInvitationRequest extends FormRequest
             'name' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
             'max_registrations' => ['nullable', 'integer', 'min:1'],
+            'expires_days' => ['nullable', 'integer', 'min:1', 'max:365'],
             'expires_at' => ['nullable', 'date', 'after:now'],
         ];
     }

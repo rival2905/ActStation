@@ -278,6 +278,7 @@ test('token undangan salah expired revoked memberi respons identik (anti-enumera
 
     // HTTP POST tests
     $dummyPayload = [
+        'consent' => '1',
         'name' => 'Tester',
         'email' => 'test@test.com',
         'password' => 'secret123',
@@ -309,6 +310,7 @@ test('honeypot terisi ditolak dan tidak mengubah database', function (): void {
     $athletesBefore = CommunityAthlete::count();
 
     $response = $this->post(route('invitations.public.submit', $token), [
+        'consent' => '1',
         'name' => 'Spam Bot',
         'email' => 'bot@spammer.org',
         'password' => 'password123',
@@ -426,7 +428,10 @@ test('registrasi lewat link undangan membuat user ber-role athlete dan status ro
     );
 
     $response = $this->post(route('invitations.public.submit', $result['plain_token']), [
+        'consent' => '1',
         'name' => 'Bintang Baru',
+        'birth_place' => 'Bandung',
+        'birth_date' => '2005-01-01',
         'email' => 'bintang@actstation.test',
         'password' => 'password123',
         'password_confirmation' => 'password123',
@@ -447,7 +452,7 @@ test('registrasi lewat link undangan membuat user ber-role athlete dan status ro
         'status' => 'pending',
         'region_status' => 'pending',
         'initiated_by' => 'athlete',
-        'jersey_number' => 23,
+        'jersey_number' => null,
         'position' => 'Point Guard',
     ]);
 

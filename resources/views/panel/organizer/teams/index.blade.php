@@ -35,9 +35,25 @@
 
 @include('events._workspace_nav', ['event' => $event, 'workspace' => $workspace, 'activeTab' => 'teams'])
 
+<ul class="nav nav-tabs mb-3" id="teamManagementTabs">
+    <li class="nav-item">
+        <a class="nav-link {{ $activeTab === 'registered' ? 'active fw-bold' : '' }}" href="{{ route($workspaceRoutePrefix.'teams.index', array_merge(['event' => $event->id], request()->except('tab', 'page', 'drafts_page'), ['tab' => 'registered'])) }}">
+            <span class="fas fa-users me-1"></span>Tim Terdaftar
+            <span class="badge bg-primary ms-1">{{ $participants->total() }}</span>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {{ $activeTab === 'drafts' ? 'active fw-bold' : '' }}" href="{{ route($workspaceRoutePrefix.'teams.index', array_merge(['event' => $event->id], request()->except('tab', 'page', 'drafts_page'), ['tab' => 'drafts'])) }}">
+            <span class="fas fa-file-pen me-1"></span>Draft Pendaftaran
+            <span class="badge {{ $drafts->total() > 0 ? 'bg-warning text-dark' : 'bg-secondary' }} ms-1">{{ $drafts->total() }}</span>
+        </a>
+    </li>
+</ul>
+
 <div class="card mb-3">
     <div class="card-body p-3">
         <form method="GET" action="{{ route($workspaceRoutePrefix.'teams.index', $event->id) }}" class="row g-2">
+            <input type="hidden" name="tab" value="{{ $activeTab }}">
             <div class="col-md-4">
                 <select class="form-select form-select-sm" name="category_id" onchange="this.form.submit()">
                     <option value="">-- Semua Kategori --</option>
@@ -47,19 +63,120 @@
                 </select>
             </div>
             <div class="col-md-4">
-                <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
-                    <option value="">-- Semua Status Pendaftaran --</option>
-                    <option value="registered" {{ request('status') === 'registered' ? 'selected' : '' }}>Registered (Menunggu Kurasi)</option>
-                    <option value="confirmed" {{ request('status') === 'confirmed' ? 'selected' : '' }}>Confirmed (Roster Lock)</option>
-                    <option value="pending_payment" {{ request('status') === 'pending_payment' ? 'selected' : '' }}>Pending Payment</option>
-                    <option value="revision_needed" {{ request('status') === 'revision_needed' ? 'selected' : '' }}>Revision Needed (Minta Revisi)</option>
-                    <option value="waiting_list" {{ request('status') === 'waiting_list' ? 'selected' : '' }}>Waiting List (Antrean)</option>
-                </select>
+                @if($activeTab === 'drafts')
+                    <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
+                        <option value="">-- Semua Status Draft --</option>
+                        <option value="draft_active" {{ request('status') === 'draft_active' ? 'selected' : '' }}>Sedang Mengisi (Aktif)</option>
+                        <option value="draft_expired" {{ request('status') === 'draft_expired' ? 'selected' : '' }}>Kadaluarsa</option>
+                    </select>
+                @else
+                    <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
+                        <option value="">-- Semua Status Pendaftaran --</option>
+                        <option value="registered" {{ request('status') === 'registered' ? 'selected' : '' }}>Registered (Menunggu Kurasi)</option>
+                        <option value="confirmed" {{ request('status') === 'confirmed' ? 'selected' : '' }}>Confirmed (Roster Lock)</option>
+                        <option value="pending_payment" {{ request('status') === 'pending_payment' ? 'selected' : '' }}>Pending Payment</option>
+                        <option value="revision_needed" {{ request('status') === 'revision_needed' ? 'selected' : '' }}>Revision Needed (Minta Revisi)</option>
+                        <option value="waiting_list" {{ request('status') === 'waiting_list' ? 'selected' : '' }}>Waiting List (Antrean)</option>
+                    </select>
+                @endif
             </div>
         </form>
     </div>
 </div>
 
+@if($activeTab === 'drafts')
+<div class="card">
+    <div class="card-header bg-body-tertiary">
+        <h6 class="mb-0">Daftar Tim Status Draft ({{ $drafts->total() }} Tim)</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle mb-0 fs-10">
+                <thead class="bg-200">
+                    <tr>
+                        <th>Nama Tim</th>
+                        <th>Kategori</th>
+                        <th>Komunitas / Akun Pendaftar</th>
+                        <th>PIC & WhatsApp</th>
+                        <th>Roster Pemain</th>
+                        <th>Status Draft</th>
+                        <th>Waktu Dibuat & Batas</th>
+                        <th class="text-end">Aksi / Follow Up</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($drafts as $d)
+                    @php
+                        $teamName = $d->payload['team_name'] ?? 'Tanpa Nama';
+                        $comm = $draftCommunities[$d->community_id] ?? null;
+                        $contactPerson = $d->payload['contact_person'] ?? $d->user?->name ?? '-';
+                        $contactPhone = $d->payload['contact_phone'] ?? $d->user?->phone_number ?? '-';
+                        $members = $d->payload['members'] ?? [];
+                        $isExpired = $d->isExpired();
+                    @endphp
+                    <tr>
+                        <td>
+                            <a class="fw-bold" href="{{ route($workspaceRoutePrefix.'teams.inspection.show', ['event' => $event->id, 'kind' => 'draft', 'id' => $d->id]) }}">{{ $teamName }}</a>
+                            <small class="text-muted">Draft: {{ substr($d->id, 0, 8) }}...</small>
+                        </td>
+                        <td>{{ $d->category?->name ?? '-' }}</td>
+                        <td>
+                            <div>{{ $comm?->name ?? 'Komunitas #' . $d->community_id }}</div>
+                            <small class="text-muted">{{ $d->user?->name }} ({{ $d->user?->email }})</small>
+                        </td>
+                        <td>
+                            <div>{{ $contactPerson }}</div>
+                            @if($contactPhone && $contactPhone !== '-')
+                                <a href="https://wa.me/{{ preg_replace('/[^0-9]/', '', $contactPhone) }}" target="_blank" class="text-success text-decoration-none fs-11">
+                                    <span class="fab fa-whatsapp me-1"></span>{{ $contactPhone }}
+                                </a>
+                            @else
+                                <small class="text-muted">-</small>
+                            @endif
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">{{ count($members) }} Pemain</span>
+                        </td>
+                        <td>
+                            @if($isExpired)
+                                <span class="badge badge-subtle-danger">Kadaluarsa</span>
+                            @else
+                                <span class="badge badge-subtle-warning text-dark">Sedang Mengisi</span>
+                            @endif
+                        </td>
+                        <td>
+                            <div>{{ $d->created_at?->format('d M Y H:i') ?? '-' }}</div>
+                            @if($d->expires_at)
+                                <small class="text-muted">Batas: {{ $d->expires_at->format('d M Y H:i') }}</small>
+                            @endif
+                        </td>
+                        <td class="text-end">
+                            @if($contactPhone && $contactPhone !== '-')
+                                <a href="https://wa.me/{{ preg_replace('/[^0-9]/', '', $contactPhone) }}?text={{ urlencode('Halo ' . $contactPerson . ', kami dari panitia ' . $event->title . ' ingin menanyakan kelanjutan pendaftaran tim ' . $teamName . '.') }}" target="_blank" class="btn btn-xs btn-outline-success">
+                                    <span class="fab fa-whatsapp me-1"></span>Hubungi PIC
+                                </a>
+                            @else
+                                <span class="text-muted fs-11">-</span>
+                            @endif
+                        </td>
+                    </tr>
+                    @empty
+                    <tr>
+                        <td colspan="8" class="text-center py-4 text-muted">Belum ada tim dengan status draft pada filter ini.</td>
+                    </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@if($drafts->hasPages())
+<div class="mt-3">
+    {{ $drafts->links() }}
+</div>
+@endif
+@else
 <div class="card">
     <div class="card-header bg-body-tertiary">
         <h6 class="mb-0">Daftar Tim Pendaftar ({{ $participants->total() }} Tim)</h6>
@@ -82,7 +199,7 @@
                     @forelse($participants as $p)
                     <tr>
                         <td>
-                            <div class="fw-bold">{{ $p->team_name }}</div>
+                            <a class="fw-bold" href="{{ route($workspaceRoutePrefix.'teams.inspection.show', ['event' => $event->id, 'kind' => 'participant', 'id' => $p->id]) }}">{{ $p->team_name }}</a>
                             <small class="text-muted">{{ strtoupper($p->registrant_type) }}</small>
                         </td>
                         <td>{{ $p->category?->name ?? '-' }}</td>
@@ -297,4 +414,5 @@
 <div class="mt-3">
     {{ $participants->links() }}
 </div>
+@endif
 @endsection

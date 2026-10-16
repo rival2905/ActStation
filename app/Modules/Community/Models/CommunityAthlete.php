@@ -6,6 +6,7 @@ namespace App\Modules\Community\Models;
 
 use App\Models\Concerns\Auditable;
 use App\Models\User;
+use App\Modules\MasterData\Models\DevelopmentLevel;
 use Database\Factories\CommunityAthleteFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -22,6 +23,8 @@ class CommunityAthlete extends Model
         'community_id',
         'user_id',
         'development_level_id',
+        'nisn',
+        'nim',
         'jersey_number',
         'position',
         'initiated_by',
@@ -40,9 +43,13 @@ class CommunityAthlete extends Model
     /**
      * @return array<string, string>
      */
+    protected $hidden = ['nisn', 'nim'];
+
     protected function casts(): array
     {
         return [
+            'nisn' => 'encrypted',
+            'nim' => 'encrypted',
             'jersey_number' => 'integer',
             'responded_at' => 'datetime',
             'region_verified_at' => 'datetime',
@@ -70,5 +77,10 @@ class CommunityAthlete extends Model
     public function regionVerifiedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'region_verified_by');
+    }
+
+    public function developmentLevel(): BelongsTo
+    {
+        return $this->belongsTo(DevelopmentLevel::class);
     }
 }

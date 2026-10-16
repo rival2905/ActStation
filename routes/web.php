@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\UserProfileController;
 use App\Modules\Event\Http\Controllers\Public\MyEventController;
 use App\Modules\Event\Http\Controllers\Public\MyTicketController;
 use App\Modules\Event\Http\Controllers\Public\PublicAuthController;
@@ -48,7 +49,11 @@ Route::prefix('events')->name('events.')->group(function (): void {
 
 // Dashboard Partisipasi & Tiket Pengguna Terautentikasi (PRD_EXTERNAL §6.1)
 Route::middleware('auth')->group(function (): void {
+    Route::get('user/profile', [UserProfileController::class, 'edit'])->name('user-profile.edit');
+    Route::put('user/profile', [UserProfileController::class, 'update'])->name('user-profile.update');
+    Route::get('user/profile/documents/{document}', [UserProfileController::class, 'download'])->whereNumber('document')->name('user-profile.documents.download');
     Route::get('my-events', [MyEventController::class, 'index'])->name('my-events.index');
+    Route::post('my-events/{kind}/{id}/documents/{code}', [MyEventController::class, 'upload'])->whereIn('kind', ['draft', 'participant'])->middleware('throttle:20,1')->name('my-events.documents.store');
     Route::get('my-tickets', [MyTicketController::class, 'index'])->name('my-tickets.index');
 
     // Verifikasi Email (PRD §Komunikasi email n8n)

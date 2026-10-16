@@ -9,6 +9,7 @@ use App\Modules\Community\Http\Controllers\Panel\CommunityActivityController;
 use App\Modules\Community\Http\Controllers\Panel\CommunitySwitchController;
 use App\Modules\Community\Http\Controllers\Panel\DocumentController;
 use App\Modules\Community\Http\Controllers\Panel\InvitationController;
+use App\Modules\Community\Http\Controllers\Panel\MyCommunityController;
 use App\Modules\Community\Http\Controllers\Panel\MyRequestController;
 use App\Modules\Community\Http\Controllers\Panel\OfficialController;
 use App\Modules\Community\Http\Controllers\Panel\ProfileController;
@@ -75,6 +76,9 @@ Route::middleware(['auth', 'EnsurePanelAccess', EnsureValidCommunityContext::cla
     // Community invitations
     Route::post('invitations', [InvitationController::class, 'store'])->name('invitations.store');
     Route::delete('invitations/{invitation}', [InvitationController::class, 'revoke'])->name('invitations.revoke');
+
+    Route::get('my-communities', [MyCommunityController::class, 'index'])->name('my-communities.index');
+    Route::get('my-communities/{community}', [MyCommunityController::class, 'show'])->whereNumber('community')->name('my-communities.show');
 
     // Athlete self-serve roster requests
     Route::get('my-requests', [MyRequestController::class, 'index'])->name('my-requests.index');

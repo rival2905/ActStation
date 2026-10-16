@@ -7,6 +7,7 @@ namespace App\Modules\Event\Models;
 use App\Contracts\EntityRequirements;
 use App\Models\Concerns\Auditable;
 use App\Modules\MasterData\Models\DevelopmentLevel;
+use Carbon\Carbon;
 use Database\Factories\EventCategoryFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -36,6 +37,7 @@ class EventCategory extends Model
         'min_roster',
         'max_roster',
         'max_teams',
+        'max_teams_per_entity',
         'is_roster_public',
         'match_type',
         'registration_flow',
@@ -68,6 +70,7 @@ class EventCategory extends Model
             'min_roster' => 'integer',
             'max_roster' => 'integer',
             'max_teams' => 'integer',
+            'max_teams_per_entity' => 'integer',
             'is_roster_public' => 'boolean',
             'enable_waiting_list' => 'boolean',
             'payment_time_limit_hours' => 'integer',
@@ -287,5 +290,32 @@ class EventCategory extends Model
     public function bracketNodes(): HasMany
     {
         return $this->hasMany(BracketNode::class);
+    }
+
+    public function activeEntityParticipants(?Carbon $now = null): HasMany
+    {
+        $now ??= Carbon::now();
+
+        return $this->participants()->where(function ($active) use ($now): void {
+            $active->whereIn('status', ['registered', 'revision_needed', 'verified', 'confirmed', 'waiting_list'])
+                ->orWhere(function ($pending) use ($now): void {
+                    $pending->where('status', 'pending_payment')
+                        ->where(function ($deadline) use ($now): void {
+                            $deadline->whereNull('payment_deadline_at')
+                                ->orWhere('payment_deadline_at', '>=', $now);
+                        });
+                });
+        });
+    }
+
+    public function maxActiveTeamsPerCommunity(?Carbon $now = null): int
+    {
+        $counts = $this->activeEntityParticipants($now)
+            ->whereNotNull('community_id')
+            ->selectRaw('community_id, COUNT(*) as active_count')
+            ->groupBy('community_id')
+            ->pluck('active_count');
+
+        return $counts->isEmpty() ? 0 : (int) $counts->max();
     }
 }

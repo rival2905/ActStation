@@ -76,7 +76,15 @@
                 <tbody>
                     @foreach($myRegistrations as $reg)
                     <tr>
-                        <td class="fw-semi-bold">{{ $reg->event?->title }}</td>
+                        <td>
+                            @if($reg->event)
+                                <a href="{{ route('panel.community-events.create', $reg->event->slug) }}" class="fw-semi-bold text-decoration-none" title="Buka ringkasan pendaftaran event">
+                                    {{ $reg->event->title }}
+                                </a>
+                            @else
+                                <span class="fw-semi-bold">-</span>
+                            @endif
+                        </td>
                         <td>{{ $reg->category?->name ?? 'Umum' }}</td>
                         <td>{{ $reg->team_name }}</td>
                         <td>
@@ -90,13 +98,29 @@
                                     default => 'primary',
                                 };
                             @endphp
-                            <span class="badge badge-subtle-{{ $badgeClass }}">{{ strtoupper(str_replace('_', ' ', $reg->status)) }}</span>
+                            @php
+                                $statusLabel = match($reg->status) {
+                                    'registered' => 'MENUNGGU PEMERIKSAAN',
+                                    'verified' => 'LOLOS PEMERIKSAAN',
+                                    'revision_needed' => 'PERLU PERBAIKAN',
+                                    'waiting_list' => 'MENUNGGU SLOT TERSEDIA',
+                                    'pending_payment' => 'MENUNGGU PEMBAYARAN',
+                                    'confirmed' => 'PESERTA DIKONFIRMASI',
+                                    default => strtoupper(str_replace('_', ' ', $reg->status)),
+                                };
+                            @endphp
+                            <span class="badge badge-subtle-{{ $badgeClass }}">{{ $statusLabel }}</span>
                             @if($reg->status === 'waiting_list')
                                 <small class="text-muted">(Antrean #{{ $reg->waiting_list_order }})</small>
                             @endif
                         </td>
                         <td>{{ $reg->registered_at?->format('d M Y H:i') ?? '-' }}</td>
-                        <td class="text-end">
+                        <td class="text-end text-nowrap">
+                            @if($reg->event)
+                                <a href="{{ route('panel.community-events.create', $reg->event->slug) }}" class="btn btn-xs btn-outline-secondary me-1" title="Lihat ringkasan tim event">
+                                    <span class="fas fa-users me-1"></span>Ringkasan Tim
+                                </a>
+                            @endif
                             <a href="{{ route('panel.community-events.roster', $reg->id) }}" class="btn btn-xs btn-outline-primary me-1">Lihat Roster</a>
                             @if(in_array($reg->status, ['pending_payment', 'registered']) && (float) ($reg->category?->registration_fee ?? 0) > 0)
                                 <a href="{{ route('panel.community-events.checkout', $reg->id) }}" class="btn btn-xs btn-warning">Bayar</a>
