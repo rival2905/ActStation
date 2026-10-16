@@ -69,7 +69,7 @@
                     <a class="nav-link {{ request()->routeIs('panel.coaches.*') ? 'active' : '' }}" href="{{ Route::has('panel.coaches.index') ? route('panel.coaches.index') : '#' }}" role="button">
                         <div class="d-flex align-items-center">
                             <span class="nav-link-icon"><span class="fas fa-chalkboard-teacher"></span></span>
-                            <span class="nav-link-text ps-1">Pelatih</span>
+                            <span class="nav-link-text ps-1">Pelatih & Tenaga Pendukung</span>
                         </div>
                     </a>
                 </li>
@@ -140,6 +140,7 @@
                     </a>
                 </li>
 
+                <li class="nav-item"><a class="nav-link {{ request()->routeIs('panel.organizer.committee.*') ? 'active' : '' }}" href="{{ route('panel.organizer.committee.mine') }}"><div class="d-flex align-items-center"><span class="nav-link-icon"><span class="fas fa-user-friends"></span></span><span class="nav-link-text ps-1">Kepanitiaan Saya</span></div></a></li>
                 @if(Auth::user()?->hasRole('organizer') || Auth::user()?->hasRole('superadmin'))
                 <!-- Panel Organizer -->
                 <li class="nav-item">

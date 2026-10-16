@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\UserProfileController;
+use App\Modules\Event\Http\Controllers\Public\CommitteeInvitationController;
 use App\Modules\Event\Http\Controllers\Public\MyEventController;
 use App\Modules\Event\Http\Controllers\Public\MyTicketController;
+use App\Modules\Event\Http\Controllers\Public\PersonnelInvitationController;
 use App\Modules\Event\Http\Controllers\Public\PublicAuthController;
 use App\Modules\Event\Http\Controllers\Public\PublicEventController;
 use App\Modules\Event\Http\Controllers\Public\PublicRegistrationController;
@@ -20,6 +22,20 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', [PublicEventController::class, 'landing'])->name('landing');
 Route::get('panduan-event', fn () => view('public.panduan'))->name('panduan.event');
 Route::get('sitemap.xml', [PublicEventController::class, 'sitemap'])->name('sitemap');
+
+Route::prefix('personnel-invitations')->name('personnel-invitations.')->middleware('throttle:20,1')->group(function (): void {
+    Route::get('{token}', [PersonnelInvitationController::class, 'show'])->name('show');
+    Route::get('{token}/login', [PersonnelInvitationController::class, 'login'])->name('login');
+    Route::get('{token}/register', [PersonnelInvitationController::class, 'register'])->name('register');
+    Route::post('{token}/join', [PersonnelInvitationController::class, 'join'])->middleware('auth:web')->name('join');
+});
+
+Route::prefix('committee-invitations')->name('committee-invitations.')->middleware('throttle:20,1')->group(function (): void {
+    Route::get('{token}', [CommitteeInvitationController::class, 'show'])->name('show');
+    Route::get('{token}/login', [CommitteeInvitationController::class, 'login'])->name('login');
+    Route::get('{token}/register', [CommitteeInvitationController::class, 'register'])->name('register');
+    Route::post('{token}/join', [CommitteeInvitationController::class, 'join'])->middleware('auth:web')->name('join');
+});
 
 // Registrasi Publik & Onboarding (PRD_EXTERNAL §2.1)
 Route::middleware('guest')->group(function (): void {

@@ -11,7 +11,12 @@ use App\Modules\Community\Http\Controllers\Admin\CommunityDocumentController;
 use App\Modules\Community\Http\Controllers\Admin\OfficialController;
 use App\Modules\Community\Http\Controllers\Admin\RegionOverseerController;
 use App\Modules\Community\Http\Controllers\Admin\RegionOversightController;
+use App\Modules\Community\Http\Controllers\Admin\SportsPersonnelRoleController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('sports-personnel-roles', [SportsPersonnelRoleController::class, 'index'])->middleware('permission:community-coach.manage')->name('personnel-roles.index');
+Route::post('sports-personnel-roles', [SportsPersonnelRoleController::class, 'store'])->middleware('permission:community-coach.manage')->name('personnel-roles.store');
+Route::put('sports-personnel-roles/{role}', [SportsPersonnelRoleController::class, 'update'])->middleware('permission:community-coach.manage')->name('personnel-roles.update');
 
 // Communities
 Route::get('communities', [CommunityController::class, 'index'])

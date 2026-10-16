@@ -116,7 +116,10 @@ class EventCategory extends Model
     public function acceptsCommunityType(?string $subtype, ?string $institutionType = null, ?string $schoolLevel = null): bool
     {
         if ($subtype === 'club') {
-            return (bool) $this->allow_club;
+            $configured = $this->allowed_community_subtypes ?? ($this->community_subtype !== null ? [$this->community_subtype] : []);
+            $academicOnly = $configured !== [] && array_diff($configured, ['school', 'school_sd', 'school_smp', 'school_sma', 'university']) === [];
+
+            return (bool) $this->allow_club && ! $academicOnly;
         }
 
         if (! $this->allow_community || $subtype === null) {
@@ -215,7 +218,7 @@ class EventCategory extends Model
     {
         $labels = [];
 
-        if ($this->allow_club) {
+        if ($this->acceptsCommunityType('club')) {
             $labels[] = 'Klub';
         }
 

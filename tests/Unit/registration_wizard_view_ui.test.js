@@ -20,8 +20,8 @@ test('step 2 splits into explicit Dokumen and Roster sections with invitation co
     assert.ok(roster >= 0 && review > roster);
     const rosterView = view.substring(roster, review);
 
-    const docHeading = rosterView.search(/<h6\b[^>]*>\s*Dokumen\s*<\/h6>/i);
-    const rosterHeading = rosterView.search(/<h6\b[^>]*>\s*Roster\s*<\/h6>/i);
+    const docHeading = rosterView.search(/<h6\b[^>]*>\s*Dokumen Tim & Legalitas\s*<\/h6>/i);
+    const rosterHeading = rosterView.search(/<h6\b[^>]*>\s*Roster Atlet\s*<\/h6>/i);
     const teamDocs = rosterView.indexOf('id="team_documents_wrapper"');
     const entityDocs = rosterView.indexOf('id="entity_documents_container"');
     const inviteLink = rosterView.indexOf('data-registration-athlete-invite-link');
@@ -34,12 +34,12 @@ test('step 2 splits into explicit Dokumen and Roster sections with invitation co
     assert.ok(rosterHeading < inviteLink, 'invitation link must be in Roster section, not Dokumen');
 
     assert.equal(rosterView.indexOf('athlete_invitation_name'), -1, 'athlete_invitation_name input must be removed');
-    assert.match(rosterView, /<button\b[^>]*data-registration-athlete-invite-link[^>]*>[\s\S]*?Link Roster Tim[\s\S]*?<\/button>/);
+    assert.match(rosterView, /<button\b[^>]*data-registration-athlete-invite-link[^>]*>[\s\S]*?Link Roster Atlet[\s\S]*?<\/button>/);
     assert.match(rosterView, /<input\b[^>]*\bid=["']registration-team-invitation-url["'][^>]*\breadonly\b[^>]*\bhidden\b/);
     assert.match(rosterView, /<button\b[^>]*data-registration-copy-invitation\b[^>]*\bhidden\b/);
     assert.match(rosterView, /id=["']registration-invitation-message["']/);
 
-    assert.match(rosterView, /<button\b[^>]*data-registration-add-athlete\b[^>]*\bhidden\b/);
+    assert.match(rosterView, /<button\b[^>]*data-registration-add-athlete\b[^>]*\baria-expanded="false"/);
     assert.match(rosterView, /<div\b[^>]*data-registration-athlete-picker\b[^>]*\bhidden\b/);
 });
 

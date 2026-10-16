@@ -410,5 +410,5 @@ test('invitation creation works without athlete name and sends revision plus pan
     assert.equal(capturedBody.revision, 1);
     assert.equal(capturedBody.panel_community_id, 5);
     assert.equal(capturedHeaders['If-Match'], '"1"');
-    assert.match(h.inviteMsg.textContent, /https:\/\/actstation.test\/invite\/draft-abc/);
+    assert.equal(h.inviteMsg.textContent, 'Link roster atlet siap disalin.');
 });

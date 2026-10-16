@@ -86,7 +86,7 @@
                 </li>
                 @endcan
 
-                @canany(['sport-category.view', 'venue.view', 'development-level.view', 'school.view', 'region.view', 'document-type.view'])
+                @canany(['sport-category.view', 'venue.view', 'development-level.view', 'school.view', 'region.view', 'document-type.view', 'community-coach.manage'])
                 <li class="nav-item">
                     <div class="row navbar-vertical-label-wrapper mt-3 mb-2">
                         <div class="col-auto navbar-vertical-label">Master Data</div>
@@ -145,6 +145,16 @@
                         <div class="d-flex align-items-center">
                             <span class="nav-link-icon"><span class="fas fa-globe-asia"></span></span>
                             <span class="nav-link-text ps-1">Wilayah</span>
+                        </div>
+                    </a>
+                </li>
+                @endcan
+                @can('community-coach.manage')
+                <li class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('admin.personnel-roles.*') ? 'active' : '' }}" href="{{ route('admin.personnel-roles.index') }}" role="button">
+                        <div class="d-flex align-items-center">
+                            <span class="nav-link-icon"><span class="fas fa-user-tie"></span></span>
+                            <span class="nav-link-text ps-1">Jabatan Tenaga Pendukung</span>
                         </div>
                     </a>
                 </li>

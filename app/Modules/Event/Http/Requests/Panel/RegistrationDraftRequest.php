@@ -35,6 +35,7 @@ class RegistrationDraftRequest extends FormRequest
                 'registration_source',
                 'community_subtype',
                 'members',
+                'personnel',
             ];
 
             $toMerge = [];
@@ -64,13 +65,17 @@ class RegistrationDraftRequest extends FormRequest
             'registration_source' => ['nullable', 'in:club,community'],
             'community_subtype' => ['nullable', 'in:school,university,institution,club,free_association'],
             'revision' => ['nullable', 'integer'],
+            'personnel' => ['nullable', 'array', 'max:200'],
+            'personnel.*' => ['array'],
+            'personnel.*.user_id' => ['required', 'integer', 'min:1'],
+            'personnel.*.role_id' => ['required', 'integer', 'min:1'],
             'members' => ['nullable', 'array'],
             'members.*' => ['array'],
             'members.*.user_id' => ['nullable', 'integer'],
             'members.*.jersey_number' => ['nullable', 'integer', 'between:0,99'],
             'members.*.is_captain' => ['nullable', 'boolean'],
             'members.*.position' => ['nullable', 'string', 'max:50'],
-            'members.*.team_role' => ['nullable', 'string', 'max:50'],
+            'members.*.team_role' => ['nullable', 'in:player'],
             'team_document' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
             'team_documents' => ['nullable', 'array'],
             'team_documents.*' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],

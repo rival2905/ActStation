@@ -17,6 +17,7 @@ use App\Modules\MasterData\Models\DevelopmentLevel;
 use App\Modules\MasterData\Models\DocumentType;
 use App\Modules\MasterData\Models\SportCategory;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -434,6 +435,10 @@ test('each team has a distinct invitation and joins only its target roster', fun
 });
 
 test('roster invitation requires category identity and stores it separately', function (string $subtype, string $identity, string $field): void {
+    if ($subtype === 'school_sma') {
+        DB::table('schools')->insertOrIgnore(['npsn' => '99887765', 'name' => 'SMA Fixture Undangan', 'school_level' => 'sma', 'school_status' => 'negeri', 'province_id' => '32', 'city_id' => '32.73', 'dataset_year' => 2026, 'source' => 'test']);
+    }
+    $this->community->update(['subtype' => $subtype === 'school_sma' ? 'school' : $subtype, 'npsn' => $subtype === 'school_sma' ? '99887765' : null]);
     $this->category->update(['community_subtype' => $subtype, 'allowed_community_subtypes' => [$subtype]]);
     $token = basename(parse_url(rf02CreateInvite($this)['invite_url'], PHP_URL_PATH));
     $athlete = User::factory()->create(['is_active' => true]);

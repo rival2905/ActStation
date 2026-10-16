@@ -63,6 +63,20 @@ class PublicAuthController extends Controller
 
         Auth::login($user);
 
+        $personnelToken = $request->session()->pull('personnel_registration_return');
+        if (is_string($personnelToken) && preg_match('/^[A-Za-z0-9]{64}$/D', $personnelToken)) {
+            $request->session()->regenerate();
+
+            return redirect()->route('personnel-invitations.show', $personnelToken)->with('success', 'Akun siap. Tinjau peran lalu ajukan keanggotaan atau gabung roster.');
+        }
+
+        $committeeToken = $request->session()->pull('committee_registration_return');
+        if (is_string($committeeToken) && preg_match('/^[A-Za-z0-9]{64}$/D', $committeeToken)) {
+            $request->session()->regenerate();
+
+            return redirect()->route('committee-invitations.show', $committeeToken)->with('success', 'Akun siap. Tinjau jabatan lalu setujui pengajuan panitia.');
+        }
+
         return redirect()
             ->route('events.index')
             ->with('success', 'Selamat datang di ActStation! Akun Anda aktif dan siap menjelajahi seluruh event.');

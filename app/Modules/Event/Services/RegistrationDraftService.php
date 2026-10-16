@@ -67,6 +67,9 @@ class RegistrationDraftService implements RegistrationDraftProvider
         }
 
         $community = $this->communityLookup->find($communityId);
+        if (! $community || ! $category->acceptsCommunityType($community->subtype, $community->institution_type, $community->school_level)) {
+            return null;
+        }
         $allowed = $category->allowed_community_subtypes;
         $subtype = is_array($allowed)
             ? (count($allowed) === 1 ? $allowed[0] : $community?->subtype)
@@ -201,6 +204,8 @@ class RegistrationDraftService implements RegistrationDraftProvider
         }
 
         $payload = $this->extractAllowlistedPayload($data, $categoryId);
+        $payload['personnel'] ??= app(TeamPersonnelRoster::class)->initial($event, $communityId, (int) $user->id);
+        app(TeamPersonnelRoster::class)->validate($event, $communityId, $payload['personnel'], false);
         $this->assertDraftMembersAllowed($draftId, $communityId, $payload);
         $files = ['team_documents' => [], 'athlete_documents' => []];
 
@@ -299,6 +304,7 @@ class RegistrationDraftService implements RegistrationDraftProvider
 
                 $existingPayload = (array) ($lockedDraft->payload ?? []);
                 $newPayload = array_merge($existingPayload, $this->extractAllowlistedPayload($data, $categoryId));
+                app(TeamPersonnelRoster::class)->validate($lockedDraft->event, (int) $lockedDraft->community_id, $newPayload['personnel'] ?? [], false);
                 $this->assertDraftMembersAllowed((string) $lockedDraft->id, (int) $lockedDraft->community_id, $newPayload);
 
                 $files = (array) ($lockedDraft->files ?? ['team_documents' => [], 'athlete_documents' => []]);
@@ -528,6 +534,7 @@ class RegistrationDraftService implements RegistrationDraftProvider
             'registration_source',
             'community_subtype',
             'members',
+            'personnel',
         ];
 
         $payload = [];
@@ -855,6 +862,10 @@ class RegistrationDraftService implements RegistrationDraftProvider
 
     public function assertCategoryEntityCapacityNotExceeded(EventCategory $category, int $communityId, ?string $ignoringDraftId = null): void
     {
+        $community = $this->communityLookup->find($communityId);
+        if (! $community || ! $category->acceptsCommunityType($community->subtype, $community->institution_type, $community->school_level)) {
+            throw ValidationException::withMessages(['event_category_id' => 'Kategori tidak sesuai dengan sub-tipe atau jenjang komunitas aktif.']);
+        }
         $maxAllowed = max(1, (int) ($category->max_teams_per_entity ?? 1));
 
         $activeParticipantsCount = $this->registrationGuard

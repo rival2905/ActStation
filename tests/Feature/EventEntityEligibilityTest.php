@@ -52,6 +52,38 @@ beforeEach(function (): void {
     $this->manager->assignRole('community_manager');
 });
 
+test('academic-only categories reject club bypass while open tournaments still accept schools', function (): void {
+    foreach (['school_smp', 'school_sma', 'university'] as $subtype) {
+        $category = EventCategory::factory()->create(['event_id' => $this->event->id, 'allow_club' => true, 'allow_community' => true, 'allowed_community_subtypes' => [$subtype]]);
+        expect($category->acceptsCommunityType('club'))->toBeFalse()
+            ->and($category->acceptsCommunityType('institution', 'corporate'))->toBeFalse()
+            ->and($category->acceptsCommunityType('free_association'))->toBeFalse();
+    }
+    $open = EventCategory::factory()->create(['event_id' => $this->event->id, 'allow_club' => true, 'allow_community' => true, 'allowed_community_subtypes' => null, 'community_subtype' => null]);
+    expect($open->acceptsCommunityType('school', null, 'sma'))->toBeTrue()
+        ->and($open->acceptsCommunityType('university'))->toBeTrue()
+        ->and($open->acceptsCommunityType('institution', 'corporate'))->toBeTrue();
+});
+
+test('institution manager sees only matching registration options and cannot forge an academic draft', function (): void {
+    $community = Community::factory()->create(['subtype' => 'institution', 'institution_type' => 'corporate', 'is_active' => true, 'status' => 'verified']);
+    CommunityOfficial::factory()->create(['community_id' => $community->id, 'user_id' => $this->manager->id, 'status' => 'active', 'ended_at' => null]);
+    $school = EventCategory::factory()->create(['event_id' => $this->event->id, 'allow_club' => true, 'allow_community' => true, 'allowed_community_subtypes' => ['school_sma']]);
+    $company = EventCategory::factory()->create(['event_id' => $this->event->id, 'allow_club' => false, 'allow_community' => true, 'allowed_community_subtypes' => ['institution'], 'allowed_institution_types' => ['corporate']]);
+    $this->actingAs($this->manager)->withSession(['current_community_id' => $community->id]);
+    $response = $this->get(route('panel.community-events.create', $this->event->slug))->assertOk();
+    $dom = new DOMDocument;
+    @$dom->loadHTML($response->getContent());
+    $options = (new DOMXPath($dom))->query('//select[@id="event_category_id"]/option[@value!=""]');
+    expect(collect($options)->map(fn ($option) => (int) $option->getAttribute('value'))->all())->toBe([$company->id]);
+    $this->postJson(route('panel.registration-drafts.store', $this->event->slug), ['event_category_id' => $school->id, 'team_name' => 'Tidak Sah', 'community_subtype' => 'school', 'panel_community_id' => $community->id])
+        ->assertUnprocessable()->assertJsonValidationErrors('event_category_id');
+    $this->assertDatabaseMissing('event_registration_drafts', ['community_id' => $community->id, 'event_category_id' => $school->id]);
+    $draftId = $this->postJson(route('panel.registration-drafts.store', $this->event->slug), ['event_category_id' => $company->id, 'team_name' => 'Tim Perusahaan', 'panel_community_id' => $community->id])->assertCreated()->json('draft.id');
+    $this->putJson(route('panel.registration-drafts.update', [$this->event->slug, $draftId]), ['revision' => 1, 'event_category_id' => $school->id, 'panel_community_id' => $community->id])->assertUnprocessable()->assertJsonValidationErrors('event_category_id');
+    $this->assertDatabaseHas('event_registration_drafts', ['id' => $draftId, 'event_category_id' => $company->id, 'revision' => 1]);
+});
+
 test('category accepts multiple community subtypes when configured', function (): void {
     $category = EventCategory::factory()->create([
         'event_id' => $this->event->id,

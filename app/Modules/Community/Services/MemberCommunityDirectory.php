@@ -28,13 +28,16 @@ class MemberCommunityDirectory
             if ($key === 'officials') {
                 $columns[] = 'position';
             }
+            if ($key === 'coaches') {
+                $columns[] = 'sports_personnel_role_id';
+            }
             $groups[$key] = $model::query()->where('community_id', $community->id)
                 ->whereIn('status', ['active', $athlete ? 'left' : 'inactive'])
-                ->select($columns)->with('user:id,name')->orderByDesc($start)->orderByDesc('id')
+                ->select($columns)->with($key === 'coaches' ? ['user:id,name', 'personnelRole:id,name'] : ['user:id,name'])->orderByDesc($start)->orderByDesc('id')
                 ->paginate(20, ['*'], $key.'_page')->withQueryString()
                 ->through(fn ($member): array => [
                     'name' => $member->user?->name ?? 'Akun tidak tersedia',
-                    'role' => $key === 'officials' ? $member->position : ($athlete ? 'Atlet' : 'Pelatih'),
+                    'role' => $key === 'officials' ? $member->position : ($athlete ? 'Atlet' : ($member->personnelRole?->name ?? 'Pelatih')),
                     'current' => $member->status === 'active' && $member->{$end} === null,
                     'started_at' => $member->{$start}?->format('d-m-Y'),
                     'ended_at' => $member->{$end}?->format('d-m-Y'),

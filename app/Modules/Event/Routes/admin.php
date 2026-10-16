@@ -13,6 +13,7 @@ use App\Modules\Event\Http\Controllers\Admin\ScheduleController;
 use App\Modules\Event\Http\Controllers\Admin\ScheduleSettingController;
 use App\Modules\Event\Http\Controllers\Admin\TournamentSchedulerController;
 use App\Modules\Event\Http\Controllers\Panel\EventInvitationController;
+use App\Modules\Event\Http\Controllers\Panel\EventPersonnelSettingsController;
 use App\Modules\Event\Http\Controllers\Panel\OrganizerDocumentController;
 use App\Modules\Event\Http\Controllers\Panel\OrganizerGateScannerController;
 use App\Modules\Event\Http\Controllers\Panel\OrganizerPayoutController;
@@ -40,6 +41,9 @@ Route::post('events', [EventController::class, 'store'])
 Route::get('events/{event}', [EventController::class, 'show'])
     ->middleware('permission:event.view')
     ->name('events.show');
+
+Route::get('events/{event}/personnel', [EventPersonnelSettingsController::class, 'edit'])->middleware('permission:event.update')->name('events.personnel.edit');
+Route::put('events/{event}/personnel', [EventPersonnelSettingsController::class, 'update'])->middleware('permission:event.update')->name('events.personnel.update');
 
 Route::get('events/{event}/edit', [EventController::class, 'edit'])
     ->middleware('permission:event.update')

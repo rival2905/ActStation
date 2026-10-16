@@ -25,6 +25,9 @@
             </a>
             @endcan
 
+            @can('event.update')
+            <a href="{{ route('admin.events.personnel.edit', $event) }}" class="btn btn-sm btn-falcon-default">Aturan Tenaga Pendukung</a>
+            @endcan
             {{-- Lifecycle Buttons --}}
             @if($event->status === 'draft')
                 @can('event.publish')

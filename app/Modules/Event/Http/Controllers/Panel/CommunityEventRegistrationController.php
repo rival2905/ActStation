@@ -20,8 +20,10 @@ use App\Modules\Event\Services\EventInvitationService;
 use App\Modules\Event\Services\RegistrationDraftService;
 use App\Modules\Event\Services\RegistrationGuard;
 use App\Modules\Event\Services\RosterValidator;
+use App\Modules\Event\Services\TeamPersonnelRoster;
 use App\Modules\MasterData\Models\DocumentType;
 use App\Modules\Payment\Models\Transaction;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -174,7 +176,10 @@ class CommunityEventRegistrationController extends Controller
             }
         }
 
+        $personnelOptions = app(TeamPersonnelRoster::class)->options($event, (int) $community->id);
+
         return view('panel.events.register', compact(
+            'personnelOptions',
             'event',
             'community',
             'eligibleRosterByCategory',
@@ -187,7 +192,7 @@ class CommunityEventRegistrationController extends Controller
         ));
     }
 
-    public function store(Request $request, string $slug): RedirectResponse
+    public function store(Request $request, string $slug): RedirectResponse|JsonResponse
     {
         $event = Event::query()
             ->where('slug', $slug)
@@ -196,6 +201,10 @@ class CommunityEventRegistrationController extends Controller
 
         $community = $this->communityLookup->findForUser((int) Auth::id());
         if (! $community) {
+            if ($request->expectsJson()) {
+                abort(403, 'Akun Anda tidak terasosiasi dengan komunitas aktif.');
+            }
+
             return back()->with('error', 'Akun Anda tidak terasosiasi dengan komunitas aktif.');
         }
 
@@ -275,12 +284,16 @@ class CommunityEventRegistrationController extends Controller
             'contact_person' => ['required', 'string', 'max:255'],
             'contact_phone' => ['required', 'string', 'max:20'],
             'notes' => ['nullable', 'string'],
+            'personnel' => ['nullable', 'array', 'max:200'],
+            'personnel.*' => ['array'],
+            'personnel.*.user_id' => ['required', 'integer', 'min:1'],
+            'personnel.*.role_id' => ['required', 'integer', 'min:1'],
             'members' => ['required', 'array', 'min:1'],
             'members.*.user_id' => ['required', 'integer'],
             'members.*.jersey_number' => ['required', 'integer', 'between:0,99'],
             'members.*.is_captain' => ['nullable', 'boolean'],
             'members.*.position' => ['nullable', 'string', 'max:50'],
-            'members.*.team_role' => ['nullable', 'string', 'max:50'],
+            'members.*.team_role' => ['nullable', 'in:player'],
             'team_document' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
             'team_documents' => ['nullable', 'array'],
             'team_documents.*' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
@@ -424,6 +437,10 @@ class CommunityEventRegistrationController extends Controller
             $legalDocs = $this->communityLookup->legalDocumentsForUser((int) Auth::id(), (int) $community->id);
             foreach ($category->required_entity_documents as $docCode) {
                 if (! isset($legalDocs[$docCode])) {
+                    if ($request->expectsJson()) {
+                        throw ValidationException::withMessages(['documents' => "Dokumen legalitas entitas [{$docCode}] belum diverifikasi atau tidak tersedia."]);
+                    }
+
                     return back()->withInput()->with('error', "Dokumen legalitas entitas [{$docCode}] belum diverifikasi atau tidak tersedia.");
                 }
             }
@@ -444,7 +461,7 @@ class CommunityEventRegistrationController extends Controller
                 $draftId,
                 &$newlyStoredFiles
             ): EventParticipant {
-                Event::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
+                $event = Event::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
                 /** @var EventCategory $lockedCategory */
                 $lockedCategory = EventCategory::query()->whereKey($category->id)->lockForUpdate()->firstOrFail();
 
@@ -521,6 +538,7 @@ class CommunityEventRegistrationController extends Controller
                     'event_id' => $event->id,
                     'event_category_id' => $lockedCategory->id,
                     'registrant_type' => 'community',
+                    'personnel_requirements' => $event->personnel_requirements ?? [],
                     'community_id' => $community->id,
                     'user_id' => Auth::id(),
                     'team_name' => trim($validated['team_name']),
@@ -535,6 +553,7 @@ class CommunityEventRegistrationController extends Controller
                 ]);
 
                 $this->rosterValidator->validate($participant, $validated['members']);
+                app(TeamPersonnelRoster::class)->sync($participant, $validated['personnel'] ?? []);
 
                 foreach ($validated['members'] as $member) {
                     EventParticipantMember::create([
@@ -666,12 +685,18 @@ class CommunityEventRegistrationController extends Controller
             }
 
             if ($e instanceof RegistrationGuardException) {
+                if ($request->expectsJson()) {
+                    throw ValidationException::withMessages(['registration' => $e->getMessage()]);
+                }
                 session()->flash('error', $e->getMessage());
 
                 return back()->withInput()->with('error', $e->getMessage());
             }
 
             if ($e instanceof RosterValidationException) {
+                if ($request->expectsJson()) {
+                    throw ValidationException::withMessages($e->errors());
+                }
                 session()->flash('error', 'Validasi susunan roster gagal.');
 
                 return back()->withInput()->withErrors($e->errors())->with('error', 'Validasi susunan roster gagal.');
@@ -686,6 +711,15 @@ class CommunityEventRegistrationController extends Controller
 
         if ($draft !== null) {
             $this->registrationDraftService->cleanStagedFiles($draft);
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => $participant->wasRecentlyCreated ? "Pendaftaran tim '{$participant->team_name}' berhasil dikirim." : 'Pendaftaran tim sudah pernah diserahkan.',
+                'participant_id' => $participant->id,
+                'status' => $participant->status,
+                'redirect_url' => route('panel.community-events.create', $event->slug),
+            ], $participant->wasRecentlyCreated ? 201 : 200);
         }
 
         if ($participant->wasRecentlyCreated === false) {

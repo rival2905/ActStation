@@ -43,6 +43,7 @@ class Event extends Model
         'venue_approval_doc',
         'kyc_notes',
         'payout_status',
+        'personnel_requirements',
         'allow_manual_payment',
         'manual_bank_name',
         'manual_bank_account_number',
@@ -56,6 +57,7 @@ class Event extends Model
     protected function casts(): array
     {
         return [
+            'personnel_requirements' => 'array',
             'registration_open' => 'boolean',
             'allow_manual_payment' => 'boolean',
             'max_participants' => 'integer',

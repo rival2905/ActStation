@@ -220,6 +220,8 @@
                 </table>
             </div>
         </div>
+        @include('panel.events._personnel', ['personnelSelected' => old('personnel', $personnelSelected ?? [])])
+        <input type="hidden" name="personnel_present" value="1">
         <div class="card-footer text-end">
             <button type="submit" class="btn btn-primary btn-sm">
                 <span class="fas fa-paper-plane me-1"></span>Kirim Ulang Revisi

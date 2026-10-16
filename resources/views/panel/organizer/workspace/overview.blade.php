@@ -56,6 +56,9 @@
                     </button>
                 </form>
                 @endif
+                @if($workspace === 'organizer' && app(\App\Modules\Event\Services\EventCommitteeAccess::class)->owner($event, auth()->user()))
+                <a class="btn btn-sm btn-primary" href="{{ route('panel.organizer.committee.index', $event) }}"><span class="fas fa-user-friends me-1"></span>Panitia & Hak Akses</a>
+                @endif
                 @if($canEditEvent)
                 <a href="{{ $editEventUrl }}" class="btn btn-sm btn-outline-secondary">
                     <span class="fas fa-edit me-1"></span>Edit Informasi &amp; Rekening

@@ -7,7 +7,9 @@ use App\Modules\Event\Http\Controllers\Admin\TournamentSchedulerController;
 use App\Modules\Event\Http\Controllers\Panel\CommunityCheckoutController;
 use App\Modules\Event\Http\Controllers\Panel\CommunityEventRegistrationController;
 use App\Modules\Event\Http\Controllers\Panel\CommunityRosterController;
+use App\Modules\Event\Http\Controllers\Panel\EventCommitteeController;
 use App\Modules\Event\Http\Controllers\Panel\EventInvitationController;
+use App\Modules\Event\Http\Controllers\Panel\EventPersonnelSettingsController;
 use App\Modules\Event\Http\Controllers\Panel\OrganizerCategoryController;
 use App\Modules\Event\Http\Controllers\Panel\OrganizerDocumentController;
 use App\Modules\Event\Http\Controllers\Panel\OrganizerEventController;
@@ -36,6 +38,7 @@ Route::middleware(['auth', 'EnsurePanelAccess'])->group(function (): void {
     Route::put('registrations/{participant}/revise', [CommunityRosterController::class, 'resubmit'])->name('community-events.resubmit');
 
     // Registration Drafts
+    Route::post('events/{slug}/registration-drafts/{draft}/personnel-invitations', [RegistrationDraftController::class, 'storePersonnelInvitation'])->name('registration-drafts.personnel-invitations.store');
     Route::post('events/{slug}/registration-drafts', [RegistrationDraftController::class, 'store'])->name('registration-drafts.store');
     Route::get('events/{slug}/registration-drafts/{draft}', [RegistrationDraftController::class, 'show'])->name('registration-drafts.show');
     Route::put('events/{slug}/registration-drafts/{draft}', [RegistrationDraftController::class, 'update'])->name('registration-drafts.update');
@@ -54,6 +57,8 @@ Route::middleware(['auth', 'EnsurePanelAccess'])->group(function (): void {
         Route::get('events/create', [OrganizerEventController::class, 'create'])->name('events.create');
         Route::post('events', [OrganizerEventController::class, 'store'])->name('events.store');
         Route::get('events/{event}/edit', [OrganizerEventController::class, 'edit'])->name('events.edit');
+        Route::get('events/{event}/personnel', [EventPersonnelSettingsController::class, 'edit'])->name('events.personnel.edit');
+        Route::put('events/{event}/personnel', [EventPersonnelSettingsController::class, 'update'])->name('events.personnel.update');
         Route::put('events/{event}', [OrganizerEventController::class, 'update'])->name('events.update');
         Route::post('events/{event}/submit-review', [OrganizerEventController::class, 'submitReview'])->name('events.submitReview');
         // Same Vue scheduler engine and API as admin; organizer event ownership checked before dispatch.
@@ -92,6 +97,15 @@ Route::middleware(['auth', 'EnsurePanelAccess'])->group(function (): void {
                 Route::post('schedule/recalculate', [TournamentSchedulerController::class, 'recalculateSchedule'])->name('schedule.recalculate');
                 Route::get('export/standings-csv', [TournamentSchedulerController::class, 'exportStandingsCsv'])->name('export.standings-csv');
             });
+
+        Route::get('committee', [EventCommitteeController::class, 'mine'])->name('committee.mine');
+        Route::get('events/{event}/committee', [EventCommitteeController::class, 'index'])->name('committee.index');
+        Route::post('events/{event}/committee/defaults', [EventCommitteeController::class, 'defaults'])->name('committee.defaults');
+        Route::post('events/{event}/committee/roles', [EventCommitteeController::class, 'store'])->name('committee.roles.store');
+        Route::put('events/{event}/committee/roles/{role}', [EventCommitteeController::class, 'update'])->name('committee.roles.update');
+        Route::post('events/{event}/committee/roles/{role}/invitations', [EventCommitteeController::class, 'invite'])->name('committee.invitations.store');
+        Route::delete('events/{event}/committee/roles/{role}/invitations', [EventCommitteeController::class, 'revoke'])->name('committee.invitations.destroy');
+        Route::put('events/{event}/committee/members/{member}', [EventCommitteeController::class, 'decide'])->name('committee.members.update');
 
         // Workspace
         Route::get('events/{event}/manage', [OrganizerWorkspaceController::class, 'overview'])->name('events.manage');

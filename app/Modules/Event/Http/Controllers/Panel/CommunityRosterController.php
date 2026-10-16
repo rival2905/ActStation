@@ -13,6 +13,7 @@ use App\Modules\Event\Http\Requests\Panel\ResubmitRosterRequest;
 use App\Modules\Event\Models\EventParticipant;
 use App\Modules\Event\Services\RegistrationInspectionSummary;
 use App\Modules\Event\Services\RegistrationRosterRevisionService;
+use App\Modules\Event\Services\TeamPersonnelRoster;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
@@ -60,7 +61,12 @@ class CommunityRosterController extends Controller
             ? $this->rosterProvider->eligibleAthletes((int) $participant->community_id, (int) $participant->event_category_id)
             : collect();
 
-        return view('panel.registrations.revise', compact('participant', 'category', 'eligibleAthletes'));
+        $personnelEvent = clone $participant->event;
+        $personnelEvent->personnel_requirements = $participant->personnel_requirements ?? [];
+        $personnelOptions = app(TeamPersonnelRoster::class)->options($personnelEvent, (int) $participant->community_id);
+        $personnelSelected = $participant->personnel()->get(['user_id', 'role_id'])->toArray();
+
+        return view('panel.registrations.revise', compact('participant', 'category', 'eligibleAthletes', 'personnelOptions', 'personnelSelected'));
     }
 
     public function resubmit(
@@ -82,7 +88,8 @@ class CommunityRosterController extends Controller
                 $teamDocuments,
                 $athleteDocuments,
                 $user,
-                session('current_community_id') ? (int) session('current_community_id') : null
+                session('current_community_id') ? (int) session('current_community_id') : null,
+                $request->has('personnel_present') ? ($request->validated('personnel') ?? []) : null
             );
 
             return redirect()

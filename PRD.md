@@ -1,5 +1,29 @@
 # PRD — ActStation Internal Panel Authentication
 
+## Kesesuaian kategori akademik dan komunitas
+
+Kategori dengan allowed subtypes khusus sekolah/universitas tidak menerima klub meski allow_club lama aktif. Sekolah/mahasiswa tetap bisa masuk kategori umum sesuai konfigurasi eksisting; kategori nonakademik/campuran tetap mengikuti aturan lama. acceptsCommunityType menjadi aturan bersama dropdown/final guard/label; create/update draft sekarang memeriksa profil authoritative sebelum kapasitas, dan invitation context invalid bila kategori tidak cocok. Tidak menebak subtipe dari nama kategori/komunitas atau development level. Legacy school semua jenjang tetap didukung; SMP/SMA memakai jenjang master sekolah via NPSN. Keanggotaan tenaga pendukung tidak dibatasi jenjang akademik individu; aturan ini untuk entitas tim.
+
+Koreksi lokal terarah atas konfirmasi pengguna: Bank Mandiri id6 dari free_association menjadi institution/corporate. Event1 kategori2/3 dibatasi school_smp, kategori5 school_sma; allow_club=false. Kategori4 memang sudah school_sma; kategori1 institution tidak berubah. Tidak menghapus/mengubah 1 participant dan 15 draft event tersebut. Probe read-only sebagai Cindy dengan current_community_id=6 membuktikan dropdown hanya kategori1 Instansi / Dinas Putra (KU 35++). Klasifikasi diperbaiki tanpa auto-verifikasi dokumen atau perubahan membership/roster/status. Validasi legalitas tetap berlaku.
+
+Verifikasi: 725 PHP/4940 assertions full suite, Pint/Blade/build/diff lulus. Regresi meliputi klub bypass, dropdown institusi, forged create/update tanpa mutation, sekolah dapat turnamen umum, dan undangan dengan profil komunitas sesuai; fixture lama diperbaiki agar sekolah canonical+NPSN, bukan klub mengaku sekolah. UAT browser login belum.
+
+
+## Hasil submit JSON & bulk roster UI
+
+Final-submit panel tetap satu endpoint: caller Accept JSON mendapat message,participant_id,status,redirect_url setelah transaksi, error 422 konsisten; native caller tetap redirect. Client menunggu konfirmasi participant_id sebelum submitted/cache clear, menunjukkan modal pada validasi/network/server failure tanpa retry otomatis. Tidak mengubah approval/kuota/notifikasi domain. Bulk modal menyimpan pilihan lokal sampai apply; draft/category lock konteks UI, batch quota check tanpa mutasi sebagian, existing CAS backend authoritative. Full suite 723 PHP/4917 assertions dan 126 Node lulus; build/Pint/Blade/diff dan browser synthetic served-module checks lulus. UAT login belum.
+
+## Link roster tenaga pendukung — checkpoint integrasi
+
+Migrasi `2026_10_16_045703_create_draft_personnel_invitations_table` diterapkan runtime/test dengan FK canonical event_registration_drafts. Event-owned encrypted token/hash, parent draft lock dan revision guard. Community membership lewat TeamPersonnelProvider requestMembership/membershipStatus, bukan import lintas modul. CommunityCoach pending approval dan history tetap. Approval target scoped dan account/role aktif. Frontend terintegrasi; full suite 721 PHP/4887 assertions sebelum penambahan modal hasil. Modal/client/runtime dan test view setelahnya: 4 focused PHP/55 assertions + 122 Node lulus, build/Pint/Blade/diff lulus. Guard active community, legacy coach role approval dan reject inactive tetap terjaga. Link orang baru tidak menambah roster sampai membership aktif lalu explicit join; replay hanya sekali revision. Authenticated browser UAT belum.
+
+## Kepanitiaan event — checkpoint implementasi
+
+Disepakati: link per jabatan event, login/daftar dan consent lalu pending; persetujuan pemilik/superadmin wajib. Jabatan domain bukan RBAC. Akses menu per jabatan dapat disesuaikan dari preset; custom mulai kosong. Hak hanya pada event dan hanya akun aktif, jabatan aktif, status approved. Pengelolaan panitia/akses, rekening, payout, hapus peserta dan publikasi event tetap owner/superadmin. Capability whitelist: teams.view, teams.review, payments.confirm, documents.manage, schedule.manage, results.manage. Pemeriksaan/pembayaran membutuhkan teams.view. Perubahan hak atau penghentian status langsung efektif pada request berikutnya.
+
+Migrasi `2026_10_16_035013_create_event_committee_tables` diterapkan runtime dan test: event_committee_roles, event_committee_members, event_committee_invitations. Token acak disimpan terenkripsi + hash lookup, link shared berlaku 14 hari, dapat dicabut; tidak log token atau mengirim email nyata. GET tidak membuat jabatan/anggota. Link reuse diserialisasi lock event/role; keputusan/status dijaga transaksi dan scope event. Backend role, link, consent, persetujuan, guard lintas team inspection/pembayaran/dokumen/jadwal/hasil dan navigasi event sudah terhubung. UI role/preset/access, invitation login/register-return, consent/status, owner decision dan Kepanitiaan Saya terintegrasi. Tes focused 7/98 assertions; full suite 719 PHP/4846 assertions lulus; build/Pint/Blade/diff lulus. Verifikasi read-only event1 dengan admin@gmail.com membuktikan skema/render/owner akses tanpa membuat jabatan/anggota. Semua default hanya ditambahkan lewat POST eksplisit. UAT browser terhenti login tanpa saved credentials; tidak mengklaim UAT autentikasi. Audit awal sebelum perubahan scope dipakai untuk prinsip token/IDOR, bukan melarang delegasi event-scoped yang sudah disepakati.
+
+
 **Versi**: 1.0
 **Tanggal**: 2026-10-09
 **Status**: Draft
@@ -425,6 +449,10 @@ Edit    : GET  /admin/permissions/{perm}/edit  → Form edit
 Update  : PUT  /admin/permissions/{perm}       → Update
 Delete  : DELETE /admin/permissions/{perm}     → Delete (guard: tidak bisa hapus jika masih di-assign)
 ```
+
+### Roster tenaga pendukung dinamis (dalam implementasi)
+
+Master peran Community terpisah RBAC; Event mengakses via `TeamPersonnelProvider`. Aturan min/max satu event, payload draft `personnel` terpisah `members` atlet, final `event_participant_personnel` menyimpan nama peran snapshot. Migration `2026_10_16_014800_add_personnel_roster_to_events` dan `2026_10_16_015627_add_personnel_requirements_to_event_participants` sudah diterapkan runtime/test; migrasi master `2026_10_16_020513_create_sports_personnel_roles_table` juga sudah diterapkan runtime/test. Peserta final menyimpan snapshot requirement sehingga perubahan aturan hanya untuk draft/belum submit, peserta lama tanpa snapshot tetap tanpa syarat baru. Validasi aktif/non-ended membership dan active account; tidak ikut atlet minimum/maksimum/kapten/umur/gender/dokumen. Pemeriksaan final/revisi/approval wajib memvalidasi personel; minimum boleh belum lengkap pada draft. Auto-manager official aktif hanya create POST, bisa diganti/dihapus, GET read-only dan update tidak menghidupkan ulang selection. Migrasi `2026_10_16_021917_allow_multiple_personnel_roles_per_community` mengganti unique lama dengan role-aware unique (role null legacy dipetakan Coach), sudah diterapkan runtime/test. Tes penambahan dua peran akun sama, penolakan duplikat dan pengakhiran membership mempertahankan histori lulus. Final terintegrasi: draft/revisi/submit/approval memakai validasi personel, peserta menyimpan snapshot aturan dan nama peran; role master nonaktif menolak pemilihan baru. Event settings dan submit mengunci baris Event supaya snapshot konsisten. Full suite 711 PHP/4744 assertions, 119 Node, Pint/build/Blade/diff lulus; tambahan focused lock 14 PHP/139 assertions lulus. Read-back skema/runtime render target dilakukan tanpa mutasi akun/draft/event1. Authenticated browser UAT belum dilakukan.
 
 ### Direktori komunitas bagi anggota
 

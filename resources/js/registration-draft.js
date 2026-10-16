@@ -423,6 +423,12 @@ export class RegistrationDraftManager {
         this.dirtyFiles.clear();
         this.clearFiles.clear();
         this.document.querySelectorAll('.staged-file-badge').forEach(badge => badge.remove());
+        this.applyPersonnel(payload.personnel || []);
+        for (const id of ['registration-team-invitation-url', 'registration-personnel-invitation-url']) {
+            const input = this.document.getElementById(id);
+            if (input) { input.value = ''; input.hidden = true; }
+        }
+        this.document.querySelectorAll('[data-registration-copy-invitation], [data-registration-copy-personnel-invitation]').forEach(button => { button.hidden = true; });
         this.document.querySelectorAll('.athlete-check').forEach(input => { input.checked = false; });
         this.document.querySelectorAll('.captain-radio').forEach(input => { input.checked = false; });
         this.document.querySelectorAll('.captain-hidden').forEach(input => { input.value = '0'; });
@@ -497,6 +503,7 @@ export class RegistrationDraftManager {
         // Staged Files Metadata Resume
         this.serverFiles = files || { team_documents: {}, athlete_documents: {} };
         this.renderServerFilesUI();
+        this.window?.registrationDraftUI?.updatePersonnelPicker();
         this.window?.registrationDraftUI?.updateActiveTeam();
         this.window?.registrationDraftUI?.updateFlowPreview();
         this.window?.registrationDraftUI?.refreshCandidates();
@@ -714,6 +721,15 @@ export class RegistrationDraftManager {
         }, this.debounceMs);
     }
 
+    applyPersonnel(selection = []) {
+        const keys = new Set(selection.map(row => `${row.user_id}:${row.role_id}`));
+        this.document?.querySelectorAll('.personnel-role-check').forEach(input => {
+            input.checked = keys.has(`${input.dataset.userId}:${input.dataset.roleId}`);
+            const role = input.parentElement?.querySelector('.personnel-role-value');
+            if (role) role.disabled = !input.checked;
+        });
+    }
+
     collectPayload() {
         if (!this.document) return {};
         const catSelect = this.document.getElementById('event_category_id');
@@ -729,6 +745,7 @@ export class RegistrationDraftManager {
             notes: getVal('notes'),
             registration_source: this.document.querySelector('input[name="registration_source"]')?.value || null,
             community_subtype: this.document.querySelector('input[name="community_subtype"]')?.value || null,
+            personnel: [...this.document.querySelectorAll('.personnel-role-check:checked')].map(input => ({ user_id: Number(input.dataset.userId), role_id: Number(input.dataset.roleId) })),
             members: [],
         };
 
@@ -777,6 +794,7 @@ export class RegistrationDraftManager {
             event_category_id: payload.event_category_id ?? null,
             members: Array.isArray(payload.members) ? payload.members : [],
         };
+        if (this.draftId) atomicPayload.personnel = payload.personnel || [];
         fd.append('payload', JSON.stringify(atomicPayload));
 
         if (payload.event_category_id) {
@@ -904,6 +922,10 @@ export class RegistrationDraftManager {
                 const draft = json.draft;
 
                 if (draft) {
+                    if (!isUpdate) {
+                        this.applyPersonnel(draft.payload?.personnel || []);
+                        payload.personnel = this.collectPayload().personnel;
+                    }
                     this.draftId = draft.id;
                     this.revision = draft.revision;
                     this.lastAckAt = Date.now();
@@ -1092,6 +1114,21 @@ export class RegistrationDraftManager {
         } catch (_) {}
     }
 
+    showSubmissionResult(message, success = false) {
+        const element = this.document?.getElementById('registration-result-modal');
+        const modal = this.window?.bootstrap?.Modal;
+        if (!element || !modal) { this.alert(message); return; }
+        const title = this.document.getElementById('registration-result-title');
+        const body = this.document.getElementById('registration-result-message');
+        if (title) title.textContent = success ? 'Pendaftaran berhasil dikirim' : 'Pendaftaran belum terkirim';
+        if (body) body.textContent = message;
+        const next = this.document.getElementById('registration-result-next');
+        if (next) next.hidden = !success;
+        const note = this.document.getElementById('registration-result-note');
+        if (note) note.textContent = success ? 'Tim sudah dikirim. Persetujuan peserta mengikuti pemeriksaan dan aturan kategori.' : 'Perbaiki alasan di atas. Jika hasil pengiriman belum pasti, muat ulang draft sebelum mencoba lagi.';
+        modal.getOrCreateInstance(element).show();
+    }
+
     async handleFormSubmit(e) {
         if (this.isBypassingSubmitIntercept) {
             return true;
@@ -1100,17 +1137,17 @@ export class RegistrationDraftManager {
         e.preventDefault();
 
         if (!this.isOnline()) {
-            this.alert('Tidak dapat mengirim pendaftaran saat sedang offline. Pastikan koneksi internet aktif.');
+            this.showSubmissionResult('Tidak dapat mengirim pendaftaran saat sedang offline. Pastikan koneksi internet aktif.');
             return false;
         }
 
         if (this.isSubmitted) {
-            this.alert('Pendaftaran ini sudah diserahkan.');
+            this.showSubmissionResult('Pendaftaran ini sudah diserahkan.');
             return false;
         }
 
         if (this.isConflict) {
-            this.alert('Konflik revisi terdeteksi. Silakan muat ulang halaman sebelum menyerahkan pendaftaran.');
+            this.showSubmissionResult('Konflik revisi terdeteksi. Silakan muat ulang halaman sebelum menyerahkan pendaftaran.');
             return false;
         }
 
@@ -1124,7 +1161,7 @@ export class RegistrationDraftManager {
 
         try {
             if (!this.autosaveEnabled && (this.manualDirty || !this.draftId)) {
-                this.alert('Simpan roster dan dokumen dahulu sebelum mengirim pendaftaran.');
+                this.showSubmissionResult('Simpan roster dan dokumen dahulu sebelum mengirim pendaftaran.');
                 submitBtns.forEach(btn => { btn.disabled = false; });
                 this.isSubmittingFinal = false;
                 return false;
@@ -1138,14 +1175,14 @@ export class RegistrationDraftManager {
             }
 
             if (this.isConflict) {
-                this.alert('Konflik revisi terdeteksi saat menyimpan draft. Silakan muat ulang.');
+                this.showSubmissionResult('Konflik revisi terdeteksi saat menyimpan draft. Silakan muat ulang.');
                 submitBtns.forEach(btn => { btn.disabled = false; });
                 this.isSubmittingFinal = false;
                 return false;
             }
 
             if (this.status !== 'idle' || !this.draftId || this.dirtyFiles.size > 0) {
-                this.alert('Gagal menyimpan draft ke server. Pendaftaran belum dapat diserahkan.');
+                this.showSubmissionResult('Gagal menyimpan draft ke server. Pendaftaran belum dapat diserahkan.');
                 submitBtns.forEach(btn => { btn.disabled = false; });
                 this.isSubmittingFinal = false;
                 return false;
@@ -1155,6 +1192,7 @@ export class RegistrationDraftManager {
 
             // Native validity check after save
             if (this.form.checkValidity && !this.form.checkValidity()) {
+                this.showSubmissionResult('Lengkapi bagian yang ditandai sebelum mengirim tim. Draft tetap tersimpan.');
                 if (this.form.reportValidity) {
                     this.form.reportValidity();
                 }
@@ -1166,18 +1204,38 @@ export class RegistrationDraftManager {
             // Keep draft identity until server confirms submission; a lost response must be recoverable.
             this.saveToStorage(true, this.collectPayload());
 
-            // Guarded once native submission via requestSubmit or submit
-            this.isBypassingSubmitIntercept = true;
-            if (typeof this.form.requestSubmit === 'function') {
-                this.form.requestSubmit();
-            } else {
-                this.form.submit();
+            const response = await this.fetch(this.form.action, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'X-CSRF-TOKEN': this.csrfToken },
+                body: new (this.window?.FormData || FormData)(this.form),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.participant_id) {
+                const details = Object.values(data.errors || {}).flat().filter(value => typeof value === 'string');
+                const fallback = response.status === 419 ? 'Sesi berakhir. Muat ulang halaman dan masuk kembali.'
+                    : response.status === 401 ? 'Silakan masuk kembali sebelum mengirim tim.'
+                    : response.status >= 500 ? 'Server belum mengonfirmasi hasil. Muat ulang draft untuk memeriksa status sebelum mengirim ulang.'
+                    : 'Pendaftaran belum dapat diproses. Periksa status draft dan coba lagi.';
+                this.showSubmissionResult(details.length ? details.join('\n') : (data.message || fallback));
+                return false;
             }
+            this.isSubmitted = true;
+            this.participantId = data.participant_id;
+            this.clearStorage();
+            this.setStatus('submitted');
+            const next = this.document?.getElementById('registration-result-next');
+            if (next) next.href = this.form.dataset.redirectUrl || this.window.location.href;
+            this.showSubmissionResult(data.message || 'Pendaftaran tim berhasil dikirim.', true);
+            this.disableFormInputs();
+            return true;
         } catch (err) {
             submitBtns.forEach(btn => { btn.disabled = false; });
             this.isSubmittingFinal = false;
-            this.alert('Terjadi kesalahan saat menyiapkan pendaftaran.');
+            this.showSubmissionResult('Koneksi terputus atau respons tidak dapat dibaca. Hasil pengiriman belum pasti. Muat ulang draft untuk memeriksa status sebelum mencoba lagi.');
             return false;
+        } finally {
+            if (!this.isSubmitted) submitBtns.forEach(btn => { btn.disabled = false; });
+            this.isSubmittingFinal = false;
         }
     }
 }
@@ -1247,10 +1305,7 @@ export class RegistrationDraftUI {
             });
         });
         this.updateTopActionsVisibility();
-        this.document.querySelector('[data-registration-add-athlete]')?.addEventListener('click', () => {
-            this.rosterPickerOpen = !this.rosterPickerOpen;
-            this.updateRosterPicker();
-        });
+        this.document.querySelector('[data-registration-add-athlete]')?.addEventListener('click', () => this.openBulkPicker('athlete'));
         this.form.addEventListener('change', event => {
             if (event.target.matches?.('.athlete-check')) {
                 this.rosterPickerOpen = false;
@@ -1263,6 +1318,8 @@ export class RegistrationDraftUI {
             if (!this.validateStep('category') || !this.validateStep('roster')) {
                 event.preventDefault();
                 event.stopImmediatePropagation();
+                const message = this.document.getElementById('registration-wizard-errors')?.textContent || 'Lengkapi data tim dan roster sebelum mengirim.';
+                this.manager?.showSubmissionResult(message);
             }
         }, true);
         const category = this.document.getElementById('event_category_id');
@@ -1273,14 +1330,27 @@ export class RegistrationDraftUI {
             this.updateFlowPreview();
             this.refreshCandidates();
         });
-        this.document.querySelectorAll('[data-registration-candidate-refresh]').forEach(button => {
-            button.addEventListener('click', () => this.refreshCandidates());
+        this.document.querySelector('[data-registration-add-personnel]')?.addEventListener('click', () => this.openBulkPicker('personnel'));
+        this.document.getElementById('registration-bulk-apply')?.addEventListener('click', () => this.applyBulkPicker());
+        this.document.getElementById('registration-bulk-all')?.addEventListener('change', event => {
+            (this.bulkEntries || []).forEach(entry => { if (!entry.row.hidden && !entry.check.disabled) entry.check.checked = event.target.checked; });
+            this.updateBulkSelection();
         });
-        this.document.querySelectorAll('[data-registration-athlete-general-link]').forEach(link => {
-            link.addEventListener('click', event => {
-                event.preventDefault();
-                this.switchTeam(link.href);
-            });
+        this.document.getElementById('registration-bulk-search')?.addEventListener('input', event => {
+            const query = event.target.value.trim().toLocaleLowerCase('id');
+            (this.bulkEntries || []).forEach(entry => { entry.row.hidden = !entry.row.textContent.toLocaleLowerCase('id').includes(query); });
+            this.updateBulkSelection();
+        });
+        this.form.addEventListener('change', event => {
+            if (event.target.matches?.('.personnel-role-check')) this.updatePersonnelPicker();
+        });
+        this.document.querySelector('[data-registration-personnel-invite-link]')?.addEventListener('click', event => this.createDraftInvitation(event.currentTarget, 'personnel'));
+        this.document.querySelector('[data-registration-copy-personnel-invitation]')?.addEventListener('click', async () => {
+            const input = this.document.getElementById('registration-personnel-invitation-url');
+            try {
+                await this.window.navigator.clipboard.writeText(input.value);
+                this.setMessage('registration-personnel-invitation-message', 'Link roster tenaga pendukung disalin.');
+            } catch (_) { input.focus(); input.select(); }
         });
         this.document.querySelector('[data-registration-copy-invitation]')?.addEventListener('click', async () => {
             const input = this.document.getElementById('registration-team-invitation-url');
@@ -1292,6 +1362,10 @@ export class RegistrationDraftUI {
         this.document.querySelectorAll('[data-registration-athlete-invite-link]').forEach(button => {
             button.addEventListener('click', () => this.createDraftInvitation(button));
         });
+        this.window?.addEventListener?.('focus', () => {
+            if (this.selectedStep === 'roster' && !this.manager?.isSubmitted && !this.manager?.isSaving) this.refreshCandidates();
+        });
+        this.updatePersonnelPicker();
         this.showStep(this.form.dataset.errorStep || this.selectedStep);
         this.updateFlowPreview();
         this.updateActiveTeam();
@@ -1367,13 +1441,201 @@ export class RegistrationDraftUI {
         this.manager?.scheduleAutosave?.();
     }
 
+    async openBulkPicker(kind) {
+        if (!this.manager?.draftId || this.manager.isSubmitted || this.manager.isConflict) return;
+        const context = { draftId: this.manager.draftId, categoryId: this.currentCategory(), kind };
+        await this.refreshCandidates();
+        if (context.draftId !== this.manager.draftId || context.categoryId !== this.currentCategory() || this.manager.isConflict) return;
+        const modal = this.document.getElementById('registration-bulk-modal');
+        const body = this.document.getElementById('registration-bulk-body');
+        if (!modal || !body) return;
+        this.bulkContext = context;
+        this.bulkEntries = [];
+        body.replaceChildren();
+        this.document.getElementById('registration-bulk-title').textContent = kind === 'athlete' ? 'Tambah Atlet dari Anggota Aktif' : 'Tambah Coach / Tenaga Pendukung';
+        this.document.getElementById('registration-bulk-info-heading').textContent = kind === 'athlete' ? 'Gender / Usia' : 'Keanggotaan';
+        this.document.getElementById('registration-bulk-detail-heading').textContent = kind === 'athlete' ? 'Dokumen Persyaratan' : 'Jabatan pada Tim';
+        this.document.getElementById('registration-bulk-search').value = '';
+        this.document.getElementById('registration-bulk-context').textContent = `${this.document.getElementById('team_name')?.value || 'Tim aktif'} · ${this.document.getElementById('event_category_id')?.selectedOptions?.[0]?.textContent || ''}`;
+        this.setMessage('registration-bulk-error', '');
+        const entries = [];
+        if (kind === 'athlete') {
+            const section = this.document.getElementById(`roster-cat-${context.categoryId}`);
+            const seen = new Set();
+            section?.querySelectorAll('.athlete-check').forEach(input => {
+                const row = input.closest('tr');
+                if (input.checked || input.disabled || row?.dataset.meetsRequirements === '0' || seen.has(input.value)) return;
+                seen.add(input.value);
+                entries.push({ source: input, name: row?.children[1]?.querySelector('.fw-semi-bold')?.textContent?.trim() || row?.children[1]?.textContent?.trim() || input.value, info: row?.children[2]?.textContent?.trim() || 'Anggota aktif', detail: row?.children[6]?.textContent?.trim() || 'Diperiksa saat pengiriman' });
+            });
+        } else {
+            const people = new Map();
+            this.document.querySelectorAll('.personnel-role-check').forEach(input => {
+                if (input.checked || input.disabled) return;
+                const key = String(input.dataset.userId);
+                if (!people.has(key)) people.set(key, { name: input.dataset.personName, info: 'Anggota pendukung / pengurus aktif', roles: new Map() });
+                people.get(key).roles.set(String(input.dataset.roleId), input);
+            });
+            entries.push(...people.values());
+        }
+        entries.forEach((entry, index) => {
+            const row = this.document.createElement('tr');
+            const checkCell = this.document.createElement('td');
+            const check = this.document.createElement('input');
+            check.type = 'checkbox'; check.className = 'form-check-input';
+            check.id = `registration-bulk-row-${index}`;
+            check.setAttribute('aria-label', `Pilih ${entry.name}`);
+            check.addEventListener('change', () => this.updateBulkSelection());
+            checkCell.appendChild(check); row.appendChild(checkCell);
+            [entry.name, entry.info].forEach(text => { const cell = this.document.createElement('td'); cell.textContent = text; row.appendChild(cell); });
+            const detail = this.document.createElement('td');
+            if (entry.roles) {
+                const select = this.document.createElement('select');
+                select.className = 'form-select form-select-sm';
+                select.setAttribute('aria-label', `Jabatan untuk ${entry.name}`);
+                entry.roles.forEach((input, roleId) => {
+                    const option = this.document.createElement('option');
+                    option.value = roleId;
+                    const group = input.closest('[data-personnel-role]');
+                    option.textContent = `${group.dataset.roleName} (maks. ${group.dataset.max})`;
+                    select.appendChild(option);
+                });
+                entry.select = select; detail.appendChild(select);
+            } else detail.textContent = entry.detail;
+            row.appendChild(detail); body.appendChild(row);
+            this.bulkEntries.push({ ...entry, row, check });
+        });
+        if (!entries.length) {
+            const row = this.document.createElement('tr'), cell = this.document.createElement('td');
+            cell.colSpan = 4; cell.className = 'text-center text-muted py-4'; cell.textContent = 'Tidak ada anggota aktif lain yang tersedia untuk ditambahkan.'; row.appendChild(cell); body.appendChild(row);
+        }
+        this.updateBulkSelection();
+        this.window.bootstrap.Modal.getOrCreateInstance(modal).show();
+    }
+
+    updateBulkSelection() {
+        const entries = this.bulkEntries || [];
+        const selected = entries.filter(entry => entry.check.checked).length;
+        const visible = entries.filter(entry => !entry.row.hidden && !entry.check.disabled);
+        const all = this.document.getElementById('registration-bulk-all');
+        if (all) {
+            all.checked = visible.length > 0 && visible.every(entry => entry.check.checked);
+            all.indeterminate = !all.checked && visible.some(entry => entry.check.checked);
+            all.disabled = !visible.length;
+        }
+        const count = this.document.getElementById('registration-bulk-count');
+        if (count) count.textContent = `${selected} anggota dipilih`;
+        const apply = this.document.getElementById('registration-bulk-apply');
+        if (apply) apply.disabled = selected === 0;
+    }
+
+    applyBulkPicker() {
+        const context = this.bulkContext;
+        const fail = message => { this.setMessage('registration-bulk-error', message); return false; };
+        if (!context || context.draftId !== this.manager?.draftId || context.categoryId !== this.currentCategory() || this.manager.isSubmitted || this.manager.isConflict || this.manager.isSaving || this.manager.status === 'saving') return fail('Tim aktif berubah atau terkunci. Tutup modal lalu pilih kembali.');
+        const entries = (this.bulkEntries || []).filter(entry => entry.check.checked);
+        if (!entries.length) return fail('Pilih minimal satu anggota.');
+        const selected = [];
+        if (context.kind === 'athlete') {
+            const section = this.document.getElementById(`roster-cat-${context.categoryId}`);
+            const current = section?.querySelectorAll('.athlete-check:checked').length || 0;
+            const max = Number(this.document.getElementById('event_category_id')?.selectedOptions?.[0]?.dataset.maxRoster || Infinity);
+            if (current + entries.length > max) return fail(`Roster maksimal ${max} atlet. Pilih sesuai sisa kuota.`);
+            selected.push(...entries.map(entry => entry.source));
+        } else {
+            const counts = new Map();
+            for (const entry of entries) {
+                const input = entry.roles.get(entry.select.value);
+                if (!input) return fail('Pilih jabatan yang diizinkan event.');
+                const group = input.closest('[data-personnel-role]');
+                const roleId = entry.select.value;
+                const count = (counts.get(roleId) ?? group.querySelectorAll('.personnel-role-check:checked').length) + 1;
+                if (count > Number(group.dataset.max)) return fail(`${group.dataset.roleName} maksimal ${group.dataset.max} orang. Tidak ada pilihan yang ditambahkan.`);
+                counts.set(roleId, count); selected.push(input);
+            }
+        }
+        if (selected.some(input => !input || input.checked || input.disabled)) return fail('Daftar anggota berubah. Tutup modal lalu buka kembali.');
+        const section = context.kind === 'athlete' ? this.document.getElementById(`roster-cat-${context.categoryId}`) : null;
+        const usedJerseys = new Set([...(section?.querySelectorAll('.athlete-check:checked') || [])].map(input => input.closest?.('tr')?.querySelector('.jersey-input')?.value).filter(value => value !== undefined && value !== '').map(Number));
+        selected.forEach(input => {
+            if (context.kind === 'athlete') {
+                const jersey = input.closest?.('tr')?.querySelector('.jersey-input');
+                if (jersey) {
+                    if (jersey.value === '' || usedJerseys.has(Number(jersey.value))) {
+                        const free = Array.from({ length: 100 }, (_, number) => number).find(number => !usedJerseys.has(number));
+                        if (free !== undefined) jersey.value = String(free);
+                    }
+                    usedJerseys.add(Number(jersey.value));
+                }
+            }
+            input.checked = true;
+            if (context.kind === 'athlete') this.window.toggleAthleteRow(input);
+            else {
+                const role = input.parentElement?.querySelector('.personnel-role-value');
+                if (role) role.disabled = false;
+            }
+        });
+        this.rosterPickerOpen = false; this.personnelPickerOpen = false;
+        this.updateRosterPicker(); this.updatePersonnelPicker(); this.updateActiveTeam();
+        this.manager.scheduleAutosave();
+        const modal = this.document.getElementById('registration-bulk-modal');
+        if (modal) this.window.bootstrap.Modal.getOrCreateInstance(modal).hide();
+        return true;
+    }
+
+    updatePersonnelPicker() {
+        const button = this.document?.querySelector('[data-registration-add-personnel]');
+        if (!button) return;
+        const choices = [...this.document.querySelectorAll('.personnel-role-check')];
+        button.disabled = !choices.some(input => !input.checked && !input.disabled) || Boolean(this.manager?.isSubmitted);
+        button.setAttribute('aria-expanded', String(Boolean(this.personnelPickerOpen)));
+        choices.forEach(input => {
+            const choice = input.closest('[data-personnel-choice]');
+            if (choice) choice.hidden = !input.checked;
+            const companion = input.parentElement?.querySelector('.personnel-role-value');
+            if (companion) companion.disabled = !input.checked || input.disabled;
+        });
+        this.document.querySelectorAll('[data-personnel-role]').forEach(group => {
+            const count = group.querySelectorAll('.personnel-role-check:checked').length;
+            const label = group.querySelector('[data-personnel-count]');
+            if (label) label.textContent = `· ${count} dipilih`;
+        });
+    }
+
+    hydratePersonnelOptions(options) {
+        if (!options || !Array.isArray(options.people)) return;
+        this.document.querySelectorAll('[data-personnel-role]').forEach(group => {
+            const roleId = String(group.dataset.personnelRole);
+            options.people.forEach(person => {
+                const exists = [...group.querySelectorAll('.personnel-role-check')].some(input => String(input.dataset.userId) === String(person.user_id));
+                if (exists) return;
+                const index = `remote-${roleId}-${person.user_id}`;
+                const choice = this.document.createElement('div');
+                choice.className = 'form-check';
+                choice.setAttribute('data-personnel-choice', '');
+                const input = this.document.createElement('input');
+                input.type = 'checkbox'; input.className = 'form-check-input personnel-role-check';
+                input.id = `personnel-${index}`;
+                input.name = `personnel[${index}][user_id]`; input.value = String(person.user_id);
+                input.dataset.userId = String(person.user_id); input.dataset.roleId = roleId; input.dataset.personName = person.name;
+                const role = this.document.createElement('input');
+                role.type = 'hidden'; role.className = 'personnel-role-value'; role.name = `personnel[${index}][role_id]`; role.value = roleId; role.disabled = true;
+                const label = this.document.createElement('label');
+                label.className = 'form-check-label'; label.htmlFor = input.id; label.textContent = person.name;
+                choice.append(input, role, label); group.appendChild(choice);
+            });
+        });
+        this.updatePersonnelPicker();
+    }
+
     updateRosterPicker() {
         const section = this.document?.getElementById(`roster-cat-${this.currentCategory()}`);
         const checks = [...(section?.querySelectorAll('.athlete-check') || [])];
         const available = checks.filter(input => !input.checked && !input.disabled && input.closest('tr')?.dataset.meetsRequirements !== '0' && !input.closest('tr')?.classList?.contains('registration-candidate-row'));
         const button = this.document?.querySelector('[data-registration-add-athlete]');
         if (button) {
-            button.hidden = available.length <= 6;
+            button.hidden = false;
+            button.disabled = available.length === 0 || Boolean(this.manager?.isSubmitted);
             button.setAttribute?.('aria-expanded', String(Boolean(this.rosterPickerOpen)));
         }
         const hint = this.document?.querySelector('[data-registration-athlete-picker]');
@@ -1381,7 +1643,7 @@ export class RegistrationDraftUI {
         checks.forEach(input => {
             const row = input.closest('tr');
             if (row) {
-                row.hidden = !input.checked && !(this.rosterPickerOpen && available.includes(input));
+                row.hidden = !input.checked;
                 const remove = row.querySelector('[data-registration-remove-athlete]');
                 if (remove) {
                     remove.hidden = !input.checked;
@@ -1447,6 +1709,17 @@ export class RegistrationDraftUI {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             if (context !== this.context || categoryId !== this.currentCategory() || base !== this.draftBaseUrl()) return;
+            this.hydratePersonnelOptions(data.personnel_options);
+            if (Array.isArray(data.personnel) && this.manager && !this.manager.manualDirty && !this.manager.isSaving && !this.manager.hasUnuploadedFiles()) {
+                if (Number(data.revision) === Number(this.manager.revision)) {
+                    this.manager.applyPersonnel(data.personnel);
+                    this.manager.savedPayloadJSON = JSON.stringify(this.manager.collectPayload());
+                    this.updatePersonnelPicker();
+                } else if (Number(data.revision) > Number(this.manager.revision)) {
+                    await this.manager.fetchDraft(this.manager.draftId);
+                    return;
+                }
+            }
             const candidates = Array.isArray(data.candidates) ? data.candidates : [];
             this.renderCandidates(candidates, categoryId);
             this.restoreSavedMembersFromCandidates(candidates, categoryId);
@@ -1460,6 +1733,8 @@ export class RegistrationDraftUI {
         const container = this.document?.getElementById(`candidate-list-${categoryId}`)
             || this.document?.getElementById('candidate-list');
         if (!container) return;
+        const summary = container.closest?.('[data-candidate-summary]');
+        if (summary) summary.hidden = candidates.length === 0;
         while (container.firstChild) container.removeChild(container.firstChild);
         candidates.forEach(candidate => {
             const item = this.document.createElement('div');
@@ -1987,6 +2262,13 @@ export class RegistrationDraftUI {
             body?.querySelectorAll?.('[data-registration-draft-placeholder]')?.forEach(placeholder => placeholder.remove());
         });
         this.rosterPickerOpen = false;
+        this.personnelPickerOpen = false;
+        this.updatePersonnelPicker();
+        const personnelInvite = this.document.getElementById('registration-personnel-invitation-url');
+        if (personnelInvite) { personnelInvite.value = ''; personnelInvite.hidden = true; }
+        const personnelCopy = this.document.querySelector('[data-registration-copy-personnel-invitation]');
+        if (personnelCopy) personnelCopy.hidden = true;
+        this.setMessage('registration-personnel-invitation-message', '');
         const inviteInput = this.document.getElementById('registration-team-invitation-url');
         if (inviteInput) { inviteInput.value = ''; inviteInput.hidden = true; }
         const copyInvitation = this.document.querySelector('[data-registration-copy-invitation]');
@@ -2124,6 +2406,14 @@ export class RegistrationDraftUI {
             collapseReview?.classList?.add?.('show');
         }
 
+        this.personnelPickerOpen = false;
+        this.updatePersonnelPicker();
+        for (const id of ['registration-team-invitation-url', 'registration-personnel-invitation-url']) {
+            const input = this.document.getElementById(id);
+            if (input) { input.value = ''; input.hidden = true; }
+        }
+        this.document.querySelectorAll('[data-registration-copy-invitation], [data-registration-copy-personnel-invitation]').forEach(button => { button.hidden = true; });
+        this.setMessage('registration-personnel-invitation-message', '');
         this.showStep('category');
         const deleteButton = this.document.getElementById('btn-delete-active-team');
         if (deleteButton) deleteButton.style.display = 'none';
@@ -2196,11 +2486,19 @@ export class RegistrationDraftUI {
             }
         } else if (step === 'roster') {
             if (!this.validateFinal()) return false;
+            for (const group of this.document.querySelectorAll('[data-personnel-role]')) {
+                const count = group.querySelectorAll('.personnel-role-check:checked').length;
+                if (count < Number(group.dataset.min) || count > Number(group.dataset.max)) {
+                    message = `${group.dataset.roleName} membutuhkan ${group.dataset.min}–${group.dataset.max} orang (saat ini ${count}).`;
+                    invalid = this.document.querySelector('[data-registration-add-personnel]') || group.querySelector('input');
+                    break;
+                }
+            }
             const selected = [...(this.document.querySelectorAll('.athlete-check:checked') || [])].filter(input => !input.disabled);
             const option = this.document.getElementById('event_category_id')?.selectedOptions?.[0];
             const min = Number(option?.dataset.minRoster || 1);
             const max = Number(option?.dataset.maxRoster || Infinity);
-            if (selected.length < min || selected.length > max) message = `Pilih ${min}–${max} pemain untuk tim ini. Saat ini ${selected.length} pemain.`;
+            if (!message && (selected.length < min || selected.length > max)) message = `Pilih ${min}–${max} pemain untuk tim ini. Saat ini ${selected.length} pemain.`;
             const captains = [...(this.document.querySelectorAll('.captain-radio:checked') || [])].filter(input => !input.disabled);
             if (!message && captains.length !== 1) message = 'Pilih satu kapten untuk tim ini.';
         }
@@ -2211,6 +2509,10 @@ export class RegistrationDraftUI {
             if (invalid) message = 'Lengkapi bagian yang ditandai sebelum melanjutkan.';
         }
         if (message) {
+            if (invalid?.matches?.('.personnel-role-check')) {
+                this.personnelPickerOpen = true;
+                this.updatePersonnelPicker();
+            }
             this.showStep(step);
             const content = this.document.getElementById(step === 'category' ? 'team-form-body-content' : 'roster-form-body-content');
             const collapse = content?.closest?.('.accordion-collapse') || this.document.getElementById(step === 'category' ? 'collapse-active-team' : 'collapse-roster-active-team');
@@ -2388,6 +2690,16 @@ export class RegistrationDraftUI {
         const names = [...selected].map(input => input.closest('tr')?.children?.[1]?.textContent?.trim() || input.value).join(', ');
         roster.textContent = `Atlet dipilih: ${selected.length}${names ? ` — ${names}` : ''}`;
         review.appendChild(roster);
+        const personnel = this.document.createElement('ul');
+        this.document.querySelectorAll('.personnel-role-check:checked').forEach(input => {
+            const item = this.document.createElement('li');
+            item.textContent = `${input.dataset.personName} · ${input.closest('[data-personnel-role]')?.dataset.roleName || ''}`;
+            personnel.appendChild(item);
+        });
+        const heading = this.document.createElement('p');
+        heading.textContent = 'Pelatih & Tenaga Pendukung';
+        review.appendChild(heading);
+        review.appendChild(personnel);
         const pic = this.document.createElement('p');
         pic.textContent = `PIC: ${this.document.getElementById('contact_person')?.value || '-'} · ${this.document.getElementById('contact_phone')?.value || '-'}`;
         review.appendChild(pic);
@@ -2413,23 +2725,27 @@ export class RegistrationDraftUI {
         review.appendChild(flow);
     }
 
-    async createDraftInvitation(button) {
+    async createDraftInvitation(button, kind = 'athlete') {
+        const personnel = kind === 'personnel';
+        const messageId = personnel ? 'registration-personnel-invitation-message' : 'registration-invitation-message';
+        const inputId = personnel ? 'registration-personnel-invitation-url' : 'registration-team-invitation-url';
+        const copySelector = personnel ? '[data-registration-copy-personnel-invitation]' : '[data-registration-copy-invitation]';
         if (!await this.flushRosterBeforeAction()) return;
         const nameInput = this.document?.getElementById('athlete_invitation_name');
         const name = nameInput?.value?.trim() || '';
         const base = this.draftBaseUrl();
         if (!this.isOnline()) {
-            this.setMessage('registration-invitation-message', 'Tidak dapat membuat tautan saat offline.');
+            this.setMessage(messageId, 'Tidak dapat membuat tautan saat offline.');
             return;
         }
         const categoryId = this.currentCategory();
         if (!categoryId || !this.manager) {
-            this.setMessage('registration-invitation-message', 'Pilih kategori terlebih dahulu.');
+            this.setMessage(messageId, 'Pilih kategori terlebih dahulu.');
             return;
         }
         if (this.manager.autosaveEnabled === false) {
             if (!this.manager.draftId || this.manager.manualDirty || String(this.manager.savedCategoryId || '') !== categoryId) {
-                this.setMessage('registration-invitation-message', 'Simpan tim terlebih dahulu sebelum membuat tautan undangan.');
+                this.setMessage(messageId, 'Simpan tim terlebih dahulu sebelum membuat tautan undangan.');
                 return;
             }
         } else {
@@ -2437,7 +2753,7 @@ export class RegistrationDraftUI {
         }
         const savedBase = this.draftBaseUrl();
         if (this.manager.status !== 'idle' || !savedBase) {
-            this.setMessage('registration-invitation-message', 'Draft belum tersimpan. Tautan undangan belum dibuat.');
+            this.setMessage(messageId, 'Draft belum tersimpan. Tautan undangan belum dibuat.');
             return;
         }
         const context = ++this.context;
@@ -2456,7 +2772,7 @@ export class RegistrationDraftUI {
         if (name) bodyData.name = name;
         button.disabled = true;
         try {
-            const response = await this.fetch(`${savedBase}/athlete-invitations`, {
+            const response = await this.fetch(`${savedBase}/${personnel ? 'personnel' : 'athlete'}-invitations`, {
                 method: 'POST',
                 headers: {
                     Accept: 'application/json',
@@ -2469,13 +2785,13 @@ export class RegistrationDraftUI {
             const data = await response.json().catch(() => ({}));
             if (context !== this.context || categoryId !== this.currentCategory() || draftId !== this.manager.draftId) return;
             if (!response.ok || !data.invite_url) throw new Error(data.message || `HTTP ${response.status}`);
-            const input = this.document?.getElementById('registration-team-invitation-url');
+            const input = this.document?.getElementById(inputId);
             if (input) { input.value = data.invite_url; input.hidden = false; }
-            const copy = this.document?.querySelector?.('[data-registration-copy-invitation]');
+            const copy = this.document?.querySelector?.(copySelector);
             if (copy) copy.hidden = false;
-            this.setMessage('registration-invitation-message', `Link roster tim: ${data.invite_url}`);
+            this.setMessage(messageId, personnel ? 'Link roster tenaga pendukung siap disalin.' : 'Link roster atlet siap disalin.');
         } catch (error) {
-            if (context === this.context) this.setMessage('registration-invitation-message', 'Tautan undangan belum dapat dibuat. Coba lagi.');
+            if (context === this.context) this.setMessage(messageId, error.message || 'Tautan undangan belum dapat dibuat. Coba lagi.');
         } finally {
             button.disabled = false;
         }

@@ -14,6 +14,7 @@ use App\Contracts\RegistrationDraftProvider;
 use App\Contracts\RosterProvider;
 use App\Contracts\SchoolLookup;
 use App\Contracts\TeamDocumentInspection;
+use App\Contracts\TeamPersonnelProvider;
 use App\Listeners\AuthActivitySubscriber;
 use App\Models\User;
 use App\Modules\Community\Models\Community;
@@ -24,6 +25,7 @@ use App\Modules\Community\Services\CommunityLookupService;
 use App\Modules\Community\Services\InvitationService;
 use App\Modules\Community\Services\RosterProviderService;
 use App\Modules\Community\Services\TeamDocumentInspectionService;
+use App\Modules\Community\Services\TeamPersonnelProviderService;
 use App\Modules\Event\Listeners\HandleRegistrationPaymentRefunded as EventPaymentRefunded;
 use App\Modules\Event\Listeners\HandleRegistrationPaymentSucceeded as EventPaymentSucceeded;
 use App\Modules\Event\Services\EventLookupService;
@@ -48,6 +50,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(TeamPersonnelProvider::class, TeamPersonnelProviderService::class);
         $this->app->bind(TeamDocumentInspection::class, TeamDocumentInspectionService::class);
         $this->app->bind(AthleteDocumentVault::class, AthleteDocumentVaultService::class);
         $this->app->bind(EventLookup::class, EventLookupService::class);

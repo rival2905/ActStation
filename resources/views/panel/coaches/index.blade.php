@@ -1,17 +1,17 @@
 @extends('layouts.panel')
 
-@section('title', 'Daftar Pelatih - ' . config('app.name', 'ActStation'))
+@section('title', 'Pelatih & Tenaga Pendukung - ' . config('app.name', 'ActStation'))
 
 @section('content')
 <div class="card mb-3">
     <div class="card-header bg-body-tertiary d-flex justify-content-between align-items-center">
         <div>
-            <h5 class="mb-0">Daftar Pelatih Komunitas</h5>
-            <p class="text-600 fs-10 mb-0">Kelola pelatih dan staf kepelatihan untuk {{ $community->name }}</p>
+            <h5 class="mb-0">Pelatih & Tenaga Pendukung Komunitas</h5>
+            <p class="text-600 fs-10 mb-0">Kelola coach, official dan tenaga pendukung untuk {{ $community->name }}</p>
         </div>
         <div>
             <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#modalAddCoach">
-                <span class="fas fa-plus me-1"></span>Tambah Pelatih
+                <span class="fas fa-plus me-1"></span>Tambah Tenaga Pendukung
             </button>
         </div>
     </div>
@@ -21,8 +21,8 @@
                 <thead class="bg-200 text-900">
                     <tr>
                         <th class="ps-3" style="width: 50px;">No</th>
-                        <th>Nama Pelatih</th>
-                        <th>Lisensi</th>
+                        <th>Nama</th>
+                        <th>Peran</th><th>Lisensi</th>
                         <th>Jenjang Pembinaan</th>
                         <th>Kategori Gender</th>
                         <th>Status</th>
@@ -45,6 +45,7 @@
                                 </div>
                             </div>
                         </td>
+                        <td>{{ $coach->personnelRole?->name ?? 'Coach' }}</td>
                         <td>
                             @if($coach->license)
                                 <span class="badge badge-subtle-info">{{ $coach->license }}</span>
@@ -75,11 +76,19 @@
                         </td>
                         <td class="text-700">{{ $coach->started_at ? \Carbon\Carbon::parse($coach->started_at)->format('d/m/Y') : '-' }}</td>
                         <td class="text-end pe-3">
-                            <form method="POST" action="{{ route('panel.coaches.destroy', $coach) }}" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin menghapus pelatih ini?');">
+                            @if($coach->status === 'pending' && $coach->ended_at === null)
+                            <form method="POST" action="{{ route('panel.coaches.decide', $coach) }}" class="d-inline">
+                                @csrf
+                                <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
+                                <button type="submit" name="action" value="approve" class="btn btn-sm btn-success">Setujui</button>
+                                <button type="submit" name="action" value="reject" class="btn btn-sm btn-outline-danger">Tolak</button>
+                            </form>
+                            @endif
+                            <form method="POST" action="{{ route('panel.coaches.destroy', $coach) }}" class="d-inline" onsubmit="return confirm('Akhiri keanggotaan tenaga pendukung ini? Riwayat tetap tersimpan.');">
                                 @csrf
                                 @method('DELETE')
                                 <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
-                                <button class="btn btn-link text-danger p-0 ms-2" type="submit" data-bs-toggle="tooltip" title="Hapus Pelatih">
+                                <button class="btn btn-link text-danger p-0 ms-2" type="submit" data-bs-toggle="tooltip" title="Akhiri Keanggotaan">
                                     <span class="fas fa-trash-alt fs-10"></span>
                                 </button>
                             </form>
@@ -89,7 +98,7 @@
                     <tr>
                         <td colspan="8" class="text-center py-4 text-600">
                             <span class="fas fa-chalkboard-teacher fs-4 d-block mb-2 text-400"></span>
-                            Belum ada pelatih yang ditambahkan.
+                            Belum ada tenaga pendukung yang ditambahkan.
                         </td>
                     </tr>
                     @endforelse
@@ -99,7 +108,7 @@
     </div>
 </div>
 
-<!-- Modal Tambah Pelatih -->
+<!-- Modal Tambah Tenaga Pendukung -->
 <div class="modal fade" id="modalAddCoach" tabindex="-1" aria-labelledby="modalAddCoachLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -107,7 +116,7 @@
                 @csrf
                 <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="modalAddCoachLabel">Tambah Pelatih Komunitas</h5>
+                    <h5 class="modal-title" id="modalAddCoachLabel">Tambah Tenaga Pendukung Komunitas</h5>
                     <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -117,6 +126,12 @@
                         <div class="fs-11 text-600 mt-1">ID user pelatih yang terdaftar dalam sistem.</div>
                     </div>
 
+                    <div class="mb-3">
+                        <label class="form-label" for="sports_personnel_role_id">Peran</label>
+                        <select class="form-select" id="sports_personnel_role_id" name="sports_personnel_role_id" required>
+                            @foreach($personnelRoles as $role)<option value="{{ $role->id }}">{{ $role->name }}</option>@endforeach
+                        </select>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label" for="license">Lisensi Pelatih</label>
                         <input class="form-control" type="text" id="license" name="license" placeholder="Contoh: Lisensi B Nasional, FIBA Level 1" />

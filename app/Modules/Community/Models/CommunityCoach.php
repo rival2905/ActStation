@@ -19,6 +19,7 @@ class CommunityCoach extends Model
      * @var list<string>
      */
     protected $fillable = [
+        'sports_personnel_role_id',
         'community_id',
         'user_id',
         'development_level_id',
@@ -43,6 +44,11 @@ class CommunityCoach extends Model
     protected static function newFactory(): CommunityCoachFactory
     {
         return CommunityCoachFactory::new();
+    }
+
+    public function personnelRole(): BelongsTo
+    {
+        return $this->belongsTo(SportsPersonnelRole::class, 'sports_personnel_role_id');
     }
 
     public function community(): BelongsTo

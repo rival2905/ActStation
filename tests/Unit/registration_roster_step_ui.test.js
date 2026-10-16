@@ -64,7 +64,7 @@ test('actual save ACK flushes edits made while request is in flight', async () =
     assert.equal(manager.manualDirty, false);
 });
 
-test('add athlete visibility uses more than six available active rows', () => {
+test('add athlete stays visible for any pool and disables only when empty', () => {
     let count = 6;
     const button = { hidden: false };
     const checks = () => Array.from({ length: count }, () => ({ checked: false, disabled: false, closest: () => ({ dataset: {}, hidden: false, querySelector: () => null }) }));
@@ -72,8 +72,10 @@ test('add athlete visibility uses more than six available active rows', () => {
     const document = { getElementById: id => id === 'event_category_id' ? { value: '1' } : section, querySelector: selector => selector === '[data-registration-add-athlete]' ? button : null };
     const ui = new RegistrationDraftUI({ document, form: {} });
     ui.updateRosterPicker();
-    assert.equal(button.hidden, true);
-    count = 7;
+    assert.equal(button.hidden, false);
+    assert.equal(button.disabled, false);
+    count = 0;
     ui.updateRosterPicker();
     assert.equal(button.hidden, false);
+    assert.equal(button.disabled, true);
 });

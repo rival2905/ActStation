@@ -86,6 +86,9 @@ class RosterValidator
         // 5. Cek duplikasi atlet dalam input roster sendiri
         $submittedUserIds = [];
         foreach ($members as $index => $member) {
+            if (($member['team_role'] ?? 'player') !== 'player') {
+                $errors["members.{$index}.team_role"][] = 'Roster atlet hanya berisi pemain. Gunakan bagian tenaga pendukung untuk peran lain.';
+            }
             $userId = isset($member['user_id']) ? (int) $member['user_id'] : 0;
             if ($userId <= 0) {
                 $errors["members.{$index}.user_id"][] = 'ID atlet wajib diisi.';

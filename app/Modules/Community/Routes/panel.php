@@ -55,6 +55,7 @@ Route::middleware(['auth', 'EnsurePanelAccess', EnsureValidCommunityContext::cla
     Route::delete('officials/{official}', [OfficialController::class, 'destroy'])->name('officials.destroy');
 
     // Community coaches
+    Route::post('coaches/{coach}/decision', [CoachController::class, 'decide'])->name('coaches.decide');
     Route::get('coaches', [CoachController::class, 'index'])->name('coaches.index');
     Route::post('coaches', [CoachController::class, 'store'])->name('coaches.store');
     Route::delete('coaches/{coach}', [CoachController::class, 'destroy'])->name('coaches.destroy');

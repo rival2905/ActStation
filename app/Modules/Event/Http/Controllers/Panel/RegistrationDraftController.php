@@ -12,7 +12,9 @@ use App\Modules\Event\Http\Requests\Panel\DraftAthleteInvitationRequest;
 use App\Modules\Event\Http\Requests\Panel\RegistrationDraftRequest;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Services\AthleteEventWorkspace;
+use App\Modules\Event\Services\DraftPersonnelInvitations;
 use App\Modules\Event\Services\RegistrationDraftService;
+use App\Modules\Event\Services\TeamPersonnelRoster;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -35,6 +37,9 @@ class RegistrationDraftController extends Controller
         abort_if($draftModel->isSubmitted() || $draftModel->event_category_id === null, 409, 'Konteks draft tidak lagi aktif.');
 
         return response()->json([
+            'personnel_options' => app(TeamPersonnelRoster::class)->options($event, (int) $draftModel->community_id),
+            'personnel' => $draftModel->payload['personnel'] ?? [],
+            'revision' => $draftModel->revision,
             'candidates' => $this->rosterProvider->candidatesForDraft(
                 (string) $draftModel->id,
                 (int) $draftModel->community_id,
@@ -42,6 +47,16 @@ class RegistrationDraftController extends Controller
                 'documents' => $this->athleteWorkspace->getRequiredAthleteDocumentsForDraft($draftModel, $candidate->userId),
             ])->values(),
         ]);
+    }
+
+    public function storePersonnelInvitation(DraftAthleteInvitationRequest $request, string $slug, string $draft): JsonResponse
+    {
+        $event = Event::where('slug', $slug)->where('status', 'published')->firstOrFail();
+        $community = $this->communityLookup->findForUser((int) Auth::id());
+        $draftModel = $this->draftService->authorizeDraft($draft, Auth::user(), $community, $event);
+        $url = app(DraftPersonnelInvitations::class)->create($draftModel, (int) $request->validated('revision'));
+
+        return response()->json(['invite_url' => $url, 'draft_id' => $draftModel->id, 'event_category_id' => $draftModel->event_category_id], 201);
     }
 
     public function storeAthleteInvitation(

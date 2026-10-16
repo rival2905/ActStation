@@ -242,7 +242,14 @@
                             @php
                                 $isPaid = in_array($p->id, $paidParticipantIds ?? [], true) || ! empty($p->payment_verified_at);
                             @endphp
+                            @php
+                                $committeeAccess = app(\App\Modules\Event\Services\EventCommitteeAccess::class);
+                                $canReviewTeams = $workspace === 'admin' || $committeeAccess->allows($event, auth()->user(), 'teams.review');
+                                $canConfirmPayment = $workspace === 'admin' || $committeeAccess->allows($event, auth()->user(), 'payments.confirm');
+                                $canDeleteTeam = $workspace === 'admin' || $committeeAccess->owner($event, auth()->user());
+                            @endphp
                             <div class="d-inline-flex gap-1 align-items-center">
+                                @if($canReviewTeams)
                                 @if($p->status === 'registered' && (float) ($p->category?->registration_fee ?? 0) > 0 && ($p->category?->registration_flow ?? 'screening_first') === 'screening_first')
                                 <form action="{{ route($workspaceRoutePrefix.'teams.verify', [$event->id, $p->id]) }}" method="POST">
                                     @csrf
@@ -259,7 +266,8 @@
                                 </form>
                                 @endif
 
-                                @if($p->payment_channel === 'manual_organizer' && $p->status === 'pending_payment' && $p->payment_proof)
+                                @endif
+                                @if($canConfirmPayment && $p->payment_channel === 'manual_organizer' && $p->status === 'pending_payment' && $p->payment_proof)
                                 <form action="{{ route($workspaceRoutePrefix.'teams.confirmManualPayment', [$event->id, $p->id]) }}" method="POST">
                                     @csrf
                                     <button type="submit" class="btn btn-xs btn-warning text-dark" onclick="return confirm('Konfirmasi bahwa transfer bank manual telah masuk ke rekening panitia?')">
@@ -274,11 +282,13 @@
                                 </button>
                                 @endif
 
+                                @if($canReviewTeams)
                                 <button type="button" class="btn btn-xs btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalRevision-{{ $p->id }}">
                                     Minta Revisi
                                 </button>
 
-                                @if(! $isPaid && $p->status !== 'attended')
+                                @endif
+                                @if($canDeleteTeam && ! $isPaid && $p->status !== 'attended')
                                 <form action="{{ route($workspaceRoutePrefix.'teams.destroy', [$event->id, $p->id]) }}" method="POST" onsubmit="return confirm('Apakah Anda yakin ingin menghapus tim [{{ $p->team_name }}]? Tim yang belum bayar akan dihapus dan tagihannya dibatalkan.')">
                                     @csrf
                                     @method('DELETE')
@@ -292,6 +302,7 @@
                                 </span>
                                 @endif
                             </div>
+                            @if($canReviewTeams)
                             <!-- Modal Minta Revisi -->
                             <div class="modal fade" id="modalRevision-{{ $p->id }}" tabindex="-1" aria-hidden="true">
                                 <div class="modal-dialog text-start">
@@ -316,6 +327,7 @@
                                 </div>
                             </div>
 
+                            @endif
                             @if(isset($participantDocuments) && isset($participantDocuments[$p->id]))
                                 @php
                                     $pDocs = $participantDocuments[$p->id];

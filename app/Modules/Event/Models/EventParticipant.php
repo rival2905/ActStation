@@ -28,6 +28,7 @@ class EventParticipant extends Model implements Payable
         'community_id',
         'user_id',
         'team_name',
+        'personnel_requirements',
         'logo',
         'contact_person',
         'contact_phone',
@@ -54,6 +55,7 @@ class EventParticipant extends Model implements Payable
     {
         return [
             'registered_at' => 'datetime',
+            'personnel_requirements' => 'array',
             'payment_verified_at' => 'datetime',
             'waiver_signed_at' => 'datetime',
             'payment_deadline_at' => 'datetime',
@@ -121,6 +123,11 @@ class EventParticipant extends Model implements Payable
     public function members(): HasMany
     {
         return $this->hasMany(EventParticipantMember::class);
+    }
+
+    public function personnel(): HasMany
+    {
+        return $this->hasMany(EventParticipantPersonnel::class);
     }
 
     public function poolTeams(): HasMany

@@ -6,6 +6,7 @@ namespace App\Modules\Event\Services;
 
 use App\Contracts\CommunityLookup;
 use App\Contracts\TeamDocumentInspection;
+use App\Contracts\TeamPersonnelProvider;
 use App\Models\User;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventParticipant;
@@ -64,8 +65,21 @@ class TeamInspectionService
                 'category_name' => $registration->category?->name ?? 'Belum dipilih', 'community_name' => $community?->name,
                 'contact_person' => $payload['contact_person'] ?? null, 'contact_phone' => $payload['contact_phone'] ?? null],
             'members' => $result,
+            'personnel' => $this->personnel($registration),
             'documents' => $this->documents($event, $registration, $kind, 'team', $workspace),
         ];
+    }
+
+    private function personnel(RegistrationDraft|EventParticipant $registration): array
+    {
+        if ($registration instanceof EventParticipant) {
+            return $registration->personnel()->with('user:id,name')->get()->map(fn ($row) => ['name' => $row->user?->name ?? 'Akun tidak tersedia', 'role_name' => $row->role_name])->all();
+        }
+        $roles = collect(app(TeamPersonnelProvider::class)->roles())->keyBy('id');
+        $selection = $registration->payload['personnel'] ?? [];
+        $users = User::whereIn('id', array_column($selection, 'user_id'))->pluck('name', 'id');
+
+        return array_map(fn ($row) => ['name' => $users->get($row['user_id'], 'Akun tidak tersedia'), 'role_name' => $roles->get($row['role_id'])['name'] ?? 'Peran tidak tersedia'], $selection);
     }
 
     public function download(Event $event, string $kind, string $id, string $owner, string $code): StreamedResponse

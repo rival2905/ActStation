@@ -7,10 +7,10 @@ namespace App\Modules\Event\Http\Controllers\Panel;
 use App\Http\Controllers\Controller;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\Game;
+use App\Modules\Event\Services\EventCommitteeAccess;
 use App\Modules\Event\Services\Tournament\GameResultFinalizer;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
 class OrganizerResultController extends Controller
@@ -70,8 +70,8 @@ class OrganizerResultController extends Controller
 
     private function authorizeOrganizer(Event $event): void
     {
-        if (! request()->routeIs('admin.*') && $event->user_id !== Auth::id() && ! Auth::user()?->hasRole('superadmin')) {
-            abort(403, 'Akses ditolak.');
+        if (! request()->routeIs('admin.*')) {
+            app(EventCommitteeAccess::class)->current($event);
         }
     }
 }

@@ -7,6 +7,7 @@ namespace App\Modules\Event\Http\Controllers\Panel;
 use App\Http\Controllers\Controller;
 use App\Modules\Event\Http\Requests\Panel\ReviewTeamDocumentRequest;
 use App\Modules\Event\Models\Event;
+use App\Modules\Event\Services\EventCommitteeAccess;
 use App\Modules\Event\Services\TeamInspectionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,7 +22,7 @@ class TeamInspectionController extends Controller
     {
         $this->authorizeEvent($request, $event);
         $workspace = $request->routeIs('admin.*') ? 'admin' : 'organizer';
-        $canReview = $workspace === 'organizer' || $request->user()->can('event-participant.confirm');
+        $canReview = $workspace === 'organizer' ? app(EventCommitteeAccess::class)->allows($event, $request->user(), 'teams.review') : $request->user()->can('event-participant.confirm');
 
         return view('events.teams.inspection', $this->inspection->inspect($event, $kind, $id, $workspace, $canReview));
     }
@@ -46,7 +47,7 @@ class TeamInspectionController extends Controller
         if ($request->routeIs('admin.*')) {
             abort_unless($request->user()->isInternal() && $request->user()->can('event-participant.view'), 403);
         } else {
-            abort_unless((int) $event->user_id === (int) $request->user()->id || $request->user()->hasRole('superadmin'), 403);
+            app(EventCommitteeAccess::class)->authorize($event, $request->route()->getActionMethod() === 'review' ? 'teams.review' : 'teams.view');
         }
     }
 }

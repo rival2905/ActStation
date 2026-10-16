@@ -563,7 +563,16 @@ test('pre-submit: flushes in-flight/debounced saves and populates hidden draft i
     assert.ok(manager.debounceTimer, 'Debounce timer should be scheduled');
 
     let formSubmitted = false;
-    harness.form.submit = () => { formSubmitted = true; };
+    harness.mockWindow.FormData = class extends FormData { constructor() { super(); } };
+    const saveFetch = manager.fetch;
+    manager.fetch = async (url, options) => {
+        if (url === '/final-test') {
+            formSubmitted = true;
+            return { ok: true, json: async () => ({ participant_id: 42, message: 'Pendaftaran berhasil', status: 'registered' }) };
+        }
+        return saveFetch(url, options);
+    };
+    harness.form.action = '/final-test';
 
     let defaultPrevented = false;
     const event = {

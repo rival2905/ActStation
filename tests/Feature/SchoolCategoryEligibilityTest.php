@@ -166,7 +166,7 @@ test('allowedEntityLabels formats canonical school tokens and legacy school labe
     ]);
 
     $labels = $category->allowedEntityLabels();
-    expect($labels)->toContain('Klub')
+    expect($labels)->not->toContain('Klub')
         ->and($labels)->toContain('SD/MI')
         ->and($labels)->toContain('SMP/MTs')
         ->and($labels)->toContain('SMA/SMK')

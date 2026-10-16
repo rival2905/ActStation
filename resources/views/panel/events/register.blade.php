@@ -487,6 +487,9 @@
                                                 </option>
                                             @endforeach
                                         </select>
+                                        @if($eligibleCategories->isEmpty())
+                                            <div class="alert alert-subtle-warning mt-2 mb-0" role="status">Belum ada kategori yang sesuai dengan sub-tipe atau jenjang komunitas {{ $community->name }}. Pilih komunitas yang sesuai atau hubungi penyelenggara; kategori sekolah/universitas tidak bisa didaftarkan memakai komunitas lain.</div>
+                                        @endif
                                         <div id="registration-flow-preview" class="alert alert-subtle-info py-2 px-3 fs-11 mt-2 mb-0" role="status" aria-live="polite"></div>
                                     </div>
 
@@ -614,7 +617,7 @@
                                 <div class="accordion-body p-0" id="roster-draft-body-active">
                                     <div id="roster-form-body-content">
                     <div class="p-3 border-bottom">
-                    <h6 class="mb-3">Dokumen</h6>
+                    <h6 class="mb-2">Dokumen Tim & Legalitas</h6><p class="text-muted fs-10 mb-3">Unggah berkas tim di sini. Dokumen pribadi tetap pada masing-masing atlet.</p>
                     {{-- Dokumen Tim (Unified team_documents[code] UI) --}}
                     <div id="team_documents_wrapper" class="mb-3" style="display: none;">
                         <h6 class="fs-10 fw-bold mb-2 text-primary">
@@ -660,10 +663,10 @@
                     </div>
                     </div>
                     <div class="p-3 bg-light border-bottom">
-                        <h6 class="mb-3">Roster</h6>
+                        <h6 class="mb-1">Roster Atlet</h6><p class="text-muted fs-10 mb-3">Pilih anggota aktif atau bagikan link agar atlet melengkapi data sendiri.</p>
                         <div class="d-flex flex-wrap gap-2 mb-2">
-                            <button type="button" class="btn btn-sm btn-primary" data-registration-add-athlete hidden>Tambah Atlet</button>
-                            <button type="button" class="btn btn-sm btn-outline-primary" data-registration-athlete-invite-link>Link Roster Tim</button>
+                            <button type="button" class="btn btn-sm btn-primary" data-registration-add-athlete aria-expanded="false">Tambah Atlet dari Anggota Aktif</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" data-registration-athlete-invite-link>Link Roster Atlet</button>
                         </div>
                         <div class="input-group input-group-sm mb-2">
                             <input id="registration-team-invitation-url" class="form-control" type="url" aria-label="Link roster tim" readonly hidden>
@@ -675,12 +678,6 @@
                         <p class="fs-10 text-muted mb-0">
                             Pilih atlet aktif dari komunitas Anda. Berkas pribadi atlet yang tersimpan di <strong>Digital Vault</strong> dapat digunakan ulang, tetapi tetap mengikuti verifikasi dan persyaratan kategori. Berkas ditolak atau tidak tersedia perlu diperbaiki.
                         </p>
-                        <div class="d-flex flex-wrap gap-2 mt-2">
-                            <button type="button" class="btn btn-xs btn-outline-primary" data-registration-candidate-refresh>
-                                <span class="fas fa-sync-alt me-1"></span>Muat Kandidat Kategori Ini
-                            </button>
-                            <a class="btn btn-xs btn-outline-secondary" href="{{ route('panel.athletes.index') }}" data-registration-athlete-general-link>Kelola Keanggotaan Umum</a>
-                        </div>
                         <div class="alert alert-subtle-info py-2 px-3 fs-11 mt-2 mb-0" role="note">
                             Atlet yang menerima tautan ini otomatis masuk roster draft tim aktif. Keanggotaan, verifikasi dan kelengkapan tetap harus terpenuhi sebelum tim dikirim.
                         </div>
@@ -696,7 +693,7 @@
                             <div class="p-4 text-center text-muted">
                                 <span class="fas fa-user-slash fa-2x mb-2"></span>
                                 <p class="mb-0 fs-10">Belum ada anggota komunitas aktif yang tersedia. Gunakan Link Roster Tim untuk mengundang atlet.</p>
-                                <a href="{{ route('panel.athletes.index') }}" class="btn btn-xs btn-outline-primary mt-2">Kelola Roster Komunitas</a>
+
                             </div>
                         @endif
                             <div class="table-responsive">
@@ -811,13 +808,15 @@
                                     </tbody>
                                 </table>
                             </div>
-                        <div class="p-3 border-top bg-body-tertiary">
-                            <h6 class="fs-10 mb-2">Kandidat dari proses keanggotaan</h6>
+                        <div class="p-3 border-top bg-body-tertiary" data-candidate-summary hidden>
+                            <h6 class="fs-10 mb-2">Undangan atlet & kelengkapan</h6>
                             <div id="candidate-list-{{ $category->id }}" class="fs-11"></div>
                             <div id="candidate-rows-{{ $category->id }}" class="d-none"></div>
                         </div>
                     </div>
                     @endforeach
+
+                    @include('panel.events._personnel', ['personnelEditableDraft' => true, 'personnelSelected' => $activeDraft?->payload['personnel'] ?? []])
 
                     <div id="no-category-selected-message" class="p-4 text-center text-muted" style="display: {{ $selectedCategoryId ? 'none' : 'block' }};">
                         <span class="fas fa-hand-point-left fa-2x mb-2 text-primary"></span>
@@ -927,6 +926,29 @@
     </div></div>
 </form>
 
+<div class="modal fade" id="registration-bulk-modal" tabindex="-1" aria-labelledby="registration-bulk-title" aria-describedby="registration-bulk-context" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header"><div><h5 id="registration-bulk-title" class="modal-title">Tambah Anggota Aktif</h5><p id="registration-bulk-context" class="text-muted fs-10 mb-0"></p></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button></div>
+        <div class="modal-body p-0">
+            <div class="p-3 bg-body-tertiary"><label for="registration-bulk-search" class="visually-hidden">Cari anggota</label><input type="search" id="registration-bulk-search" class="form-control form-control-sm" placeholder="Cari nama atau informasi anggota"><p class="text-muted fs-10 mt-2 mb-0">Centang beberapa anggota. Untuk tenaga pendukung, pilih jabatan tiap orang. Satu orang dapat ditambahkan lagi dengan jabatan lain. Pilihan belum masuk roster sampai dikonfirmasi.</p></div>
+            <div id="registration-bulk-error" class="text-danger px-3 pt-2" role="alert" hidden></div>
+            <div class="table-responsive"><table class="table table-sm table-striped table-hover align-middle fs-10 mb-0"><thead class="bg-200"><tr><th scope="col" class="ps-3"><input type="checkbox" class="form-check-input" id="registration-bulk-all" aria-label="Pilih semua anggota yang terlihat"></th><th scope="col">Nama Anggota</th><th scope="col" id="registration-bulk-info-heading">Informasi</th><th scope="col" id="registration-bulk-detail-heading">Jabatan</th></tr></thead><tbody id="registration-bulk-body"></tbody></table></div>
+        </div>
+        <div class="modal-footer justify-content-between"><span id="registration-bulk-count" class="fs-10" role="status" aria-live="polite">0 anggota dipilih</span><div class="d-flex gap-2"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button><button type="button" class="btn btn-primary" id="registration-bulk-apply" disabled>Tambahkan ke Roster</button></div></div>
+    </div></div>
+</div>
+
+@php
+    $registrationResultMessage = session('error') ?: ($errors->any() ? implode("\n", $errors->all()) : (session('success') ?: session('info')));
+    $registrationResultSuccess = !session('error') && !$errors->any() && (session('success') || session('info'));
+@endphp
+<div class="modal fade" id="registration-result-modal" tabindex="-1" aria-labelledby="registration-result-title" aria-describedby="registration-result-message" aria-hidden="true" data-result-pending="{{ $registrationResultMessage ? '1' : '0' }}">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" id="registration-result-title">{{ $registrationResultSuccess ? 'Hasil pendaftaran tim' : 'Pendaftaran belum terkirim' }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button></div>
+        <div class="modal-body"><p id="registration-result-message" class="mb-2 text-break" style="white-space: pre-line">{{ $registrationResultMessage }}</p><p id="registration-result-note" class="text-muted fs-10 mb-0">{{ $registrationResultSuccess ? 'Lihat status tim pada ringkasan. Pemeriksaan, pembayaran atau antrean mengikuti aturan kategori; pengiriman bukan otomatis persetujuan peserta.' : 'Periksa alasan di atas, perbaiki data lalu coba lagi. Jangan kirim ulang bila status pengiriman belum pasti; muat ulang draft untuk memeriksa hasil server.' }}</p></div>
+        <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Tutup</button><a id="registration-result-next" class="btn btn-primary" href="{{ route('panel.community-events.create', $event->slug) }}" @if(!$registrationResultSuccess) hidden @endif>Lihat Ringkasan Tim</a></div>
+    </div></div>
+</div>
 <div class="modal fade" id="registration-discard-new-team" tabindex="-1" aria-labelledby="registration-discard-new-team-title" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -1088,6 +1110,8 @@ function setCaptain(radio) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    const result = document.getElementById('registration-result-modal');
+    if (result?.dataset.resultPending === '1') window.bootstrap.Modal.getOrCreateInstance(result).show();
     const catSelect = document.getElementById('event_category_id');
     if (catSelect && catSelect.value) {
         filterAthletesByCategory(catSelect.value);

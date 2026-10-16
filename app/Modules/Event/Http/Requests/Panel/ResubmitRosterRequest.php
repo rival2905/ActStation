@@ -45,10 +45,15 @@ class ResubmitRosterRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'personnel_present' => ['nullable', 'boolean'],
             'panel_community_id' => ['nullable'],
+            'personnel' => ['nullable', 'array', 'max:200'],
+            'personnel.*' => ['array'],
+            'personnel.*.user_id' => ['required', 'integer', 'min:1'],
+            'personnel.*.role_id' => ['required', 'integer', 'min:1'],
             'members' => ['required', 'array'],
             'members.*.user_id' => ['required', 'integer'],
-            'members.*.team_role' => ['nullable', 'string', 'max:50'],
+            'members.*.team_role' => ['nullable', 'in:player'],
             'members.*.jersey_number' => ['nullable', 'integer', 'min:0', 'max:99'],
             'members.*.is_captain' => ['nullable', 'boolean'],
             'members.*.position' => ['nullable', 'string', 'max:50'],

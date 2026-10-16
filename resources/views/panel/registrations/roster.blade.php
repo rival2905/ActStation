@@ -10,6 +10,16 @@
 
 @section('content')
 <div class="card mb-3">
+    <div class="card-header"><h6 class="mb-0">Pelatih & Tenaga Pendukung</h6></div>
+    <ul class="list-group list-group-flush">
+        @forelse($participant->personnel()->with('user:id,name')->get() as $person)
+            <li class="list-group-item">{{ $person->user?->name ?? 'Akun tidak tersedia' }} <span class="badge badge-subtle-info ms-2">{{ $person->role_name }}</span></li>
+        @empty
+            <li class="list-group-item text-muted">Belum ada tenaga pendukung.</li>
+        @endforelse
+    </ul>
+</div>
+<div class="card mb-3">
     <div class="card-body">
         <div class="row flex-between-center">
             <div class="col-md">

@@ -12,7 +12,9 @@ use App\Modules\Event\Exceptions\RosterValidationException;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventParticipant;
 use App\Modules\Event\Models\RegistrationDraft;
+use App\Modules\Event\Services\EventCommitteeAccess;
 use App\Modules\Event\Services\RosterValidator;
+use App\Modules\Event\Services\TeamPersonnelRoster;
 use App\Modules\MasterData\Models\DocumentType;
 use App\Modules\Payment\Models\Transaction;
 use Illuminate\Http\RedirectResponse;
@@ -276,6 +278,10 @@ class OrganizerTeamController extends Controller
         } catch (RosterValidationException $exception) {
             return back()->withErrors($exception->errors())->with('error', 'Roster tidak lolos validasi kategori.');
         }
+
+        $personnelEvent = clone $event;
+        $personnelEvent->personnel_requirements = $participant->personnel_requirements ?? [];
+        app(TeamPersonnelRoster::class)->validate($personnelEvent, (int) $participant->community_id, $participant->personnel()->get(['user_id', 'role_id'])->toArray());
 
         $requiredDocuments = $category->required_documents ?? [];
         if (! empty($requiredDocuments)) {
@@ -564,8 +570,8 @@ class OrganizerTeamController extends Controller
 
     private function authorizeOrganizer(Event $event): void
     {
-        if (! request()->routeIs('admin.*') && $event->user_id !== Auth::id() && ! Auth::user()?->hasRole('superadmin')) {
-            abort(403, 'Akses ditolak.');
+        if (! request()->routeIs('admin.*')) {
+            app(EventCommitteeAccess::class)->current($event);
         }
     }
 

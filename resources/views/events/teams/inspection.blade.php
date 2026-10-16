@@ -48,7 +48,7 @@
 </div>
 
 <div class="card mb-3">
-    <div class="card-header bg-body-tertiary"><h6 class="mb-0">Atlet, Pelatih & Tenaga Olahraga ({{ count($members) }})</h6></div>
+    <div class="card-header bg-body-tertiary"><h6 class="mb-0">Atlet ({{ count($members) }})</h6></div>
     <div class="card-body">
         @forelse($members as $member)
             <details class="border rounded mb-3" @if($loop->first) open @endif>
@@ -70,5 +70,15 @@
             <p class="text-muted mb-0">Belum ada atlet, pelatih, atau tenaga olahraga pada roster tim ini.</p>
         @endforelse
     </div>
+</div>
+<div class="card mb-3">
+    <div class="card-header bg-body-tertiary"><h6 class="mb-0">Pelatih & Tenaga Pendukung</h6></div>
+    <ul class="list-group list-group-flush">
+        @forelse(($personnel ?? []) as $person)
+            <li class="list-group-item">{{ $person['name'] }} <span class="badge badge-subtle-info ms-2">{{ $person['role_name'] }}</span></li>
+        @empty
+            <li class="list-group-item text-muted">Belum ada tenaga pendukung.</li>
+        @endforelse
+    </ul>
 </div>
 @endsection

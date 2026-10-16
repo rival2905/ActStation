@@ -7,6 +7,7 @@ namespace App\Modules\Event\Http\Controllers\Panel;
 use App\Http\Controllers\Controller;
 use App\Modules\Community\Models\Document;
 use App\Modules\Event\Models\Event;
+use App\Modules\Event\Services\EventCommitteeAccess;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -165,9 +166,7 @@ class OrganizerDocumentController extends Controller
             return;
         }
 
-        if ($event->user_id !== Auth::id()) {
-            abort(403, 'Akses ditolak.');
-        }
+        app(EventCommitteeAccess::class)->authorize($event, 'documents.manage');
     }
 
     private function authorizeOrganizer(Event $event): void
@@ -176,8 +175,6 @@ class OrganizerDocumentController extends Controller
             return;
         }
 
-        if ($event->user_id !== Auth::id() && ! Auth::user()?->hasRole('superadmin')) {
-            abort(403, 'Akses ditolak.');
-        }
+        app(EventCommitteeAccess::class)->authorize($event, 'documents.manage');
     }
 }

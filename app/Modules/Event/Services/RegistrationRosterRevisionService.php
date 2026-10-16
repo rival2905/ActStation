@@ -34,12 +34,13 @@ class RegistrationRosterRevisionService
         array $teamDocuments = [],
         array $athleteDocuments = [],
         ?User $actor = null,
-        ?int $activeCommunityId = null
+        ?int $activeCommunityId = null,
+        ?array $personnel = null
     ): EventParticipant {
         $newlyStoredFiles = [];
 
         try {
-            return DB::transaction(function () use ($participant, $members, $teamDocuments, $athleteDocuments, $actor, $activeCommunityId, &$newlyStoredFiles): EventParticipant {
+            return DB::transaction(function () use ($participant, $members, $teamDocuments, $athleteDocuments, $actor, $activeCommunityId, $personnel, &$newlyStoredFiles): EventParticipant {
                 /** @var EventCategory $lockedCategory */
                 $lockedCategory = EventCategory::query()
                     ->where('id', $participant->event_category_id)
@@ -68,6 +69,8 @@ class RegistrationRosterRevisionService
                 $lockedParticipant->setRelation('category', $lockedCategory);
 
                 $this->rosterValidator->validate($lockedParticipant, $members);
+                $selection = $personnel ?? $lockedParticipant->personnel()->get(['user_id', 'role_id'])->toArray();
+                app(TeamPersonnelRoster::class)->sync($lockedParticipant, $selection);
 
                 $community = $this->communityLookup->find((int) $lockedParticipant->community_id);
                 $communitySubtype = $community?->subtype ?? 'free_association';
