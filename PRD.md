@@ -1,5 +1,10 @@
 # PRD — ActStation Internal Panel Authentication
 
+## Integrasi remake workspace event
+
+Perubahan UI Falcon sedang berjalan; route/otorisasi/domain transitions tidak diperluas. Parent satu-satunya pemilik eksekusi DB tests. Shared navigation wajib mempertahankan permission admin dan kapabilitas panitia per event. Ringkasan tidak boleh menyatakan KYC verified tanpa status sumber, transfer manual bukan escrow, pengajuan publikasi bukan terbit otomatis. GET/browser UAT tidak memublikasikan, menghapus, mentransfer, menyetujui pembayaran atau mengganti akses pada event nyata. Checkpoint akhir di PRD_EXTERNAL bagian Remake workspace event. Full735 PHP/5094 assertions,130 Node/build/Pint/Blade lulus; read-only browser12 menu desktop/ponsel diverifikasi. Perbaikan markup terakhir dilindungi22 focused tests. UI dokumen tidak otomatis mengaktifkan akses publik; publikasi dan susun ulang jadwal memerlukan konfirmasi. Tidak mengubah aturan domain atau otorisasi.
+
+
 ## Guard gender atlet sejak draft
 
 EventCategory::acceptsAthleteGender digunakan oleh canonical rows, kandidat draft, create/update draft dan final RosterValidator. Kategori non-mixed menolak gender beda maupun kosong; mixed tetap menerima. Sumber gender adalah profil User, bukan payload client. Draft tidak memakai full final validator sehingga min roster/captain/dokumen yang belum lengkap tetap bisa disimpan. Saat category berubah, anggota lama dibersihkan sebelum validasi kategori baru (perilaku reset existing dipertahankan). Canonical rows yang tidak cocok diberi meetsRequirements=0 dan alasan; tidak muncul sebagai opsi bulk, tetapi atlet lama tersimpan tetap terlihat agar dapat dikeluarkan tanpa silent deletion. Batch apply memeriksa ulang flag sebelum perubahan apapun. Kandidat link ikut ditandai tidak eligible tanpa mengubah keanggotaan. Coach/tenaga pendukung tidak dikenai gender kategori atlet.

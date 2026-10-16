@@ -24,7 +24,7 @@
                 <h5 class="mb-0 text-1000">Struktur Kepanitiaan Event</h5>
                 <p class="fs-10 text-muted mb-0">{{ $event->title }} &bull; Atur struktur jabatan panitia dan hak akses menu workspace.</p>
             </div>
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex flex-wrap align-items-center gap-2">
                 <form method="POST" action="{{ route('panel.organizer.committee.defaults', $event) }}" class="d-inline">
                     @csrf
                     <button type="submit" class="btn btn-outline-primary btn-sm">
@@ -95,6 +95,10 @@
     </div>
     @endif
 
+    <div class="alert alert-light border fs-10" role="note">
+        <strong>Urutan menyiapkan panitia:</strong> buat jabatan, periksa aksesnya, bagikan tautan undangan, lalu setujui calon yang sudah memberi persetujuan. Mengubah akses jabatan berlaku untuk seluruh anggota jabatan tersebut.
+    </div>
+
     {{-- Roles Section --}}
     <div class="card mb-3">
         <div class="card-header bg-body-tertiary d-flex flex-between-center">
@@ -137,7 +141,7 @@
                                     <div class="mb-3 flex-grow-1">
                                         <span class="fs-11 fw-bold text-uppercase text-600 d-block mb-1">Hak Akses:</span>
                                         @if(empty($roleCaps))
-                                            <span class="badge badge-subtle-secondary fs-11">Tidak ada hak akses manajemen (Operasional / Dokumentasi)</span>
+                                            <span class="badge badge-subtle-secondary fs-11 text-wrap text-start">Tidak ada hak akses manajemen (Operasional / Dokumentasi)</span>
                                         @else
                                             <div class="d-flex flex-column gap-1">
                                                 @foreach($roleCaps as $capKey)
@@ -181,7 +185,7 @@
 
                         {{-- Modal Edit Role --}}
                         <div class="modal fade" id="modalEditRole-{{ $role->id }}" tabindex="-1" aria-labelledby="modalEditRoleLabel-{{ $role->id }}" aria-hidden="true">
-                            <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
                                 <div class="modal-content">
                                     <form method="POST" action="{{ route('panel.organizer.committee.roles.update', [$event, $role]) }}">
                                         @csrf
@@ -288,7 +292,7 @@
                                         <form method="POST" action="{{ route('panel.organizer.committee.members.update', [$event, $member]) }}" class="d-inline-flex gap-1">
                                             @csrf
                                             @method('PUT')
-                                            <button type="submit" name="action" value="approve" class="btn btn-sm btn-success py-0 px-2 fs-11" title="Setujui permohonan keanggotaan">
+                                            <button type="submit" name="action" value="approve" class="btn btn-sm btn-success py-0 px-2 fs-11" title="Setujui permohonan keanggotaan" onclick="return confirm('Setujui panitia ini dan aktifkan akses sesuai jabatannya? Pastikan hak akses jabatan telah diperiksa.')">
                                                 <span class="fas fa-check me-1"></span>Setujui
                                             </button>
                                             <button type="submit" name="action" value="reject" class="btn btn-sm btn-outline-danger py-0 px-2 fs-11" title="Tolak permohonan" onclick="return confirm('Tolak permohonan panitia ini?')">
@@ -328,7 +332,7 @@
 
     {{-- Modal Create Custom Role --}}
     <div class="modal fade" id="modalCreateRole" tabindex="-1" aria-labelledby="modalCreateRoleLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
                 <form method="POST" action="{{ route('panel.organizer.committee.roles.store', $event) }}">
                     @csrf

@@ -68,7 +68,7 @@
                     <span class="fas fa-wallet text-success"></span>
                 </div>
                 <h3 class="fw-bolder mb-1 text-success fs-9">Rp {{ number_format($totalRevenue, 0, ',', '.') }}</h3>
-                <small class="text-muted fs-11">Aman di Rekening Escrow Platform</small>
+                <small class="text-muted fs-11">Estimasi harga saat ini × tiket terjual; bukan saldo escrow.</small>
             </div>
         </div>
     </div>
@@ -96,6 +96,7 @@
                     <h6 class="mb-0">Buat Kategori Tiket Baru</h6>
                     <small class="text-muted">Template Cepat:</small>
                 </div>
+                <p class="fs-10 text-body-secondary mb-2">Pilih contoh untuk mengisi form, lalu periksa harga, kuota dan akses sebelum menyimpan. Contoh belum membuat tiket.</p>
                 <!-- 3 Tombol Template Cepat (PRD_EXTERNAL §4.9 A.2) -->
                 <div class="d-flex flex-wrap gap-1">
                     <button type="button" class="btn btn-xs btn-outline-primary" onclick="applyTemplate('per_game')">
@@ -121,7 +122,7 @@
                     <div class="row g-2 mb-3">
                         <div class="col-sm-6">
                             <label class="form-label fw-bold" for="ticket_price">Harga Tiket (Rp) <span class="text-danger">*</span></label>
-                            <input class="form-control form-control-sm" type="number" id="ticket_price" name="price" min="0" step="5000" required value="25000" oninput="updateLivePreview()">
+                            <input class="form-control form-control-sm" type="number" id="ticket_price" name="price" min="0" step="1" required value="25000" oninput="updateLivePreview()">
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label fw-bold" for="ticket_quota">Kuota Kursi <span class="text-danger">*</span></label>
@@ -205,17 +206,18 @@
             <div class="card-body p-3">
                 <div class="card border border-2 border-primary shadow-sm">
                     <div class="card-body p-3">
-                        <div class="d-flex align-items-center gap-1 mb-2">
+                        <div class="d-flex flex-wrap align-items-center gap-1 mb-2">
                             <span class="badge bg-primary" id="preview_tier">STANDARD</span>
                             <span class="badge bg-100 text-dark border" id="preview_zone">Zona Tribun</span>
                             <span class="badge bg-light text-muted border" id="preview_access">FULLDAY</span>
                         </div>
                         <div id="preview_match_box" class="p-2 mb-2 rounded bg-light border border-primary-subtle fs-11" style="display: none;">
-                            <div class="fw-bold text-primary"><span class="fas fa-basketball-ball me-1"></span><span id="preview_match_teams">Tim A vs Tim B</span></div>
+                            <div class="fw-bold text-primary"><span class="fas fa-trophy me-1"></span><span id="preview_match_teams">Tim A vs Tim B</span></div>
                             <div class="text-muted"><span class="fas fa-clock me-1"></span><span id="preview_match_time">15 Okt 14:00 WIB</span> &bull; <span id="preview_match_round">Babak</span></div>
                         </div>
                         <h5 class="fw-bold mb-1" id="preview_name">Tribun Reguler Barat</h5>
-                        <p class="fs-10 text-muted mb-2">{{ $event->title }}</p>
+                        <p class="fs-10 text-muted mb-2 text-break">{{ $event->title }}</p>
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                             <div>
                                 <small class="text-muted d-block fs-11">Harga Tiket:</small>
                                 <h4 class="text-primary fw-bolder mb-0" id="preview_price">Rp 25.000</h4>
@@ -267,7 +269,7 @@
                                 <span class="badge bg-primary-subtle text-primary border">PER-GAME</span>
                                 @if($tc->game)
                                     <div class="fw-bold fs-11 text-dark mt-1">
-                                        <span class="fas fa-basketball-ball text-primary me-1"></span>{{ $tc->game->teamA?->team_name ?? $tc->game->team_a_label ?? 'TBD' }} vs {{ $tc->game->teamB?->team_name ?? $tc->game->team_b_label ?? 'TBD' }}
+                                        <span class="fas fa-trophy text-primary me-1"></span>{{ $tc->game->teamA?->team_name ?? $tc->game->team_a_label ?? 'TBD' }} vs {{ $tc->game->teamB?->team_name ?? $tc->game->team_b_label ?? 'TBD' }}
                                     </div>
                                     <div class="text-muted fs-11">
                                         <span class="fas fa-clock me-1"></span>{{ $tc->game->game_time?->format('d M Y, H:i') ?? 'TBD' }} WIB &bull; <a href="{{ route($workspaceRoutePrefix.'scheduling.index', $event->id) }}" class="text-primary text-decoration-none">Jadwal &raquo;</a>

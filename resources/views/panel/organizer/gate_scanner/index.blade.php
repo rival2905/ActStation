@@ -17,8 +17,8 @@
                         <span class="fas fa-arrow-left"></span>
                     </a>
                     <div>
-                        <h5 class="mb-0">Gate Scanner Pintu Masuk GOR: {{ $event->title }}</h5>
-                        <small class="text-muted">Pindai QR Token tiket penonton menggunakan kamera HP petugas pintu masuk.</small>
+                        <h5 class="mb-0">Validasi Tiket Masuk: {{ $event->title }}</h5>
+                        <small class="text-muted">Masukkan kode tiket atau gunakan pemindai eksternal yang mengisi kolom kode. Kamera belum terhubung pada halaman ini.</small>
                     </div>
                 </div>
             </div>
@@ -38,13 +38,13 @@
             <div class="card-body text-center p-4">
                 <div class="border rounded bg-dark text-white p-4 mb-3 position-relative d-flex flex-column align-items-center justify-content-center" style="min-height: 200px;">
                     <span class="fas fa-camera fa-4x opacity-50 mb-2"></span>
-                    <span class="fs-10 text-muted">Arahkan kamera ke QR Code Tiket Penonton</span>
+                    <span class="fs-10 text-muted">Gunakan kode tiket dari pengunjung atau pemindai eksternal</span>
                 </div>
 
                 <form id="scannerForm" onsubmit="submitScanToken(); return false;">
                     @csrf
                     <div class="input-group mb-3">
-                        <input type="text" class="form-control font-monospace" id="scanInput" placeholder="Ketik kode tiket / scan QR..." autofocus required>
+                        <input type="text" class="form-control font-monospace" id="scanInput" aria-label="Kode tiket pengunjung" placeholder="Ketik kode tiket / scan QR..." autofocus required>
                         <button class="btn btn-primary" type="submit" id="btnScan">
                             <span class="fas fa-search me-1"></span>Verifikasi
                         </button>
@@ -54,7 +54,7 @@
         </div>
 
         <!-- Panel Hasil Verifikasi Instan -->
-        <div id="scanResultContainer" style="display: none;">
+        <div id="scanResultContainer" role="status" aria-live="polite" style="display: none;">
             <div class="card shadow-lg border-3" id="resultCard">
                 <div class="card-body text-center p-4" id="resultCardBody">
                     <div id="resultIcon" class="mb-2"></div>
@@ -75,6 +75,7 @@ function submitScanToken() {
     if (!token) return;
 
     const btn = document.getElementById('btnScan');
+    if (btn.disabled) return;
     btn.disabled = true;
 
     fetch("{{ route($workspaceRoutePrefix.'gate-scanner.verify', $event->id) }}", {

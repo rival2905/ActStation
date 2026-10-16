@@ -56,8 +56,8 @@ test('organizer dapat mengakses overview workspace event dan melihat section dok
     $response = $this->actingAs($this->organizer)->get(route('panel.organizer.events.manage', $this->event->id));
 
     $response->assertOk();
-    $response->assertSee('Dokumen Legalitas &amp; Teknis Turnamen', false);
-    $response->assertSee('+ Unggah Dokumen');
+    $response->assertSee('Dokumen event');
+    $response->assertSee('Kelola dokumen')->assertSee(route('panel.organizer.documents.index', $this->event));
 });
 
 test('organizer dan admin dapat mengakses halaman daftar dokumen workspace event', function (): void {
@@ -76,7 +76,7 @@ test('organizer dan admin dapat mengakses halaman daftar dokumen workspace event
     // Admin overview manage
     $respAdminManage = $this->actingAs($admin)->get(route('admin.events.workspace.manage', $this->event->id));
     $respAdminManage->assertOk();
-    $respAdminManage->assertSee('Dokumen Legalitas &amp; Teknis Turnamen', false);
+    $respAdminManage->assertSee('Dokumen event');
 });
 
 test('organizer dapat mengunggah dokumen rekomendasi cabor, izin polres, dan THB', function (): void {

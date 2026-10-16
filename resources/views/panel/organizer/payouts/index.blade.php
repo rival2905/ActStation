@@ -42,6 +42,7 @@
 
 @include('events._workspace_nav', ['event' => $event, 'workspace' => $workspace, 'activeTab' => 'payouts'])
 
+<div class="alert alert-light border fs-10" role="note"><strong>Pengajuan bukan transfer otomatis.</strong> Admin memeriksa dan memproses pencairan. Transfer manual langsung ke penyelenggara tidak masuk perhitungan escrow. Nilai maksimum termin bukan janji dana langsung tersedia.</div>
 <!-- Ringkasan Escrow Pool -->
 <div class="row g-3 mb-4">
     <div class="col-md-3">
@@ -69,7 +70,7 @@
             <div class="card-body">
                 <span class="fs-10 text-muted fw-bold text-uppercase d-block mb-1">Termin 2 (Pelunasan 60%)</span>
                 <h3 class="fw-bolder mb-1 fs-9">Rp {{ number_format($summary['term2_max'], 0, ',', '.') }}</h3>
-                <small class="text-muted fs-11">Selesai & Lolos H+2 Tanpa Sengketa</small>
+                <small class="text-muted fs-11">Mengikuti kelayakan pencairan event</small>
             </div>
         </div>
     </div>

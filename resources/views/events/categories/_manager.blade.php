@@ -70,6 +70,7 @@
 
 @include('events._workspace_nav', ['event' => $event, 'workspace' => $workspace, 'activeTab' => 'categories'])
 
+<div class="alert alert-light border fs-10" role="note"><strong>Mulai dari aturan peserta.</strong> Buat kategori sesuai usia, gender dan jenis komunitas. Atur kuota, biaya, serta dokumen sebelum membuka pendaftaran. Aturan inti terkunci setelah ada peserta.</div>
 <div class="card">
     <div class="card-header bg-body-tertiary">
         <h6 class="mb-0">Daftar Kategori Kompetisi</h6>
@@ -105,7 +106,7 @@
                             </td>
                             <td>
                                 <span class="badge bg-dark">{{ $category->match_type }}</span>
-                                <span class="badge bg-light text-dark border">{{ ucfirst($category->gender) }}</span>
+                                <span class="badge bg-light text-dark border">{{ ['male' => 'Putra', 'female' => 'Putri', 'mixed' => 'Campuran'][$category->gender] ?? $category->gender }}</span>
                             </td>
                             <td>
                                 <span class="badge bg-100 text-dark border">{{ $category->ageRangeLabel() }}</span>
@@ -134,6 +135,7 @@
                                 @endforelse
                             </td>
                             <td>
+                                <details><summary class="text-primary">Lihat persyaratan</summary>
                                 @php
                                     $reqDocCodes = $category->required_documents ?? [];
                                     $teamReqDocs = [];
@@ -210,6 +212,7 @@
                                         <span class="fas fa-id-card me-1"></span>{{ $category->document_instructions }}
                                     </div>
                                 @endif
+                                </details>
                             </td>
                             <td>
                                 <span class="badge badge-subtle-{{ $category->enable_waiting_list ? 'success' : 'secondary' }}">
@@ -252,7 +255,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="10" class="text-center py-4 text-muted">Belum ada kategori.</td></tr>
+                        <tr><td colspan="11" class="text-center py-4 text-muted">Belum ada kategori. Gunakan Tambah Kategori untuk menentukan siapa yang boleh mendaftar.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -262,7 +265,7 @@
 
 @if($canCreate)
     <div class="modal fade" id="modalAddCategory" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
+        <div class="modal-dialog modal-xl modal-fullscreen-sm-down">
             <form action="{{ route($routePrefix.'.store', $event) }}" method="POST">
                 @csrf
                 <div class="modal-content">
@@ -286,7 +289,7 @@
 @if($canUpdate)
     @foreach($categories as $category)
         <div class="modal fade" id="modalEditCategory-{{ $category->id }}" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-xl">
+            <div class="modal-dialog modal-xl modal-fullscreen-sm-down">
                 <form action="{{ route($routePrefix.'.update', [$event, $category]) }}" method="POST">
                     @csrf
                     @method('PUT')

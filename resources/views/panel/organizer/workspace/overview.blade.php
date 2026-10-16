@@ -1,726 +1,194 @@
 @php
     $workspace ??= 'organizer';
-    $workspaceRoutePrefix = $workspace === 'admin' ? 'admin.events.workspace.' : 'panel.organizer.';
-    $manageRoute = $workspace === 'admin' ? $workspaceRoutePrefix.'manage' : $workspaceRoutePrefix.'events.manage';
-    $categoriesRoute = $workspace === 'admin' ? 'admin.events.categories.index' : 'panel.organizer.categories.index';
-    $tournamentRoute = $workspace === 'admin' ? 'admin.events.tournament' : 'panel.organizer.tournament.index';
-    $documentsRoute = $workspaceRoutePrefix.'documents.index';
-    $sportName = $event->sportCategory?->name ?? 'Cabang Olahraga';
-    $sportSlug = strtolower((string) ($event->sportCategory?->slug ?? ''));
-    $federationName = match($sportSlug) {
-        'basketball' => 'PERBASI',
-        'badminton' => 'PBSI',
-        'sepak-bola' => 'PSSI',
-        'futsal' => 'FFI / PSSI',
-        'bola-voli' => 'PBVSI',
-        default => ($event->sportCategory ? $event->sportCategory->name : 'Induk Cabor'),
-    };
-    $canEditEvent = ($workspace === 'organizer' && ($event->user_id === auth()->id() || auth()->user()?->hasRole('superadmin')))
-                    || ($workspace === 'admin' && (auth()->user()?->can('event.update') || auth()->user()?->hasRole('superadmin')));
-    $canVerifyDoc = ($workspace === 'admin') && (auth()->user()?->can('event.publish') || auth()->user()?->hasRole('superadmin'));
-    $canDeleteDoc = ($workspace === 'organizer') || ($workspace === 'admin' && (auth()->user()?->can('event.delete') || auth()->user()?->hasRole('superadmin')));
-    $canUploadDoc = ($workspace === 'organizer') || ($workspace === 'admin' && (auth()->user()?->can('event.update') || auth()->user()?->hasRole('superadmin')));
-    $editEventUrl = $workspace === 'admin' ? route('admin.events.edit', $event->id) : route('panel.organizer.events.edit', $event->id);
+    $isAdmin = $workspace === 'admin';
+    $workspaceRoutePrefix = $isAdmin ? 'admin.events.workspace.' : 'panel.organizer.';
+    $categoriesRoute = $isAdmin ? 'admin.events.categories.index' : 'panel.organizer.categories.index';
+    $canEditEvent = $isAdmin ? auth()->user()?->can('event.update') : app(\App\Modules\Event\Services\EventCommitteeAccess::class)->owner($event, auth()->user());
+    $canViewTeams = ! $isAdmin || auth()->user()?->can('event-participant.view');
+    $canViewCategories = ! $isAdmin || auth()->user()?->can('event-category.view');
+    $canViewFinance = ! $isAdmin || auth()->user()?->can('transaction.view');
+    $editEventUrl = route($isAdmin ? 'admin.events.edit' : 'panel.organizer.events.edit', $event);
+    $statusLabel = ['draft' => 'Draf', 'pending_approval' => 'Menunggu persetujuan', 'published' => 'Dipublikasikan', 'ongoing' => 'Sedang berlangsung', 'completed' => 'Selesai', 'cancelled' => 'Dibatalkan'][$event->status] ?? ucfirst(str_replace('_', ' ', $event->status));
+    $statusColor = ['draft' => 'secondary', 'pending_approval' => 'warning', 'published' => 'primary', 'ongoing' => 'success', 'completed' => 'info', 'cancelled' => 'danger'][$event->status] ?? 'secondary';
+    $publicAvailable = in_array($event->status, ['published', 'ongoing', 'completed']);
+    $datesReady = $event->starts_at && $event->ends_at && $event->starts_at->lt($event->ends_at);
+    $categoriesReady = $event->categories->isNotEmpty();
+    $deadlinePassed = $event->registration_deadline?->isPast() ?? false;
+    $kycLabel = ['verified' => 'Identitas penyelenggara terverifikasi', 'pending' => 'Menunggu pemeriksaan identitas', 'rejected' => 'Identitas perlu diperbaiki'][$event->user?->kyc_status] ?? 'Identitas belum terverifikasi';
+    $docLabels = ['federation_recommendation' => 'Rekomendasi induk cabor', 'perbasi_recommendation' => 'Rekomendasi induk cabor', 'technical_handbook' => 'Buku panduan teknis', 'police_permit' => 'Izin keramaian', 'venue_approval' => 'Izin tempat', 'medical_permit' => 'Layanan medis', 'insurance_policy' => 'Asuransi', 'other' => 'Dokumen pendukung'];
 @endphp
-@extends($workspace === 'admin' ? 'layouts.app' : 'layouts.panel')
-
-@section('title', 'Workspace Turnamen: ' . $event->title . ($workspace === 'admin' ? ' — Admin' : ' — Panel Organizer'))
-
+@extends($isAdmin ? 'layouts.app' : 'layouts.panel')
+@section('title', 'Workspace Event: '.$event->title)
 @section('content')
-<div class="card mb-3">
-    <div class="card-body">
-        <div class="row flex-between-center">
-            <div class="col-md">
-                <div class="d-flex align-items-center">
-                    <a href="{{ route($workspace === 'admin' ? 'admin.events.show' : 'panel.organizer.events.index', $workspace === 'admin' ? $event : []) }}" class="btn btn-sm btn-outline-secondary me-3">
-                        <span class="fas fa-arrow-left"></span>
-                    </a>
-                    <div>
-                        <h5 class="mb-0">{{ $event->title }}</h5>
-                        <small class="text-muted">
-                            Status: <span class="badge bg-primary text-uppercase">{{ str_replace('_', ' ', $event->status) }}</span> |
-                            Escrow: <span class="badge bg-secondary text-uppercase">{{ str_replace('_', ' ', $event->payout_status) }}</span>
-                            @if($event->user)
-                                | Penyelenggara: <strong class="text-dark">{{ $event->user->name }}</strong>
-                            @endif
-                        </small>
-                    </div>
+<div class="card mb-3 overflow-hidden" id="event-workspace-overview">
+    <div class="card-body p-3 p-lg-4">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+            <div class="flex-grow-1" style="min-width:0">
+                <a class="fs-10 text-decoration-none" href="{{ route($isAdmin ? 'admin.events.show' : 'panel.organizer.events.index', $isAdmin ? $event : []) }}"><span class="fas fa-arrow-left me-1" aria-hidden="true"></span>{{ $isAdmin ? 'Detail admin' : 'Semua event saya' }}</a>
+                <div class="d-flex align-items-center flex-wrap gap-2 mt-3 mb-2">
+                    <span class="text-primary fw-semi-bold fs-10">WORKSPACE EVENT</span>
+                    <span class="badge badge-subtle-{{ $statusColor }}">{{ $statusLabel }}</span>
+                </div>
+                <h1 class="fs-6 mb-2 text-break">{{ $event->title }}</h1>
+                <div class="text-body-secondary fs-10 d-flex flex-wrap gap-3">
+                    <span><span class="fas fa-trophy me-1" aria-hidden="true"></span>{{ $event->sportCategory?->name ?? 'Cabang olahraga belum diatur' }}</span>
+                    <span><span class="fas fa-calendar-alt me-1" aria-hidden="true"></span>{{ $event->starts_at?->format('d M Y') ?? 'Tanggal belum diatur' }} — {{ $event->ends_at?->format('d M Y') ?? 'Belum diatur' }}</span>
+                    <span><span class="fas fa-map-marker-alt me-1" aria-hidden="true"></span>{{ $event->venue?->name ?? 'Lokasi belum ditautkan' }}</span>
                 </div>
             </div>
-            <div class="col-auto mt-2 mt-md-0 d-flex gap-2">
-                @if($workspace === 'organizer' && $event->status === 'draft')
-                <form action="{{ route('panel.organizer.events.submitReview', $event->id) }}" method="POST">
-                    @csrf
-                    <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Ajukan draf turnamen ini untuk review moderasi admin internal?')">
-                        <span class="fas fa-paper-plane me-1"></span>Ajukan Publikasi Event
-                    </button>
-                </form>
-                @endif
-                @if($workspace === 'organizer' && app(\App\Modules\Event\Services\EventCommitteeAccess::class)->owner($event, auth()->user()))
-                <a class="btn btn-sm btn-primary" href="{{ route('panel.organizer.committee.index', $event) }}"><span class="fas fa-user-friends me-1"></span>Panitia & Hak Akses</a>
-                @endif
+            <div class="d-flex flex-wrap gap-2">
                 @if($canEditEvent)
-                <a href="{{ $editEventUrl }}" class="btn btn-sm btn-outline-secondary">
-                    <span class="fas fa-edit me-1"></span>Edit Informasi &amp; Rekening
-                </a>
+                    <a href="{{ $editEventUrl }}" class="btn btn-falcon-default btn-sm"><span class="fas fa-cog me-1" aria-hidden="true"></span>Pengaturan event</a>
                 @endif
-                <a href="{{ route('events.show', $event->slug) }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                    <span class="fas fa-external-link-alt me-1"></span>Tinjau Publik
-                </a>
+                @if($publicAvailable)
+                    <a href="{{ route('events.show', $event->slug) }}" target="_blank" rel="noopener" class="btn btn-falcon-primary btn-sm">Lihat halaman publik <span class="fas fa-external-link-alt ms-1" aria-hidden="true"></span><span class="visually-hidden">(tab baru)</span></a>
+                @endif
             </div>
         </div>
+        <div class="border-top mt-3 pt-3 d-flex flex-wrap justify-content-between gap-2 fs-10">
+            <span>Pengaturan pendaftaran: <strong>{{ $event->registration_open ? 'Aktif' : 'Nonaktif' }}</strong></span>
+            <span class="{{ $deadlinePassed ? 'text-danger' : 'text-body-secondary' }}">Batas pendaftaran: <strong>{{ $event->registration_deadline?->format('d M Y, H:i') ?? 'Belum diatur' }}</strong>{{ $deadlinePassed ? ' · Tenggat telah lewat' : '' }}</span>
+        </div>
+        <p class="fs-11 text-body-secondary mt-2 mb-0">Pendaftaran juga mengikuti status publikasi, jadwal, kapasitas, dan aturan setiap kategori.</p>
     </div>
 </div>
 
-@if(session('success'))
-<div class="alert alert-success alert-dismissible fade show" role="alert">
-    {{ session('success') }}
-    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-</div>
-@endif
-
-@if(session('error'))
-<div class="alert alert-danger alert-dismissible fade show" role="alert">
-    {{ session('error') }}
-    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-</div>
-@endif
-
-@if($event->status === 'pending_approval')
-<div class="alert alert-info border-info mb-3" role="alert">
-    <span class="fas fa-clock me-2"></span>Turnamen sedang dalam antrean review moderasi admin internal. Pendaftaran publik akan dibuka otomatis begitu disetujui.
-</div>
-@endif
-
 @if($event->kyc_notes && $event->status === 'draft')
-<div class="alert alert-warning border-warning mb-3" role="alert">
-    <h6 class="alert-heading fw-bold mb-1">Catatan Penolakan / Revisi Admin:</h6>
-    <p class="mb-0 fs-10">{{ $event->kyc_notes }}</p>
-</div>
+    <div class="alert alert-warning" role="alert"><h2 class="fs-9">Perbaikan dari admin</h2><p class="mb-0">{{ $event->kyc_notes }}</p></div>
 @endif
+@if($event->status === 'cancelled')
+    <div class="alert alert-danger" role="status"><strong>Event dibatalkan.</strong> {{ $event->cancel_reason ?: 'Hubungi admin untuk penjelasan lebih lanjut.' }}</div>
+@endif
+
+<section class="card py-0 mb-3 border-start border-3 border-primary" aria-labelledby="workspace-next-title">
+    <div class="card-body d-md-flex align-items-center justify-content-between gap-3">
+        <div>
+            <h2 class="fs-9 text-primary mb-2" id="workspace-next-title">Langkah berikutnya</h2>
+            @if($event->status === 'draft')
+                <h3 class="fs-8 mb-2">{{ ! $categoriesReady ? 'Buat kategori kompetisi pertama' : (! $datesReady ? 'Lengkapi tanggal pelaksanaan' : 'Tinjau persiapan sebelum mengajukan publikasi') }}</h3>
+                <p class="fs-10 text-body-secondary mb-0">Minimal satu kategori dan tanggal mulai sebelum tanggal selesai diperlukan untuk pengajuan. Persetujuan tetap dilakukan admin.</p>
+            @elseif($event->status === 'pending_approval')
+                <h3 class="fs-8 mb-2">Pengajuan sedang diperiksa admin</h3>
+                <p class="fs-10 text-body-secondary mb-0">Tidak perlu mengajukan ulang. Periksa dokumen dan pembagian tugas panitia sambil menunggu keputusan.</p>
+            @elseif(in_array($event->status, ['completed', 'cancelled']))
+                <h3 class="fs-8 mb-2">Tinjau hasil dan administrasi akhir</h3>
+                <p class="fs-10 text-body-secondary mb-0">Periksa catatan peserta, hasil pertandingan, dan status dana melalui menu terkait.</p>
+            @else
+                <h3 class="fs-8 mb-2">{{ $pendingTeams > 0 ? $pendingTeams.' tim masih dalam proses' : 'Pantau peserta dan persiapan pertandingan' }}</h3>
+                <p class="fs-10 text-body-secondary mb-0">Lihat status tiap tim sebelum memeriksa berkas atau mengonfirmasi pembayaran. Pembayaran saja bukan konfirmasi peserta.</p>
+            @endif
+        </div>
+        <div class="mt-3 mt-md-0 flex-shrink-0">
+            @if($event->status === 'draft' && ! $categoriesReady && $canViewCategories)
+                <a class="btn btn-primary" href="{{ route($categoriesRoute, $event) }}">Atur kategori <span class="fas fa-arrow-right ms-1" aria-hidden="true"></span></a>
+            @elseif($event->status === 'draft' && ! $datesReady && $canEditEvent)
+                <a class="btn btn-primary" href="{{ $editEventUrl }}">Lengkapi tanggal</a>
+            @elseif(! $isAdmin && $canEditEvent && $event->status === 'draft' && $categoriesReady && $datesReady)
+                <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#submitEventReviewModal">Ajukan publikasi</button>
+            @elseif($canViewTeams && $publicAvailable)
+                <a class="btn btn-primary" href="{{ route($workspaceRoutePrefix.'teams.index', $event) }}">Lihat tim peserta</a>
+            @else
+                <a class="btn btn-falcon-default" href="#workspace-preparation">Lihat persiapan</a>
+            @endif
+        </div>
+    </div>
+</section>
+
+<div class="row g-3 mb-3" aria-label="Ringkasan aktivitas event">
+    <div class="col-6 col-xl-3"><div class="card h-100"><div class="card-body">
+        <div class="fs-10 text-body-secondary mb-2">Tim terkonfirmasi</div><div class="fs-6 fw-bold">{{ $confirmedTeams }} <span class="fs-10 text-body-secondary fw-normal">/ {{ $totalTeams }}</span></div>
+        <p class="fs-11 text-body-secondary mb-0">{{ $pendingTeams }} terdaftar / menunggu pembayaran · {{ $waitingListTeams }} daftar tunggu</p>
+    </div></div></div>
+    <div class="col-6 col-xl-3"><div class="card h-100"><div class="card-body">
+        <div class="fs-10 text-body-secondary mb-2">Pertandingan selesai</div><div class="fs-6 fw-bold">{{ $finishedGames }} <span class="fs-10 text-body-secondary fw-normal">/ {{ $totalGames }}</span></div>
+        <p class="fs-11 text-body-secondary mb-0">{{ $totalGames ? ($totalGames - $finishedGames).' belum selesai' : 'Belum ada pertandingan' }}</p>
+    </div></div></div>
+    <div class="col-6 col-xl-3"><div class="card h-100"><div class="card-body">
+        <div class="fs-10 text-body-secondary mb-2">Tiket penonton terjual</div><div class="fs-6 fw-bold">{{ $ticketCount }}</div>
+        <p class="fs-11 text-body-secondary mb-0">Penjualan tiket, bukan jumlah pengunjung masuk.</p>
+    </div></div></div>
+    <div class="col-6 col-xl-3"><div class="card h-100"><div class="card-body">
+        <div class="fs-10 text-body-secondary mb-2">{{ $canViewFinance ? 'Dana tercatat dalam escrow' : 'Kategori kompetisi' }}</div>
+        <div class="fs-8 fw-bold text-break">{{ $canViewFinance ? 'Rp '.number_format($escrowSummary['total_escrow'], 0, ',', '.') : $event->categories->count() }}</div>
+        <p class="fs-11 text-body-secondary mb-0">{{ $canViewFinance ? 'Total transaksi dibayar yang masuk perhitungan escrow, bukan saldo siap cair.' : 'Aturan peserta mengikuti kategori.' }}</p>
+    </div></div></div>
+</div>
 
 @include('events._workspace_nav', ['event' => $event, 'workspace' => $workspace, 'activeTab' => 'overview'])
 
-<!-- 4 Kartu Ringkasan Statistik -->
-<div class="row g-3 mb-4">
-    <div class="col-sm-6 col-md-3">
-        <div class="card h-100 border-start border-4 border-primary shadow-sm">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span class="fs-10 text-muted fw-bold text-uppercase">Tim Sah (Confirmed)</span>
-                    <span class="fas fa-shield-alt text-primary"></span>
-                </div>
-                <h3 class="fw-bolder mb-1">{{ $confirmedTeams }} <span class="fs-10 text-muted fw-normal">/ {{ $totalTeams }}</span></h3>
-                <small class="text-warning fs-11">{{ $pendingTeams }} Menunggu Verifikasi</small>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-sm-6 col-md-3">
-        <div class="card h-100 border-start border-4 border-success shadow-sm">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span class="fs-10 text-muted fw-bold text-uppercase">Total Dana Escrow</span>
-                    <span class="fas fa-wallet text-success"></span>
-                </div>
-                <h3 class="fw-bolder mb-1 fs-9">Rp {{ number_format($escrowSummary['total_escrow'], 0, ',', '.') }}</h3>
-                <small class="text-success fs-11">Aman di Rekening Platform</small>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-sm-6 col-md-3">
-        <div class="card h-100 border-start border-4 border-info shadow-sm">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span class="fs-10 text-muted fw-bold text-uppercase">Tiket Penonton Terjual</span>
-                    <span class="fas fa-ticket-alt text-info"></span>
-                </div>
-                <h3 class="fw-bolder mb-1">{{ $ticketCount }} <span class="fs-10 text-muted fw-normal">lembar</span></h3>
-                <small class="text-muted fs-11">Omzet: Rp {{ number_format($escrowSummary['ticket_income'], 0, ',', '.') }}</small>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-sm-6 col-md-3">
-        <div class="card h-100 border-start border-4 border-warning shadow-sm">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span class="fs-10 text-muted fw-bold text-uppercase">Pertandingan Tuntas</span>
-                    <span class="fas fa-basketball-ball text-warning"></span>
-                </div>
-                <h3 class="fw-bolder mb-1">{{ $finishedGames }} <span class="fs-10 text-muted fw-normal">/ {{ $totalGames }}</span></h3>
-                <small class="text-muted fs-11">{{ $totalGames - $finishedGames }} Sisa Pertandingan</small>
-            </div>
-        </div>
-    </div>
-</div>
-<!-- Card: Informasi Umum & Rekening Panitia (PRD_EXTERNAL §4.7) -->
-<div class="card mb-3 shadow-sm">
-    <div class="card-header bg-body-tertiary d-flex justify-content-between align-items-center py-2">
-        <h6 class="mb-0 fs-10 text-900 fw-bold">
-            <span class="fas fa-info-circle text-primary me-2"></span>Informasi Umum Turnamen &amp; Rekening Pembayaran Panitia
-        </h6>
-        @if($canEditEvent)
-        <a href="{{ $editEventUrl }}" class="btn btn-xs btn-outline-primary">
-            <span class="fas fa-edit me-1"></span>Ubah Pengaturan &amp; Rekening
-        </a>
-        @endif
-    </div>
-    <div class="card-body py-2 px-3 fs-10">
-        <div class="row g-3">
-            <div class="col-md-6 border-end-md">
-                <div class="text-muted fw-bold mb-1 fs-11 text-uppercase">Data Parameter Turnamen</div>
-                <table class="table table-sm table-borderless mb-0 fs-10">
-                    <tr>
-                        <td class="text-muted ps-0" style="width: 140px;">Cabang Olahraga:</td>
-                        <td class="fw-bold">{{ $sportName }}</td>
-                    </tr>
-                    <tr>
-                        <td class="text-muted ps-0">Tanggal Pelaksanaan:</td>
-                        <td class="fw-bold">
-                            {{ $event->starts_at?->format('d M Y') ?? '-' }} s.d. {{ $event->ends_at?->format('d M Y') ?? '-' }}
-                        </td>
-                    </tr>
-                    <tr>
-                        <td class="text-muted ps-0">Venue Lokasi:</td>
-                        <td>
-                            <strong>{{ $event->venue?->name ?? 'Venue Mandiri' }}</strong>
-                            <small class="text-muted d-block">{{ $event->venue?->address ?? '' }}</small>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td class="text-muted ps-0">Pendaftaran Publik:</td>
-                        <td>
-                            <span class="badge badge-subtle-{{ $event->registration_open ? 'success' : 'secondary' }}">
-                                {{ $event->registration_open ? 'Terbuka' : 'Ditutup' }}
-                            </span>
-                        </td>
-                    </tr>
-                </table>
-            </div>
-            <div class="col-md-6">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span class="text-muted fw-bold fs-11 text-uppercase">Opsi Transfer Manual Panitia</span>
-                    @if($event->allow_manual_payment)
-                        <span class="badge badge-subtle-warning"><span class="fas fa-exclamation-triangle me-1"></span>Aktif (Non-Escrow)</span>
-                    @else
-                        <span class="badge badge-subtle-success"><span class="fas fa-shield-alt me-1"></span>Nonaktif (100% Escrow Gateway)</span>
-                    @endif
-                </div>
-
-                @if($event->allow_manual_payment)
-                    <div class="p-2 bg-warning-subtle rounded border border-warning mb-0 fs-10">
-                        <table class="table table-sm table-borderless mb-0 fs-10 text-dark">
-                            <tr>
-                                <td class="text-muted ps-0" style="width: 130px;">Bank Tujuan:</td>
-                                <td class="fw-bold">{{ $event->manual_bank_name ?: 'Belum diisi' }}</td>
-                            </tr>
-                            <tr>
-                                <td class="text-muted ps-0">Nomor Rekening:</td>
-                                <td class="fw-bolder font-monospace text-primary fs-10">{{ $event->manual_bank_account_number ?: 'Belum diisi' }}</td>
-                            </tr>
-                            <tr>
-                                <td class="text-muted ps-0">Atas Nama:</td>
-                                <td class="fw-bold">{{ $event->manual_bank_account_holder ?: 'Belum diisi' }}</td>
-                            </tr>
-                            @if($event->manual_payment_instructions)
-                            <tr>
-                                <td class="text-muted ps-0">Petunjuk:</td>
-                                <td>{{ $event->manual_payment_instructions }}</td>
-                            </tr>
-                            @endif
-                        </table>
-                    </div>
-                @else
-                    <div class="p-2 bg-light rounded border text-muted fs-11">
-                        <span class="fas fa-info-circle text-primary me-1"></span>
-                        Transfer manual dinonaktifkan. Semua pendaftaran diproses otomatis melalui payment gateway terpusat resmi ActStation (Garansi Escrow 100%).
-                        @if($canEditEvent)
-                            <div class="mt-1">Ingin menerima transfer langsung ke rekening bank panitia? <a href="{{ $editEventUrl }}" class="text-primary fw-bold">Aktifkan di sini &raquo;</a></div>
-                        @endif
-                    </div>
-                @endif
-            </div>
-        </div>
-    </div>
-</div>
-
 <div class="row g-3">
-    <!-- Checklist Kesiapan Turnamen -->
-    <div class="col-lg-6">
+    <section class="col-xl-7 py-0" id="workspace-preparation" aria-labelledby="preparation-title">
         <div class="card h-100">
-            <div class="card-header bg-body-tertiary">
-                <h6 class="mb-0">Checklist Kesiapan Turnamen (Anti-Fraud Guard)</h6>
-            </div>
+            <div class="card-header border-bottom"><h2 class="fs-9 mb-1" id="preparation-title">Persiapan event</h2><p class="fs-10 text-body-secondary mb-0">Status tersimpan, bukan jaminan seluruh persyaratan sudah disetujui.</p></div>
             <div class="card-body">
-                <ul class="list-group list-group-flush fs-10">
-                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                        <div>
-                            <span>1. Verifikasi PIC & Rekening Bank (KYC)</span>
-                            @if($event->user)
-                                <div class="text-muted fs-11 mt-1">
-                                    <span class="fas fa-user text-primary me-1"></span><strong>{{ $event->user->name }}</strong>
-                                    <span class="text-500">({{ $event->user->email }})</span>
-                                    @if($event->user->phone_number)
-                                        &bull; <span class="fab fa-whatsapp text-success me-1"></span>{{ $event->user->phone_number }}
-                                    @endif
-                                    @if($workspace === 'admin' && Route::has('admin.users.show') && auth()->user()?->can('user.view'))
-                                        &bull; <a href="{{ route('admin.users.show', $event->user_id) }}" class="text-primary text-decoration-none">Profil User &raquo;</a>
-                                    @endif
-                                </div>
-                            @endif
-                        </div>
-                        <span class="badge bg-success"><span class="fas fa-check me-1"></span>Terverifikasi</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                        <span>2. Rekomendasi Induk Cabor ({{ $federationName }}) <span class="badge bg-danger-subtle text-danger ms-1">Wajib</span></span>
-                        @php $docFed = $event->documents->first(fn($d) => in_array($d->category, ['federation_recommendation', 'perbasi_recommendation'])); @endphp
-                        @if($docFed && $docFed->status === 'verified')
-                            <span class="badge bg-success"><span class="fas fa-check me-1"></span>Terverifikasi</span>
-                        @elseif($docFed)
-                            <span class="badge bg-info"><span class="fas fa-clock me-1"></span>Diunggah</span>
-                        @else
-                            <span class="badge bg-danger"><span class="fas fa-times me-1"></span>Belum Ada</span>
-                        @endif
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                        <span>3. Technical Handbook (THB) &amp; Regulasi Teknis <span class="badge bg-danger-subtle text-danger ms-1">Wajib</span></span>
-                        @php $docThb = $event->documents->firstWhere('category', 'technical_handbook'); @endphp
-                        @if($docThb)
-                            <span class="badge bg-success"><span class="fas fa-check me-1"></span>Tersedia</span>
-                        @else
-                            <span class="badge bg-danger"><span class="fas fa-times me-1"></span>Belum Ada</span>
-                        @endif
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                        @php
-                            $dynamicDocsList = $event->documents->filter(fn($d) => ! in_array($d->category, ['federation_recommendation', 'perbasi_recommendation', 'technical_handbook']));
-                        @endphp
-                        <div>
-                            <span>4. Dokumen Dinamis &amp; Pendukung <span class="badge bg-secondary-subtle text-secondary ms-1">Fleksibel</span></span>
-                            <div class="text-muted fs-11 mt-1">Izin Polres, Sewa Venue, Medis, Asuransi, dll. ({{ $dynamicDocsList->where('is_public', true)->count() }} Tampil Publik)</div>
-                        </div>
-                        @if($dynamicDocsList->isNotEmpty())
-                            <span class="badge bg-success"><span class="fas fa-check me-1"></span>{{ $dynamicDocsList->count() }} Berkas</span>
-                        @else
-                            <span class="badge bg-secondary"><span class="fas fa-minus me-1"></span>Opsional</span>
-                        @endif
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                        <span>5. Kategori Kompetisi (Minimal 1 Kategori)</span>
-                        @if($event->categories->isNotEmpty())
-                            <span class="badge bg-success"><span class="fas fa-check me-1"></span>{{ $event->categories->count() }} Kategori</span>
-                        @else
-                            <span class="badge bg-danger"><span class="fas fa-times me-1"></span>Belum Ada</span>
-                        @endif
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                        <span>6. Penetapan Bagan (Pool &amp; Knockout)</span>
-                        @if($event->tournamentPhases->isNotEmpty())
-                            <span class="badge bg-success"><span class="fas fa-check me-1"></span>Siap</span>
-                        @else
-                            <span class="badge bg-secondary">Menunggu Tim</span>
-                        @endif
-                    </li>
-                </ul>
+                <div class="d-flex justify-content-between flex-wrap gap-2 pb-3 border-bottom">
+                    <div><h3 class="fs-10 mb-1">Identitas penyelenggara</h3><span class="text-body-secondary fs-10">{{ $event->user?->name ?? 'Penyelenggara belum tersedia' }}</span></div>
+                    <span class="fs-10 {{ $event->user?->kyc_status === 'verified' ? 'text-success' : 'text-warning' }}">{{ $kycLabel }}</span>
+                </div>
+                <div class="d-flex justify-content-between flex-wrap gap-2 py-3 border-bottom">
+                    <div><h3 class="fs-10 mb-1">Tanggal pelaksanaan</h3><span class="text-body-secondary fs-10">{{ $datesReady ? 'Tanggal mulai dan selesai sudah tersusun.' : 'Isi tanggal mulai sebelum tanggal selesai.' }}</span></div>
+                    @if($canEditEvent)<a class="fs-10" href="{{ $editEventUrl }}">Periksa tanggal</a>@endif
+                </div>
+                <div class="d-flex justify-content-between flex-wrap gap-2 py-3 border-bottom">
+                    <div><h3 class="fs-10 mb-1">Kategori kompetisi</h3><span class="text-body-secondary fs-10">{{ $categoriesReady ? $event->categories->count().' kategori tersedia. Tinjau usia, gender, kuota, biaya, dan dokumen.' : 'Belum ada kategori' }}</span></div>
+                    @if($canViewCategories)<a class="fs-10" href="{{ route($categoriesRoute, $event) }}">Atur kategori</a>@endif
+                </div>
+                <div class="d-flex justify-content-between flex-wrap gap-2 pt-3">
+                    <div><h3 class="fs-10 mb-1">Dokumen legalitas &amp; teknis</h3><span class="text-body-secondary fs-10">{{ $event->documents->count() }} berkas · {{ $event->documents->where('status', 'verified')->count() }} terverifikasi · {{ $event->documents->where('status', 'rejected')->count() }} ditolak</span></div>
+                    <a class="fs-10" href="{{ route($workspaceRoutePrefix.'documents.index', $event) }}">Periksa dokumen</a>
+                </div>
             </div>
         </div>
-    </div>
-
-    <!-- Quick Shortcuts -->
-    <div class="col-lg-6">
+    </section>
+    <section class="col-xl-5 py-0" aria-labelledby="payment-settings-title">
         <div class="card h-100">
-            <div class="card-header bg-body-tertiary">
-                <h6 class="mb-0">Aksi Cepat Panitia Pelaksana</h6>
-            </div>
-            <div class="card-body d-flex flex-column justify-content-between">
-                <div class="row g-2">
-                    @if($workspace === 'organizer' || auth()->user()?->can('event-category.view'))
-                    <div class="col-sm-6">
-                        <a href="{{ route($categoriesRoute, $event->id) }}" class="btn btn-outline-primary w-100 btn-sm text-start py-2">
-                            <span class="fas fa-plus-circle me-1"></span>Atur Kategori & Alur
-                        </a>
-                    </div>
-                    @endif
-                    @if($workspace === 'organizer' || auth()->user()?->can('event-participant.view'))
-                    <div class="col-sm-6">
-                        <a href="{{ route($workspaceRoutePrefix.'teams.index', $event->id) }}" class="btn btn-outline-primary w-100 btn-sm text-start py-2">
-                            <span class="fas fa-clipboard-check me-1"></span>Kurasi Berkas Tim
-                        </a>
-                    </div>
-                    @endif
-                    @if($workspace === 'organizer' || auth()->user()?->can('tournament.manage'))
-                    <div class="col-sm-6">
-                        <a href="{{ route($tournamentRoute, $event->id) }}" class="btn btn-outline-primary w-100 btn-sm text-start py-2">
-                            <span class="fas fa-sitemap me-1"></span>Kelola Bagan & Jadwal
-                        </a>
-                    </div>
-                    @endif
-                    @if($workspace === 'organizer' || auth()->user()?->can('ticket-validation.scan'))
-                    <div class="col-sm-6">
-                        <a href="{{ route($workspaceRoutePrefix.'gate-scanner.index', $event->id) }}" class="btn btn-outline-primary w-100 btn-sm text-start py-2">
-                            <span class="fas fa-qrcode me-1"></span>Buka Gate Scanner HP
-                        </a>
-                    </div>
-                    @endif
+            <div class="card-header border-bottom"><h2 class="fs-9 mb-1" id="payment-settings-title">Pembayaran &amp; rekening</h2><p class="fs-10 text-body-secondary mb-0">Pisahkan transfer langsung dan dana dalam escrow.</p></div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between gap-2 mb-2"><span class="fs-10">Transfer manual</span><span class="badge badge-subtle-{{ $event->allow_manual_payment ? 'warning' : 'secondary' }}">{{ $event->allow_manual_payment ? 'Diaktifkan' : 'Nonaktif' }}</span></div>
+                <p class="fs-10 text-body-secondary">Transfer langsung ke penyelenggara tidak termasuk escrow platform.</p>
+                @if($event->allow_manual_payment && $canEditEvent)
+                    <details class="border rounded p-3 mb-3">
+                        <summary class="text-primary fs-10">Lihat rekening tujuan transfer</summary>
+                        <dl class="fs-10 mb-0 mt-3 text-break"><dt>Bank</dt><dd>{{ $event->manual_bank_name ?: 'Belum diisi' }}</dd><dt>Nomor rekening</dt><dd class="font-monospace">{{ $event->manual_bank_account_number ?: 'Belum diisi' }}</dd><dt>Atas nama</dt><dd>{{ $event->manual_bank_account_holder ?: 'Belum diisi' }}</dd><dt>Petunjuk pembayaran</dt><dd class="mb-0">{{ $event->manual_payment_instructions ?: 'Belum diisi' }}</dd></dl>
+                    </details>
+                @endif
+                <div class="d-flex flex-wrap gap-2">
+                    @if($canEditEvent)<a href="{{ $editEventUrl }}" class="btn btn-falcon-default btn-sm">Pengaturan rekening</a>@endif
+                    @if($canViewFinance)<a href="{{ route($workspaceRoutePrefix.'payouts.index', $event) }}" class="btn btn-falcon-default btn-sm">Rincian dana &amp; pencairan</a>@endif
                 </div>
-                    @if($canEditEvent)
-                    <div class="col-sm-6">
-                        <a href="{{ $editEventUrl }}" class="btn btn-outline-secondary w-100 btn-sm text-start py-2">
-                            <span class="fas fa-cog me-1"></span>Edit Informasi &amp; Rekening
-                        </a>
-                    </div>
-                    @endif
-                    <div class="col-sm-6">
-                        <button type="button" class="btn btn-outline-primary w-100 btn-sm text-start py-2" data-bs-toggle="modal" data-bs-target="#uploadEventDocModal">
-                            <span class="fas fa-file-upload me-1"></span>+ Unggah Dokumen Event
-                        </button>
-                    </div>
-                    <div class="col-sm-6">
-                        <a href="{{ route($documentsRoute, $event->id) }}" class="btn btn-outline-primary w-100 btn-sm text-start py-2">
-                            <span class="fas fa-folder-open me-1"></span>Kelola Semua Berkas
-                        </a>
-                    </div>
-
-                <div class="alert alert-light border mt-3 mb-0 fs-11 text-muted">
-                    <span class="fas fa-shield-alt text-success me-1"></span>
-                    Dana pendaftaran otomatis tersimpan di Escrow Platform. Ajukan Payout Termin 1 saat hari H turnamen bergulir.
-                </div>
+                <p class="fs-11 text-body-secondary mt-3 mb-0">Pencairan mengikuti syarat event dan pemeriksaan admin, bukan transfer otomatis.</p>
             </div>
         </div>
-    </div>
+    </section>
 </div>
 
-<!-- Section: Dokumen Legalitas & Teknis Turnamen (Dynamic Polymorphic Vault) -->
-<div class="card mt-4" id="eventDocumentsSection">
-    <div class="card-header bg-body-tertiary d-flex justify-content-between align-items-center">
-        <div>
-            <h6 class="mb-0 fw-bold">
-                <span class="fas fa-file-contract me-2 text-primary"></span>Dokumen Legalitas &amp; Teknis Turnamen (Dynamic Vault)
-            </h6>
-            <small class="text-muted fs-11">
-                Wajib: Rekomendasi induk cabor ({{ $federationName }}) &amp; Technical Handbook (THB). Dokumen lainnya bersifat dinamis dan dapat diatur apakah tampil di halaman publik atau internal.
-            </small>
-        </div>
-        @if($canUploadDoc)
-        <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadEventDocModal">
-            <span class="fas fa-cloud-upload-alt me-1"></span>+ Unggah Dokumen
-        </button>
-        @endif
+<section class="card py-0 mt-3" aria-labelledby="workspace-documents-title">
+    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2 border-bottom">
+        <div><h2 class="fs-9 mb-1" id="workspace-documents-title">Dokumen event</h2><p class="fs-10 text-body-secondary mb-0">Unggah, periksa catatan, dan atur akses di satu tempat.</p></div>
+        <a class="btn btn-falcon-primary btn-sm" href="{{ route($workspaceRoutePrefix.'documents.index', $event) }}">Kelola dokumen</a>
     </div>
     <div class="card-body">
-        @php
-            $categoryLabels = [
-                'federation_recommendation' => "Rekomendasi Induk Cabor ({$federationName})",
-                'perbasi_recommendation' => "Rekomendasi Induk Cabor ({$federationName})",
-                'police_permit' => 'Izin Keramaian Polres',
-                'technical_handbook' => 'Technical Handbook (THB)',
-                'venue_approval' => 'Izin Tempat / Sewa Venue',
-                'medical_permit' => 'Izin Medis / Satgas',
-                'insurance_policy' => 'Asuransi Atlet & Peserta',
-                'other' => 'Dokumen Pendukung Lainnya',
-            ];
-            $categoryBadgeClasses = [
-                'federation_recommendation' => 'primary',
-                'perbasi_recommendation' => 'primary',
-                'police_permit' => 'info',
-                'technical_handbook' => 'success',
-                'venue_approval' => 'warning',
-                'medical_permit' => 'danger',
-                'insurance_policy' => 'dark',
-                'other' => 'secondary',
-            ];
-
-            $isCoreDoc = fn($d) => in_array($d->category, ['federation_recommendation', 'perbasi_recommendation', 'technical_handbook']);
-            $dynamicDocs = $event->documents->filter(fn($d) => ! $isCoreDoc($d));
-            $dynamicCount = $dynamicDocs->count();
-            $dynamicPublicCount = $dynamicDocs->where('is_public', true)->count();
-            $totalPublicCount = $event->documents->where('is_public', true)->count();
-        @endphp
-
-        <!-- Ringkasan Status Dokumen (Wajib vs Dinamis) -->
-        <div class="row g-2 mb-3">
-            <div class="col-6 col-md-3">
-                <div class="border rounded p-2 text-center bg-body-tertiary h-100 d-flex flex-column justify-content-between">
-                    <div>
-                        <div class="fs-11 text-muted fw-bold mb-1">
-                            Rekomendasi Cabor ({{ $federationName }})
-                            <span class="badge bg-danger-subtle text-danger ms-1">Wajib</span>
-                        </div>
-                    </div>
-                    <div>
-                        @if($docFed)
-                            <span class="badge bg-{{ $docFed->status === 'verified' ? 'success' : ($docFed->status === 'rejected' ? 'danger' : 'warning') }}">
-                                <span class="fas {{ $docFed->status === 'verified' ? 'fa-check-circle' : 'fa-clock' }} me-1"></span>
-                                {{ ucfirst($docFed->status) }}
-                            </span>
-                        @else
-                            <span class="badge bg-100 text-danger border"><span class="fas fa-times me-1"></span>Belum Ada</span>
-                        @endif
-                    </div>
-                </div>
+        @forelse($event->documents as $doc)
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 {{ ! $loop->last ? 'pb-3 mb-3 border-bottom' : '' }}">
+                <div style="min-width:0"><h3 class="fs-10 mb-1 text-break">{{ $doc->name }}</h3><div class="fs-11 text-body-secondary">{{ $docLabels[$doc->category] ?? 'Dokumen pendukung' }} · {{ $doc->is_public ? 'Akses publik' : 'Akses internal' }}</div>@if($doc->notes)<p class="fs-10 text-danger mt-1 mb-0 text-break">{{ $doc->notes }}</p>@endif</div>
+                <span class="badge badge-subtle-{{ $doc->status === 'verified' ? 'success' : ($doc->status === 'rejected' ? 'danger' : 'warning') }}">{{ $doc->status === 'verified' ? 'Terverifikasi' : ($doc->status === 'rejected' ? 'Perlu perbaikan' : 'Menunggu pemeriksaan') }}</span>
             </div>
-            <div class="col-6 col-md-3">
-                <div class="border rounded p-2 text-center bg-body-tertiary h-100 d-flex flex-column justify-content-between">
-                    <div>
-                        <div class="fs-11 text-muted fw-bold mb-1">
-                            Technical Handbook (THB)
-                            <span class="badge bg-danger-subtle text-danger ms-1">Wajib</span>
-                        </div>
-                    </div>
-                    <div>
-                        @if($docThb)
-                            <span class="badge bg-{{ $docThb->status === 'verified' ? 'success' : ($docThb->status === 'rejected' ? 'danger' : 'warning') }}">
-                                <span class="fas {{ $docThb->status === 'verified' ? 'fa-check-circle' : 'fa-clock' }} me-1"></span>
-                                {{ ucfirst($docThb->status) }}
-                            </span>
-                        @else
-                            <span class="badge bg-100 text-danger border"><span class="fas fa-times me-1"></span>Belum Ada</span>
-                        @endif
-                    </div>
-                </div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="border rounded p-2 text-center bg-body-tertiary h-100 d-flex flex-column justify-content-between">
-                    <div>
-                        <div class="fs-11 text-muted fw-bold mb-1">
-                            Dokumen Dinamis &amp; Pendukung
-                            <span class="badge bg-secondary-subtle text-secondary ms-1">Fleksibel</span>
-                        </div>
-                    </div>
-                    <div>
-                        @if($dynamicCount > 0)
-                            <span class="badge bg-primary">
-                                <span class="fas fa-folder me-1"></span>{{ $dynamicCount }} Berkas ({{ $dynamicPublicCount }} Publik)
-                            </span>
-                        @else
-                            <span class="badge bg-100 text-secondary border"><span class="fas fa-info-circle me-1"></span>Opsional</span>
-                        @endif
-                    </div>
-                </div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="border rounded p-2 text-center bg-body-tertiary h-100 d-flex flex-column justify-content-between">
-                    <div>
-                        <div class="fs-11 text-muted fw-bold mb-1">
-                            Akses Portal Publik
-                            <span class="badge bg-info-subtle text-info ms-1"><span class="fas fa-globe me-1"></span>Publik</span>
-                        </div>
-                    </div>
-                    <div>
-                        <span class="badge bg-info text-dark">
-                            <span class="fas fa-eye me-1"></span>{{ $totalPublicCount }} Dokumen Tampil
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tabel Dokumen Terunggah -->
-        @if($event->documents->isNotEmpty())
-        <div class="table-responsive">
-            <table class="table table-sm table-striped fs-10 mb-0 align-middle">
-                <thead class="bg-200 text-900">
-                    <tr>
-                        <th class="ps-3">Kategori</th>
-                        <th>Nama Dokumen</th>
-                        <th>Nomor Surat</th>
-                        <th>Visibilitas Publik</th>
-                        <th>Status</th>
-                        <th>Tanggal Upload</th>
-                        <th class="text-end pe-3">Aksi</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($event->documents as $doc)
-                    @php
-                        $isCore = in_array($doc->category, ['federation_recommendation', 'perbasi_recommendation', 'technical_handbook']);
-                    @endphp
-                    <tr>
-                        <td class="ps-3">
-                            <span class="badge badge-subtle-{{ $categoryBadgeClasses[$doc->category] ?? 'secondary' }}">
-                                {{ $categoryLabels[$doc->category] ?? ucfirst(str_replace('_', ' ', $doc->category)) }}
-                            </span>
-                            @if($isCore)
-                                <span class="badge bg-danger-subtle text-danger ms-1" style="font-size: 9px;">Wajib</span>
-                            @else
-                                <span class="badge bg-secondary-subtle text-secondary ms-1" style="font-size: 9px;">Dinamis</span>
-                            @endif
-                        </td>
-                        <td class="fw-semi-bold">
-                            <span class="text-900">{{ $doc->name }}</span>
-                            @if($doc->notes)
-                                <div class="text-danger fs-11 mt-1"><span class="fas fa-info-circle me-1"></span>Catatan: {{ $doc->notes }}</div>
-                            @endif
-                        </td>
-                        <td class="text-muted font-monospace">{{ $doc->document_number ?: '-' }}</td>
-                        <td>
-                            <div class="d-flex align-items-center gap-1">
-                                @if($doc->is_public)
-                                    <span class="badge bg-info"><span class="fas fa-globe me-1"></span>Publik</span>
-                                @else
-                                    <span class="badge bg-secondary"><span class="fas fa-lock me-1"></span>Internal</span>
-                                @endif
-                                @if($canUploadDoc)
-                                <form action="{{ route($workspaceRoutePrefix.'documents.togglePublic', [$event->id, $doc->id]) }}" method="POST" class="d-inline">
-                                    @csrf
-                                    <button type="submit" class="btn btn-xs {{ $doc->is_public ? 'btn-outline-secondary' : 'btn-outline-info' }} py-0 px-1" title="{{ $doc->is_public ? 'Sembunyikan dari Publik' : 'Tampilkan di Halaman Publik' }}">
-                                        <span class="fas {{ $doc->is_public ? 'fa-eye-slash' : 'fa-eye' }}" style="font-size: 10px;"></span>
-                                    </button>
-                                </form>
-                                @endif
-                            </div>
-                        </td>
-                        <td>
-                            @if($doc->status === 'verified')
-                                <span class="badge bg-success"><span class="fas fa-check me-1"></span>Terverifikasi</span>
-                            @elseif($doc->status === 'rejected')
-                                <span class="badge bg-danger"><span class="fas fa-times me-1"></span>Ditolak</span>
-                            @else
-                                <span class="badge bg-warning text-dark"><span class="fas fa-clock me-1"></span>Menunggu Review</span>
-                            @endif
-                        </td>
-                        <td class="text-muted">{{ $doc->created_at?->format('d/m/Y H:i') ?? '-' }}</td>
-                        <td class="text-end pe-3">
-                            <div class="d-inline-flex gap-1">
-                                <a href="{{ route($workspaceRoutePrefix.'documents.download', [$event->id, $doc->id]) }}" class="btn btn-xs btn-outline-primary" target="_blank" title="Unduh Berkas">
-                                    <span class="fas fa-download me-1"></span>Unduh
-                                </a>
-                                @if($canVerifyDoc && $doc->status !== 'verified')
-                                <form action="{{ route('admin.events.workspace.documents.verify', [$event->id, $doc->id]) }}" method="POST" class="d-inline">
-                                    @csrf
-                                    <button type="submit" class="btn btn-xs btn-success" title="Verifikasi Dokumen">
-                                        <span class="fas fa-check"></span>
-                                    </button>
-                                </form>
-                                @endif
-                                @if($canDeleteDoc)
-                                <form action="{{ route($workspaceRoutePrefix.'documents.destroy', [$event->id, $doc->id]) }}" method="POST" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin menghapus dokumen [{{ $doc->name }}]?');">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="btn btn-xs btn-outline-danger" title="Hapus Dokumen">
-                                        <span class="fas fa-trash-alt"></span>
-                                    </button>
-                                </form>
-                                @endif
-                            </div>
-                        </td>
-                    </tr>
-                    @endforeach
-                </tbody>
-            </table>
-        </div>
-        @else
-        <div class="text-center py-4 bg-light rounded border border-dashed">
-            <span class="fas fa-folder-open fa-2x text-muted mb-2 d-block"></span>
-            <p class="text-muted fs-10 mb-2">Belum ada dokumen yang diunggah untuk turnamen ini.</p>
-            @if($canUploadDoc)
-            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#uploadEventDocModal">
-                <span class="fas fa-cloud-upload-alt me-1"></span>Unggah Dokumen Pertama
-            </button>
-            @endif
-        </div>
-        @endif
+        @empty
+            <div class="text-center py-3"><span class="fas fa-folder-open fs-5 text-400 mb-3" aria-hidden="true"></span><h3 class="fs-9">Belum ada dokumen event</h3><p class="fs-10 text-body-secondary mb-0">Mulai dari rekomendasi induk cabor dan buku panduan teknis sesuai kebutuhan event. Berkas yang diunggah belum otomatis terverifikasi.</p></div>
+        @endforelse
     </div>
-</div>
+</section>
 
-@if($canUploadDoc)
-<!-- Modal Upload Dokumen Event -->
-<div class="modal fade" id="uploadEventDocModal" tabindex="-1" aria-labelledby="uploadEventDocModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <form action="{{ route($workspaceRoutePrefix.'documents.store', $event->id) }}" method="POST" enctype="multipart/form-data">
-                @csrf
-                <div class="modal-header bg-body-tertiary">
-                    <h6 class="modal-title fw-bold" id="uploadEventDocModalLabel">
-                        <span class="fas fa-cloud-upload-alt me-2 text-primary"></span>Unggah Dokumen Turnamen
-                    </h6>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body fs-10">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold" for="modal_doc_category">Kategori Dokumen <span class="text-danger">*</span></label>
-                        <select class="form-select form-select-sm" id="modal_doc_category" name="category" required onchange="onEventDocCategoryChange(this)">
-                            <option value="">-- Pilih Jenis Dokumen --</option>
-                            <optgroup label="Dokumen Wajib">
-                                <option value="federation_recommendation">Surat Rekomendasi Induk Cabor ({{ $federationName }}) [Wajib]</option>
-                                <option value="technical_handbook">Technical Handbook (THB) / Buku Panduan Teknis [Wajib]</option>
-                            </optgroup>
-                            <optgroup label="Dokumen Dinamis / Fleksibel">
-                                <option value="police_permit">Surat Izin Keramaian Kepolisian (Polres / Polsek)</option>
-                                <option value="venue_approval">Surat Izin / Sewa Venue Pertandingan (Gelanggang / Stadion / GOR)</option>
-                                <option value="medical_permit">Surat Kesiapan Layanan Medis / Satgas / Dinkes</option>
-                                <option value="insurance_policy">Polis Asuransi Atlet &amp; Peserta</option>
-                                <option value="other">Dokumen Pendukung Lainnya (Dinamis / Custom)</option>
-                            </optgroup>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold" for="event_doc_name">Nama Dokumen <span class="text-danger">*</span></label>
-                        <input class="form-control form-control-sm" type="text" id="event_doc_name" name="name" required placeholder="Contoh: Rekomendasi Cabor / Surat Izin No. 042/2026">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold" for="event_doc_number">Nomor Surat / Dokumen</label>
-                        <input class="form-control form-control-sm" type="text" id="event_doc_number" name="document_number" placeholder="Nomor resmi dokumen jika ada">
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold" for="event_doc_file">Berkas File <span class="text-danger">*</span></label>
-                        <input class="form-control form-control-sm" type="file" id="event_doc_file" name="file" required accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
-                        <div class="text-muted fs-11 mt-1">Format: PDF, JPG, PNG, DOC, DOCX (Maksimal 10MB)</div>
-                    </div>
-
-                    <div class="mb-3 p-2 bg-body-tertiary rounded border">
-                        <div class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" id="modal_doc_is_public" name="is_public" value="1">
-                            <label class="form-check-label fw-bold" for="modal_doc_is_public">
-                                <span class="fas fa-globe text-primary me-1"></span>Tampilkan di Halaman Publik Turnamen
-                            </label>
-                        </div>
-                        <div class="text-muted fs-11 mt-1">
-                            Jika diaktifkan, dokumen ini dapat dilihat &amp; diunduh oleh pengunjung/peserta di halaman publik turnamen.
-                        </div>
-                    </div>
-
-                    <div class="mb-0">
-                        <label class="form-label fw-bold" for="event_doc_notes">Catatan Tambahan (Opsional)</label>
-                        <textarea class="form-control form-control-sm" id="event_doc_notes" name="notes" rows="2" placeholder="Keterangan singkat mengenai berkas ini..."></textarea>
-                    </div>
-                </div>
-                <div class="modal-footer bg-body-tertiary">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
-                    <button type="submit" class="btn btn-sm btn-primary">
-                        <span class="fas fa-upload me-1"></span>Simpan &amp; Unggah
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
+@if(! $isAdmin && $canEditEvent && $event->status === 'draft' && $categoriesReady && $datesReady)
+<div class="modal fade" id="submitEventReviewModal" tabindex="-1" aria-labelledby="submitEventReviewTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+        <form method="POST" action="{{ route('panel.organizer.events.submitReview', $event) }}">
+            @csrf
+            <div class="modal-header"><h2 class="modal-title fs-8" id="submitEventReviewTitle">Ajukan publikasi event?</h2><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Tutup"></button></div>
+            <div class="modal-body"><p class="fw-semi-bold text-break">{{ $event->title }}</p><p class="fs-10">Admin akan memeriksa pengajuan. Tindakan ini belum langsung memublikasikan event atau membuka pendaftaran.</p><div class="form-check"><input class="form-check-input" id="confirmEventReview" type="checkbox" required><label class="form-check-label fs-10" for="confirmEventReview">Saya telah memeriksa tanggal, kategori, biaya, dan dokumen event.</label></div></div>
+            <div class="modal-footer"><button class="btn btn-falcon-default" type="button" data-bs-dismiss="modal">Periksa lagi</button><button class="btn btn-primary" type="submit">Kirim pengajuan</button></div>
+        </form>
+    </div></div>
 </div>
 @endif
-
-<script>
-function onEventDocCategoryChange(select) {
-    const nameInput = document.getElementById('event_doc_name');
-    const publicSwitch = document.getElementById('modal_doc_is_public');
-    const fed = '{{ $federationName }}';
-    const presets = {
-        'federation_recommendation': 'Surat Rekomendasi Induk Cabor ' + fed,
-        'perbasi_recommendation': 'Surat Rekomendasi Induk Cabor ' + fed,
-        'police_permit': 'Surat Izin Keramaian Kepolisian (Polres)',
-        'technical_handbook': 'Technical Handbook (THB) Turnamen',
-        'venue_approval': 'Surat Izin / Bukti Reservasi Venue Pertandingan',
-        'medical_permit': 'Surat Kesiapan Layanan Medis / Satgas',
-        'insurance_policy': 'Polis Asuransi Atlet & Peserta',
-        'other': ''
-    };
-    if (presets[select.value] && (!nameInput.value || Object.values(presets).includes(nameInput.value))) {
-        nameInput.value = presets[select.value];
-    }
-    if (select.value === 'technical_handbook') {
-        publicSwitch.checked = true;
-    }
-}
-</script>
 @endsection

@@ -5,7 +5,7 @@
 @endphp
 @extends($workspace === 'admin' ? 'layouts.app' : 'layouts.panel')
 
-@section('title', 'Kurasi & Manajemen Tim — ' . $event->title)
+@section('title', 'Pemeriksaan & Manajemen Tim — ' . $event->title)
 
 @section('content')
 <div class="card mb-3">
@@ -17,7 +17,7 @@
                         <span class="fas fa-arrow-left"></span>
                     </a>
                     <div>
-                        <h5 class="mb-0">Kurasi Tim & Roster: {{ $event->title }}</h5>
+                        <h5 class="mb-0">Pemeriksaan Tim & Roster: {{ $event->title }}</h5>
                         <small class="text-muted">Verifikasi kelengkapan berkas, minta revisi, rekonsiliasi transfer manual, dan kunci susunan pemain (Roster Lock).</small>
                     </div>
                 </div>
@@ -35,6 +35,7 @@
 
 @include('events._workspace_nav', ['event' => $event, 'workspace' => $workspace, 'activeTab' => 'teams'])
 
+<div class="alert alert-light border fs-10" role="note"><strong>Periksa tim yang sudah dikirim.</strong> Draft Pendaftaran masih diisi pengurus dan belum menjadi peserta resmi. Buka pemeriksaan tim untuk melihat berkas; konfirmasi pembayaran tidak menggantikan pemeriksaan kelayakan.</div>
 <ul class="nav nav-tabs mb-3" id="teamManagementTabs">
     <li class="nav-item">
         <a class="nav-link {{ $activeTab === 'registered' ? 'active fw-bold' : '' }}" href="{{ route($workspaceRoutePrefix.'teams.index', array_merge(['event' => $event->id], request()->except('tab', 'page', 'drafts_page'), ['tab' => 'registered'])) }}">
@@ -55,7 +56,7 @@
         <form method="GET" action="{{ route($workspaceRoutePrefix.'teams.index', $event->id) }}" class="row g-2">
             <input type="hidden" name="tab" value="{{ $activeTab }}">
             <div class="col-md-4">
-                <select class="form-select form-select-sm" name="category_id" onchange="this.form.submit()">
+                <select class="form-select form-select-sm" aria-label="Filter kategori" name="category_id" onchange="this.form.submit()">
                     <option value="">-- Semua Kategori --</option>
                     @foreach($categories as $c)
                         <option value="{{ $c->id }}" {{ request('category_id') == $c->id ? 'selected' : '' }}>{{ $c->name }}</option>
@@ -64,19 +65,19 @@
             </div>
             <div class="col-md-4">
                 @if($activeTab === 'drafts')
-                    <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
+                    <select class="form-select form-select-sm" aria-label="Filter status" name="status" onchange="this.form.submit()">
                         <option value="">-- Semua Status Draft --</option>
                         <option value="draft_active" {{ request('status') === 'draft_active' ? 'selected' : '' }}>Sedang Mengisi (Aktif)</option>
                         <option value="draft_expired" {{ request('status') === 'draft_expired' ? 'selected' : '' }}>Kadaluarsa</option>
                     </select>
                 @else
-                    <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
+                    <select class="form-select form-select-sm" aria-label="Filter status" name="status" onchange="this.form.submit()">
                         <option value="">-- Semua Status Pendaftaran --</option>
-                        <option value="registered" {{ request('status') === 'registered' ? 'selected' : '' }}>Registered (Menunggu Kurasi)</option>
-                        <option value="confirmed" {{ request('status') === 'confirmed' ? 'selected' : '' }}>Confirmed (Roster Lock)</option>
-                        <option value="pending_payment" {{ request('status') === 'pending_payment' ? 'selected' : '' }}>Pending Payment</option>
-                        <option value="revision_needed" {{ request('status') === 'revision_needed' ? 'selected' : '' }}>Revision Needed (Minta Revisi)</option>
-                        <option value="waiting_list" {{ request('status') === 'waiting_list' ? 'selected' : '' }}>Waiting List (Antrean)</option>
+                        <option value="registered" {{ request('status') === 'registered' ? 'selected' : '' }}>Menunggu pemeriksaan</option>
+                        <option value="confirmed" {{ request('status') === 'confirmed' ? 'selected' : '' }}>Terkonfirmasi · roster terkunci</option>
+                        <option value="pending_payment" {{ request('status') === 'pending_payment' ? 'selected' : '' }}>Menunggu pembayaran</option>
+                        <option value="revision_needed" {{ request('status') === 'revision_needed' ? 'selected' : '' }}>Perlu revisi</option>
+                        <option value="waiting_list" {{ request('status') === 'waiting_list' ? 'selected' : '' }}>Daftar tunggu</option>
                     </select>
                 @endif
             </div>

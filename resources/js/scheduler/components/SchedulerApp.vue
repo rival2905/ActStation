@@ -1,5 +1,11 @@
 <template>
   <div class="scheduler-app">
+    <div class="alert alert-light border fs-10 d-print-none" role="note">
+      <strong>Susun pertandingan per kategori.</strong> Pilih kategori, atur babak dan peserta, lalu lapangan serta waktu. Periksa hasil susunan sebelum membagikan jadwal. Menghapus bagan berbeda dari mengubah jadwal.
+    </div>
+    <div v-if="!state.loading && !state.error && state.categories.length === 0" class="card mb-3">
+      <div class="card-body text-center py-4"><h2 class="fs-9">Belum ada kategori kompetisi</h2><p class="fs-10 text-body-secondary mb-0">Buka menu Kategori, tambahkan aturan kompetisi, lalu kembali untuk menyusun pertandingan.</p></div>
+    </div>
     <!-- Top Action Bar & Category Filter -->
     <div class="card mb-3 shadow-sm border-0 d-print-none">
       <div class="card-body p-3">
@@ -7,18 +13,19 @@
           <!-- Category Filter Tabs -->
           <div class="d-flex flex-wrap align-items-center gap-2">
             <span class="fw-bold fs--1 text-700 me-1">Kategori:</span>
-            <div class="btn-group btn-group-sm" role="group" aria-label="Filter Kategori">
+            <div class="d-flex flex-wrap gap-2" role="group" aria-label="Filter Kategori">
               <button
                 v-for="cat in state.categories"
                 :key="cat.id"
                 type="button"
                 class="btn"
                 :class="state.selectedCategoryId === cat.id ? 'btn-primary' : 'btn-falcon-default'"
+                :aria-pressed="state.selectedCategoryId === cat.id"
                 @click="selectCategory(cat.id)"
               >
                 {{ cat.name }}
                 <span class="badge ms-1" :class="state.selectedCategoryId === cat.id ? 'bg-white text-primary' : 'bg-200 text-dark'">
-                  {{ cat.gender || 'mixed' }}
+                  {{ { male: 'Putra', female: 'Putri', mixed: 'Campuran' }[cat.gender] || 'Campuran' }}
                 </span>
               </button>
             </div>
@@ -34,19 +41,19 @@
               :disabled="state.loading || !state.selectedCategoryId"
             >
               <span class="fas fa-plus-circle me-1"></span>
-              Setup Babak
+              Atur babak
             </button>
 
             <!-- Hitung Ulang Jadwal (Auto-Schedule) -->
             <button
               type="button"
               class="btn btn-sm btn-outline-primary"
-              @click="recalculateSchedule"
+              @click="confirmRecalculateSchedule"
               :disabled="state.actionLoading || state.games.length === 0"
               title="Hitung ulang alokasi lapangan dan jam pertandingan otomatis"
             >
               <span class="fas fa-calendar-alt me-1"></span>
-              Otomatis Jadwal
+              Susun ulang jadwal
             </button>
 
             <!-- Pengaturan Jadwal / Lapangan -->
@@ -57,10 +64,10 @@
               title="Pengaturan jam main, durasi, dan lapangan"
             >
               <span class="fas fa-cog me-1"></span>
-              Setting Lapangan
+              Atur lapangan & waktu
             </button>
 
-            <!-- Export Standings CSV -->
+            <!-- Unduh klasemen CSV -->
             <a
               v-if="exportCsvUrl"
               :href="exportCsvUrl"
@@ -69,18 +76,18 @@
               title="Download Standings CSV (UTF-8 BOM ;)"
             >
               <span class="fas fa-file-csv me-1 text-success"></span>
-              Export Standings
+              Unduh klasemen
             </a>
 
-            <!-- Cetak Bracket Print Button -->
+            <!-- Cetak bagan Print Button -->
             <button
               type="button"
               class="btn btn-sm btn-falcon-default"
               @click="printBracket"
-              title="Cetak Bracket (A4 Landscape Print)"
+              title="Cetak bagan (A4 Landscape Print)"
             >
               <span class="fas fa-print me-1"></span>
-              Cetak Bracket
+              Cetak bagan
             </button>
 
             <!-- Reset All Tournament -->
@@ -92,7 +99,7 @@
               title="Hapus dan reset seluruh bagan turnamen kategori ini"
             >
               <span class="fas fa-trash-alt me-1"></span>
-              Reset Turnamen
+              Hapus bagan kategori
             </button>
           </div>
         </div>
@@ -190,7 +197,7 @@
           @reset-phase="resetPhase"
         />
         <div v-else class="card p-5 text-center text-muted">
-          Belum ada babak pool untuk kategori ini. Klik "Setup Babak" untuk menambahkan.
+          Belum ada babak pool untuk kategori ini. Klik "Atur babak" untuk menambahkan.
         </div>
       </div>
 
@@ -568,6 +575,12 @@ const handleConfigSubmit = async (payload) => {
     showConfigModal.value = false;
   } catch {
     // Handled in composable
+  }
+};
+
+const confirmRecalculateSchedule = async () => {
+  if (confirm('Susun ulang jadwal otomatis? Alokasi lapangan dan waktu pertandingan dapat berubah. Periksa pengaturan lapangan dan waktu sebelum melanjutkan.')) {
+    await recalculateSchedule();
   }
 };
 

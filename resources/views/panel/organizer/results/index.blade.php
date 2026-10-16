@@ -42,6 +42,7 @@
 
 @include('events._workspace_nav', ['event' => $event, 'workspace' => $workspace, 'activeTab' => 'results'])
 
+<div class="alert alert-warning fs-10" role="note"><strong>Simpan skor sebelum finalisasi.</strong> Finalisasi memakai skor terakhir yang tersimpan, bukan angka yang belum dikirim. Periksa kedua tim; hasil akhir dapat menentukan babak berikutnya.</div>
 <div class="card">
     <div class="card-header bg-body-tertiary">
         <h6 class="mb-0">Daftar Pertandingan (Input Skor)</h6>
@@ -75,10 +76,10 @@
                             @else
                                 <form action="{{ route($workspaceRoutePrefix.'results.recordScore', [$event->id, $game->id]) }}" method="POST" class="d-inline-flex align-items-center gap-1 justify-content-center">
                                     @csrf
-                                    <input type="number" class="form-control form-control-sm text-center" style="width: 60px;" name="score_a" value="{{ $game->score_a ?? 0 }}" min="0" required>
+                                    <input type="number" class="form-control form-control-sm text-center" style="width: 60px;" aria-label="Skor tim A" name="score_a" value="{{ $game->score_a ?? 0 }}" min="0" required>
                                     <span class="fw-bold">-</span>
-                                    <input type="number" class="form-control form-control-sm text-center" style="width: 60px;" name="score_b" value="{{ $game->score_b ?? 0 }}" min="0" required>
-                                    <button type="submit" class="btn btn-xs btn-outline-primary" title="Update Live Skor">
+                                    <input type="number" class="form-control form-control-sm text-center" style="width: 60px;" aria-label="Skor tim B" name="score_b" value="{{ $game->score_b ?? 0 }}" min="0" required>
+                                    <button type="submit" class="btn btn-xs btn-outline-primary" title="Simpan skor langsung" aria-label="Simpan skor langsung">
                                         <span class="fas fa-sync-alt"></span>
                                     </button>
                                 </form>
@@ -99,11 +100,11 @@
                             @if($game->game_status !== 'finished')
                                 <form action="{{ route($workspaceRoutePrefix.'results.recordScore', [$event->id, $game->id]) }}" method="POST" class="d-inline" onsubmit="return confirm('Finalisasi skor pertandingan? Skor tidak dapat diubah lagi.')">
                                     @csrf
-                                    <input type="hidden" name="score_a" value="{{ $game->score_a ?? 0 }}">
-                                    <input type="hidden" name="score_b" value="{{ $game->score_b ?? 0 }}">
+                                    <input type="hidden" aria-label="Skor tim A" name="score_a" value="{{ $game->score_a ?? 0 }}">
+                                    <input type="hidden" aria-label="Skor tim B" name="score_b" value="{{ $game->score_b ?? 0 }}">
                                     <input type="hidden" name="finalize" value="1">
                                     <button type="submit" class="btn btn-xs btn-success">
-                                        <span class="fas fa-check-double me-1"></span>Finalize Game
+                                        <span class="fas fa-check-double me-1"></span>Finalisasi hasil
                                     </button>
                                 </form>
                             @else

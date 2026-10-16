@@ -13,18 +13,18 @@
     $entities = $panelOfficialEntities ?? collect();
     $entitiesCount = $entities->count();
 @endphp
-<nav class="navbar navbar-light navbar-glass navbar-top navbar-expand">
+<nav class="navbar navbar-light navbar-glass navbar-top navbar-expand flex-wrap">
     <button class="btn navbar-toggler-humburger-icon navbar-toggler me-1 me-sm-3" type="button" data-bs-toggle="collapse" data-bs-target="#navbarVerticalCollapse" aria-controls="navbarVerticalCollapse" aria-expanded="false" aria-label="Toggle Navigation">
         <span class="navbar-toggle-icon"><span class="toggle-line"></span></span>
     </button>
     <a class="navbar-brand me-1 me-sm-3 d-xl-none" href="{{ $activeCommunity && Route::has('panel.profile.show') ? route('panel.profile.show') : (Route::has('panel.community.create') ? route('panel.community.create') : url('/panel/community/create')) }}">
         <div class="d-flex align-items-center">
             <img class="me-2" src="{{ asset('assets/img/logo_fix.png') }}" alt="{{ config('app.name', 'ActStation') }}" width="36" />
-            <span class="font-sans-serif text-primary fw-bold">{{ config('app.name', 'ActStation') }} Panel</span>
+            <span class="font-sans-serif text-primary fw-bold d-none d-sm-inline">{{ config('app.name', 'ActStation') }} Panel</span>
         </div>
     </a>
 
-    <ul class="navbar-nav navbar-nav-icons ms-auto flex-row align-items-center">
+    <ul class="navbar-nav navbar-nav-icons ms-auto flex-row flex-wrap justify-content-end align-items-center">
         <!-- Entity Switcher / Indicator -->
         <li class="nav-item pe-2">
             @if($entitiesCount > 1)

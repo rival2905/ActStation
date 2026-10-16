@@ -58,15 +58,19 @@
         <div class="row flex-between-center">
             <div class="col-md">
                 <div class="d-flex align-items-center">
-                    <a href="{{ route($manageRoute, $event->id) }}" class="btn btn-sm btn-outline-secondary me-3">
+                    <a href="{{ route($manageRoute, $event->id) }}" class="btn btn-sm btn-outline-secondary me-3" title="Kembali ke Overview">
                         <span class="fas fa-arrow-left"></span>
                     </a>
                     <div>
-                        <h5 class="mb-0">{{ $event->title }}</h5>
-                        <small class="text-muted">
-                            Status: <span class="badge bg-primary text-uppercase">{{ str_replace('_', ' ', $event->status) }}</span> |
-                            Dokumen Terlampir: <span class="badge bg-info">{{ $event->documents->count() }} Berkas</span>
-                        </small>
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                            <h5 class="mb-0">Dokumen Turnamen: {{ $event->title }}</h5>
+                            <span class="badge badge-subtle-primary text-uppercase">{{ str_replace('_', ' ', $event->status) }}</span>
+                        </div>
+                        <div class="text-muted fs-11">
+                            <span class="fas fa-trophy me-1"></span>{{ $sportName }} &bull;
+                            <span class="fas fa-file-contract ms-1 me-1"></span>{{ $event->documents->count() }} Berkas Terunggah &bull;
+                            <span class="fas fa-globe ms-1 me-1"></span>{{ $totalPublicCount }} Terbuka Publik
+                        </div>
                     </div>
                 </div>
             </div>
@@ -83,20 +87,80 @@
 </div>
 
 @if(session('success'))
-<div class="alert alert-success alert-dismissible fade show" role="alert">
-    {{ session('success') }}
+<div class="alert alert-success alert-dismissible fade show shadow-sm" role="alert">
+    <div class="d-flex align-items-center">
+        <span class="fas fa-check-circle me-2 fs-8"></span>
+        <div>{{ session('success') }}</div>
+    </div>
     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
 </div>
 @endif
 
 @if(session('error'))
-<div class="alert alert-danger alert-dismissible fade show" role="alert">
-    {{ session('error') }}
+<div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
+    <div class="d-flex align-items-center">
+        <span class="fas fa-exclamation-circle me-2 fs-8"></span>
+        <div>{{ session('error') }}</div>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+@endif
+
+@if($errors->any())
+<div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
+    <div class="d-flex align-items-start">
+        <span class="fas fa-exclamation-triangle me-2 mt-1 fs-8"></span>
+        <div>
+            <strong class="d-block mb-1">Gagal memproses dokumen turnamen:</strong>
+            <ul class="mb-0 ps-3 fs-11">
+                @foreach($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    </div>
     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
 </div>
 @endif
 
 @include('events._workspace_nav', ['event' => $event, 'workspace' => $workspace, 'activeTab' => 'documents'])
+
+<p class="fs-10 text-body-secondary">Berkas tersedia belum berarti disetujui. Dokumen tetap internal kecuali Anda memilih akses publik.</p>
+<!-- Next Action Banner -->
+@if(!$hasFed || !$hasThb)
+<div class="alert alert-warning border-start border-4 border-warning d-flex align-items-center mb-3 shadow-sm" role="alert">
+    <span class="fas fa-exclamation-triangle fa-2x text-warning me-3"></span>
+    <div class="flex-grow-1">
+        <h6 class="alert-heading fw-bold mb-1">Langkah Selanjutnya: Lengkapi Berkas Inti Turnamen</h6>
+        <p class="mb-0 fs-11 text-dark">
+            @if(!$hasFed && !$hasThb)
+                Turnamen belum memiliki <strong>Surat Rekomendasi Induk Cabor ({{ $federationName }})</strong> dan <strong>Technical Handbook (THB)</strong>. Unggah sesuai kebutuhan event. Berkas tersedia belum berarti disetujui.
+            @elseif(!$hasFed)
+                Turnamen belum memiliki <strong>Surat Rekomendasi Induk Cabor ({{ $federationName }})</strong>. Silakan unggah berkas rekomendasi melalui formulir di bawah.
+            @else
+                Turnamen belum memiliki <strong>Technical Handbook (THB)</strong>. Unggah buku panduan teknis turnamen agar peserta dapat mempelajari ketentuan pertandingan.
+            @endif
+        </p>
+    </div>
+</div>
+@else
+<div class="alert alert-success border-start border-4 border-success d-flex align-items-center justify-content-between mb-3 shadow-sm py-2" role="alert">
+    <div class="d-flex align-items-center">
+        <span class="fas fa-check-circle fa-2x text-success me-3"></span>
+        <div>
+            <h6 class="alert-heading fw-bold mb-0">Berkas inti telah diunggah</h6>
+            <p class="mb-0 fs-11 text-muted">Berkas tersedia belum berarti disetujui. Periksa status dan catatan setiap berkas sebelum menyatakan persiapan lengkap.</p>
+        </div>
+    </div>
+    @if($workspace === 'admin' ? auth()->user()?->can('event-category.view') : app(\App\Modules\Event\Services\EventCommitteeAccess::class)->owner($event, auth()->user()))
+    <div class="d-none d-md-block text-nowrap ms-3">
+        <a href="{{ route($categoriesRoute, $event->id) }}" class="btn btn-sm btn-success">
+            <span class="fas fa-arrow-right me-1"></span>Atur Kategori &amp; Roster
+        </a>
+    </div>
+    @endif
+</div>
+@endif
 
 <!-- 4 Status Card Ringkasan Dokumen Kunci -->
 <div class="row g-3 mb-4">
@@ -211,7 +275,7 @@
 
                     <div class="mb-3">
                         <label class="form-label fs-10 fw-bold" for="docNameInput">Nama Dokumen <span class="text-danger">*</span></label>
-                        <input class="form-control form-control-sm @error('name') is-invalid @enderror" type="text" id="docNameInput" name="name" value="{{ old('name') }}" required placeholder="Contoh: Surat Rekomendasi Pengcab PERBASI No. 12/2026">
+                        <input class="form-control form-control-sm @error('name') is-invalid @enderror" type="text" id="docNameInput" name="name" value="{{ old('name') }}" required placeholder="Contoh: Surat Rekomendasi Induk Cabor No. 12/2026">
                         @error('name')
                             <div class="invalid-feedback">{{ $message }}</div>
                         @enderror
@@ -331,7 +395,7 @@
                                             <span class="badge bg-secondary"><span class="fas fa-lock me-1"></span>Internal</span>
                                         @endif
                                         @if($canUploadDoc)
-                                        <form action="{{ route($workspaceRoutePrefix.'documents.togglePublic', [$event->id, $doc->id]) }}" method="POST" class="d-inline">
+                                        <form action="{{ route($workspaceRoutePrefix.'documents.togglePublic', [$event->id, $doc->id]) }}" method="POST" class="d-inline" onsubmit="return confirm('{{ $doc->is_public ? 'Sembunyikan dokumen dari halaman publik?' : 'Dokumen ini akan dapat diunduh pengunjung publik. Pastikan tidak berisi data pribadi. Lanjutkan?' }}')">
                                             @csrf
                                             <button type="submit" class="btn btn-xs {{ $doc->is_public ? 'btn-outline-secondary' : 'btn-outline-info' }} py-0 px-1" title="{{ $doc->is_public ? 'Sembunyikan dari Publik' : 'Tampilkan di Halaman Publik' }}">
                                                 <span class="fas {{ $doc->is_public ? 'fa-eye-slash' : 'fa-eye' }}" style="font-size: 10px;"></span>
@@ -395,8 +459,7 @@
 <script>
 function onCategorySelectChange(select) {
     const nameInput = document.getElementById('docNameInput');
-    const publicSwitch = document.getElementById('doc_is_public');
-    const fed = '{{ $federationName }}';
+    const fed = @json($federationName);
     const presets = {
         'federation_recommendation': 'Surat Rekomendasi Induk Cabor ' + fed,
         'perbasi_recommendation': 'Surat Rekomendasi Induk Cabor ' + fed,
@@ -410,9 +473,7 @@ function onCategorySelectChange(select) {
     if (presets[select.value] && (!nameInput.value || Object.values(presets).includes(nameInput.value))) {
         nameInput.value = presets[select.value];
     }
-    if (select.value === 'technical_handbook') {
-        publicSwitch.checked = true;
-    }
+
 }
 </script>
 @endpush
