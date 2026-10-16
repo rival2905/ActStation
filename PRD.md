@@ -1,5 +1,17 @@
 # PRD — ActStation Internal Panel Authentication
 
+## Guard gender atlet sejak draft
+
+EventCategory::acceptsAthleteGender digunakan oleh canonical rows, kandidat draft, create/update draft dan final RosterValidator. Kategori non-mixed menolak gender beda maupun kosong; mixed tetap menerima. Sumber gender adalah profil User, bukan payload client. Draft tidak memakai full final validator sehingga min roster/captain/dokumen yang belum lengkap tetap bisa disimpan. Saat category berubah, anggota lama dibersihkan sebelum validasi kategori baru (perilaku reset existing dipertahankan). Canonical rows yang tidak cocok diberi meetsRequirements=0 dan alasan; tidak muncul sebagai opsi bulk, tetapi atlet lama tersimpan tetap terlihat agar dapat dikeluarkan tanpa silent deletion. Batch apply memeriksa ulang flag sebelum perubahan apapun. Kandidat link ikut ditandai tidak eligible tanpa mengubah keanggotaan. Coach/tenaga pendukung tidak dikenai gender kategori atlet.
+
+Probe read-only draft f36915e0-87c9-46ae-b8e6-8570f130f00d: kategori Pelajar SMA Putri/female, payload lama memuat 1 male dan 2 female. Tidak ada mutasi draft; seluruh kategori hasil render memiliki wrong_gender_selectable=0. Pengurus perlu mengeluarkan atlet salah gender secara eksplisit. Verifikasi full730 PHP/5012 assertions, 129 Node, Pint/Blade/build/source-public/diff lulus; tes RED menangkap create201 yang seharusnya422 dan opsi semua gender sebelum patch. Browser login UAT belum.
+
+
+## Panduan operasional publik
+
+Panduan /panduan-event dan PANDUAN_OPERASIONAL_EVENT.md mencerminkan wizard/undangan/personel/pemeriksaan terbaru dan batas hak panitia event-scoped. Dokumentasi tidak menjanjikan organizer instan, vault otomatis sah atau escrow universal. Screenshot baru memakai render DEMO read-only tanpa auth bypass HTTP/route baru, tidak ada submit nyata. Token CSRF/identitas akun disisihkan dari render ilustrasi, aset CLI dinormalisasi ke origin lokal hanya di scratch. Capture viewport lalu crop DOM rect setelah modal/font/CSS stabil menghindari panel blur/tertutup backdrop; screenshot diperiksa visual. Tidak mengubah fitur bisnis.
+
+
 ## Kesesuaian kategori akademik dan komunitas
 
 Kategori dengan allowed subtypes khusus sekolah/universitas tidak menerima klub meski allow_club lama aktif. Sekolah/mahasiswa tetap bisa masuk kategori umum sesuai konfigurasi eksisting; kategori nonakademik/campuran tetap mengikuti aturan lama. acceptsCommunityType menjadi aturan bersama dropdown/final guard/label; create/update draft sekarang memeriksa profil authoritative sebelum kapasitas, dan invitation context invalid bila kategori tidak cocok. Tidak menebak subtipe dari nama kategori/komunitas atau development level. Legacy school semua jenjang tetap didukung; SMP/SMA memakai jenjang master sekolah via NPSN. Keanggotaan tenaga pendukung tidak dibatasi jenjang akademik individu; aturan ini untuk entitas tim.

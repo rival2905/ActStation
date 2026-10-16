@@ -141,7 +141,7 @@ class RosterValidator
                     }
 
                     if ($category->gender !== 'mixed') {
-                        if ($athleteUser->gender !== null && $athleteUser->gender !== $category->gender) {
+                        if (! $category->acceptsAthleteGender($athleteUser->gender)) {
                             $errors["members.{$index}.gender"][] = "Gender atlet ({$athleteUser->gender}) tidak sesuai dengan kategori ({$category->gender}).";
                         }
                     }
@@ -191,7 +191,7 @@ class RosterValidator
 
                 // 8. Gender atlet cocok dengan category.gender (kecuali gender === 'mixed')
                 if ($category->gender !== 'mixed') {
-                    if ($athlete->gender !== null && $athlete->gender !== $category->gender) {
+                    if (! $category->acceptsAthleteGender($athlete->gender)) {
                         $errors["members.{$index}.gender"][] = "Gender atlet ({$athlete->gender}) tidak sesuai dengan kategori ({$category->gender}).";
                     }
                 }

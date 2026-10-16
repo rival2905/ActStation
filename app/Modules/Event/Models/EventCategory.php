@@ -113,6 +113,11 @@ class EventCategory extends Model
         return $this->min_age.'–'.$this->max_age.' tahun';
     }
 
+    public function acceptsAthleteGender(?string $gender): bool
+    {
+        return $this->gender === 'mixed' || ($gender !== null && $gender === $this->gender);
+    }
+
     public function acceptsCommunityType(?string $subtype, ?string $institutionType = null, ?string $schoolLevel = null): bool
     {
         if ($subtype === 'club') {

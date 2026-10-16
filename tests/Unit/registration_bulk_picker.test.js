@@ -27,6 +27,15 @@ test('bulk addition aborts stale draft before selecting anything', () => {
     assert.equal(ui.saved, undefined);
 });
 
+test('bulk apply rejects newly ineligible athlete before any batch mutation', () => {
+    const ui = fixture();
+    const source = { checked: false, disabled: false, closest: () => ({ dataset: { meetsRequirements: '0', reason: 'Jenis kelamin tidak sesuai kategori.' }, querySelector: () => null }) };
+    ui.bulkEntries = [{ check: { checked: true }, source }];
+    assert.equal(ui.applyBulkPicker(), false);
+    assert.equal(source.checked, false);
+    assert.match(ui.error, /Jenis kelamin/);
+});
+
 test('bulk apply rejects active server hydration without touching roster', () => {
     const ui = fixture();
     const source = { checked: false, disabled: false };

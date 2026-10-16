@@ -1,238 +1,104 @@
 @extends('layouts.public')
-
-@section('title', 'Panduan Operasional Turnamen Basket &amp; Regulasi Escrow — ActStation')
-@section('meta_description', 'Panduan operasional penyelenggaraan turnamen olahraga, pendaftaran tim berbasis Digital Document Vault, dan sistem proteksi Rekening Bersama Escrow Platform.')
-@section('meta_keywords', 'panduan turnamen, regulasi turnamen basket, digital document vault, escrow turnamen, kurasi berkas panitia, actstation')
-@section('og_title', 'Panduan Operasional Turnamen Basket &amp; Regulasi Escrow — ActStation')
-@section('og_description', 'Panduan operasional penyelenggaraan turnamen olahraga dan alur pendaftaran tim berbasis Digital Document Vault.')
+@section('title', 'Panduan Event & Pendaftaran Tim Multi-Cabang Olahraga — ActStation')
+@section('meta_description', 'Panduan event terkini: kategori komunitas, draft tim, roster atlet dan tenaga pendukung, dokumen privat, pemeriksaan, pembayaran dan kepanitiaan.')
+@section('og_title', 'Panduan Event & Pendaftaran Tim — ActStation')
+@section('og_description', 'Panduan penyelenggara dan peserta sesuai alur aplikasi terkini.')
+@section('meta_keywords', 'panduan event, multi-cabor, roster atlet, tenaga pendukung, digital vault, actstation')
 @push('schema')
 <script type="application/ld+json">
 {!! json_encode([
-    chr(64) . 'context' => 'https://schema.org',
-    chr(64) . 'type' => 'Article',
-    'headline' => 'Panduan Operasional Penyelenggaraan Event & Pendaftaran Turnamen',
-    'description' => 'Panduan operasional penyelenggaraan turnamen olahraga, pendaftaran tim berbasis Digital Document Vault, dan sistem proteksi Rekening Bersama Escrow Platform.',
-    'publisher' => [
-        chr(64) . 'type' => 'Organization',
-        'name' => 'ActStation',
-        'logo' => [
-            chr(64) . 'type' => 'ImageObject',
-            'url' => asset('assets/img/logo_fix.png'),
-        ],
-    ],
-    'mainEntityOfPage' => [
-        chr(64) . 'type' => 'WebPage',
-        chr(64) . 'id' => route('panduan.event'),
-    ],
+    chr(64).'context' => 'https://schema.org',
+    chr(64).'type' => 'Article',
+    'headline' => 'Panduan Event & Pendaftaran Tim Multi-Cabang Olahraga',
+    'publisher' => [chr(64).'type' => 'Organization', 'name' => 'ActStation'],
+    'mainEntityOfPage' => route('panduan.event'),
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}
 </script>
 @endpush
-
 @section('content')
-<div class="row justify-content-center">
-    <div class="col-lg-10">
-        <!-- Header Panduan -->
-        <div class="card mb-4 border shadow-sm">
-            <div class="card-body p-4 text-center">
-                <span class="badge bg-primary fs-11 px-3 py-1 mb-2">DOKUMEN PANDUAN RESMI</span>
-                <h1 class="h2 fw-bolder mb-2">Panduan Operasional Penyelenggaraan Event &amp; Pendaftaran Turnamen</h1>
-                <p class="text-muted fs-10 mb-0">
-                    Alur turnamen end-to-end: Pembuatan event oleh panitia, pendaftaran tim berbasis Digital Document Vault, simulasi pengujian staf internal, penjualan tiket, hingga pencairan dana bertahap melalui sistem Rekening Bersama (Escrow Platform).
-                </p>
-            </div>
-        </div>
-
-        <!-- Studi Kasus -->
-        <div class="card mb-4 border">
-            <div class="card-header bg-body-tertiary">
-                <h5 class="mb-0 fw-bold"><span class="fas fa-clipboard-list me-2 text-primary"></span>Studi Kasus Spesifikasi Event</h5>
-            </div>
-            <div class="card-body fs-10">
-                <table class="table table-sm table-borderless mb-0">
-                    <tr>
-                        <td style="width: 180px;" class="text-muted fw-bold">Nama Event:</td>
-                        <td class="fw-bold">Piala Kemerdekaan Basket Jabar 2026</td>
-                    </tr>
-                    <tr>
-                        <td class="text-muted fw-bold">Cabang Olahraga:</td>
-                        <td>Basketball (Sport Category ID: 1)</td>
-                    </tr>
-                    <tr>
-                        <td class="text-muted fw-bold">Struktur Kategori:</td>
-                        <td>
-                            <ul class="mb-0 ps-3">
-                                <li><strong>Instansi / Dinas Putra (KU 35++)</strong>: Format 5x5, Maksimal 8 Tim. Syarat dokumen: BPJS Ketenagakerjaan, Screenshot JMO Aktif Bekerja, ID Card Pegawai, KTP, dan Surat Mandat Instansi.</li>
-                                <li><strong>Pelajar SMP Putra</strong>: Format 5x5, Usia Remaja (13-15 thn), Maksimal 8 Tim. Syarat: Kartu Pelajar, Raport Aktif, Akta Lahir, KK, Pasfoto, dan Surat Izin Kepsek.</li>
-                                <li><strong>Pelajar SMP Putri</strong>: Format 5x5, Usia Remaja (13-15 thn), Maksimal 8 Tim. Syarat identik pelajar.</li>
-                                <li><strong>Pelajar SMA Putra</strong>: Format 5x5, Usia Taruna (16-18 thn), Maksimal 8 Tim. Syarat identik pelajar.</li>
-                                <li><strong>Pelajar SMA Putri</strong>: Format 5x5, Usia Taruna (16-18 thn), Maksimal 8 Tim. Syarat identik pelajar.</li>
-                            </ul>
-                        </td>
-                    </tr>
-                </table>
-            </div>
-        </div>
-
-        <!-- Tahap 1: Onboarding -->
-        <div class="card mb-4 border">
-            <div class="card-header bg-body-tertiary">
-                <h5 class="mb-0 fw-bold">1. Onboarding Penyelenggara Eksternal & Just-In-Time KYC</h5>
-            </div>
-            <div class="card-body fs-10">
-                <p>Penyelenggara turnamen mendaftar melalui portal publik <code>/register</code> tanpa hambatan administratif di awal (role awal: <code>member</code>). Saat menekan tombol <strong>"+ Buat Event"</strong>, sistem mengarahkan ke form verifikasi KYC <code>/panel/organizer/apply</code>:</p>
-                <ul>
-                    <li>Data identitas KTP PIC dan alamat. Foto KTP disimpan di disk privat <code>local</code> bila dilampirkan.</li>
-                    <li>Informasi rekening payout. Individu: nama rekening sesuai KTP PIC. Entitas: admin memeriksa nama rekening dan kewenangan pengurus.</li>
-                    <li>Kontak WhatsApp Darurat PIC.</li>
-                    <li>Mode entitas memakai profil klub/komunitas/instansi terverifikasi beserta legalitas sesuai jenisnya. Peserta biasa tidak wajib KYC organizer.</li>
-                    @if(\App\Modules\Event\Services\OrganizerRequirements::privateDocumentsRequired())
-                        <li>Upload KTP, swafoto, SPTJM dan bukti rekening wajib; mode entitas juga melampirkan surat kuasa PIC.</li>
-                    @else
-                        <li>Upload dokumen organizer belum diwajibkan pada fase awal; pengajuan tetap menunggu review admin.</li>
-                    @endif
-                </ul>
-                <p class="mb-0">Setelah dikirim, pengajuan berstatus <strong>pending</strong> dan menunggu review admin. Role <strong>organizer</strong> serta akses pembuatan event diberikan setelah pengajuan disetujui.</p>
-            </div>
-        </div>
-
-        <!-- Tahap 2: Pembuatan Draf & Kategori -->
-        <div class="card mb-4 border">
-            <div class="card-header bg-body-tertiary">
-                <h5 class="mb-0 fw-bold">2. Pembuatan Draf Event & Konfigurasi 5 Kategori</h5>
-            </div>
-            <div class="card-body fs-10">
-                <p>Panitia mengisi form draf turnamen di <code>/panel/organizer/events/create</code> dengan memilih venue terdaftar (misal GOR C-Tra Arena), mengunggah surat izin tempat, dan mengatur biaya registrasi.</p>
-                
-                <h6 class="fw-bold mt-3 mb-2">Tampilan Dasbor Workspace Penyelenggara:</h6>
-                <div class="text-center mb-4">
-                    <img src="{{ asset('docs/screenshots/07_organizer_workspace_overview.png') }}" class="img-fluid rounded border shadow-sm" alt="Workspace Overview">
-                    <small class="text-muted d-block mt-1">Gambar 1: Dasbor kendali operasional panitia, kartu statistik, dan tab manajemen turnamen.</small>
-                </div>
-
-                <h6 class="fw-bold mt-4 mb-2">Pengaturan Kategori & Preset Syarat Dokumen (Modal Tambah Kategori):</h6>
-                <p>Panitia menambahkan 5 kategori kompetisi menggunakan tombol <strong>"Tambah Kategori"</strong> di <code>/panel/organizer/events/{id}/categories</code>:</p>
-                <div class="text-center mb-3">
-                    <img src="{{ asset('docs/screenshots/04_kategori_preset_dokumen.png') }}" class="img-fluid rounded border shadow-sm" alt="Preset Dokumen Kategori">
-                    <small class="text-muted d-block mt-1">Gambar 2: Modal pemilihan alur registrasi (screening_first) dan tombol preset 1-klik dokumen Instansi & Pelajar.</small>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tahap 3: Publikasi Event -->
-        <div class="card mb-4 border">
-            <div class="card-header bg-body-tertiary">
-                <h5 class="mb-0 fw-bold">3. Publikasi Event & Tampilan Portal Publik</h5>
-            </div>
-            <div class="card-body fs-10">
-                <p>Setelah disetujui, turnamen tampil di katalog portal publik dan dapat diakses oleh seluruh kalangan peserta maupun suporter.</p>
-                
-                <h6 class="fw-bold mt-3 mb-2">Katalog Turnamen Terbuka (<code>/events</code>):</h6>
-                <div class="text-center mb-4">
-                    <img src="{{ asset('docs/screenshots/01_katalog_turnamen.png') }}" class="img-fluid rounded border shadow-sm" alt="Katalog Turnamen">
-                    <small class="text-muted d-block mt-1">Gambar 3: Direktori publik turnamen basket aktif bergaransi Escrow Platform.</small>
-                </div>
-
-                <h6 class="fw-bold mt-4 mb-2">Detail Event & Warning Banner Transparansi Legalitas (<code>/events/{slug}</code>):</h6>
-                <div class="text-center mb-3">
-                    <img src="{{ asset('docs/screenshots/02_detail_event_kategori.png') }}" class="img-fluid rounded border shadow-sm" alt="Detail Event">
-                    <small class="text-muted d-block mt-1">Gambar 4: Detail turnamen menyematkan banner peringatan transparansi legalitas dan jaminan proteksi dana 100%.</small>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tahap 4: Pendaftaran Tim & Vault -->
-        <div class="card mb-4 border">
-            <div class="card-header bg-body-tertiary">
-                <h5 class="mb-0 fw-bold">4. Pendaftaran Tim Berbasis Digital Document Vault</h5>
-            </div>
-            <div class="card-body fs-10">
-                <p>Official atau manajer tim membuka form <code>/panel/events/{slug}/register</code> untuk mendaftarkan tim dan atlet binaannya:</p>
-                
-                <h6 class="fw-bold mt-3 mb-2">Penyusunan Roster & Indikator Digital Document Vault:</h6>
-                <div class="text-center mb-4">
-                    <img src="{{ asset('docs/screenshots/03_form_pendaftaran_roster_vault.png') }}" class="img-fluid rounded border shadow-sm" alt="Form Roster Vault">
-                    <small class="text-muted d-block mt-1">Gambar 5: Deteksi otomatis berkas atlet di Digital Vault. Atlet lama tercentang [Vault OK] tanpa perlu upload ulang.</small>
-                </div>
-
-                <h6 class="fw-bold mt-4 mb-2">Status Roster Tim Menunggu Kurasi:</h6>
-                <p>Alur pendaftaran mengikuti kategori: <code>screening_first</code> menunggu kurasi sebelum invoice; <code>payment_first</code> dan undangan berbayar menerbitkan invoice saat daftar, lalu memeriksa berkas setelah pembayaran. Kategori gratis tetap memerlukan verifikasi roster dan dokumen sebelum <code>confirmed</code>.</p>
-                <div class="text-center mb-3">
-                    <img src="{{ asset('docs/screenshots/09_status_roster_peserta.png') }}" class="img-fluid rounded border shadow-sm" alt="Status Roster Peserta">
-                    <small class="text-muted d-block mt-1">Gambar 6: Dasbor status pendaftaran tim peserta dengan notifikasi kurasi panitia.</small>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tahap 5: Kurasi Berkas Panitia -->
-        <div class="card mb-4 border">
-            <div class="card-header bg-body-tertiary">
-                <h5 class="mb-0 fw-bold">5. Kurasi Berkas Panitia & Penerbitan Tagihan Pembayaran</h5>
-            </div>
-            <div class="card-body fs-10">
-                <p>Panitia memeriksa berkas di <code>/panel/organizer/events/{id}/teams</code>. Jika berkas lengkap, panitia menekan tombol <strong>[Loloskan & Terbitkan Tagihan]</strong>:</p>
-                <div class="text-center mb-3">
-                    <img src="{{ asset('docs/screenshots/05_kurasi_tim_dan_loloskan.png') }}" class="img-fluid rounded border shadow-sm" alt="Kurasi Tim dan Loloskan Tagihan">
-                    <small class="text-muted d-block mt-1">Gambar 7: Panel kurasi panitia dengan tombol loloskan berkas dan fitur minta revisi dokumen.</small>
-                </div>
-                <p class="mb-0">Pada kategori <code>screening_first</code> berbayar, tim eligible memperoleh invoice dengan tenggat jam dari pengumuman, paling lambat tanggal mulai event. Kategori <code>payment_first</code> memakai jadwal pembayaran kategori; pembayaran tidak langsung mengunci roster tanpa pemeriksaan berkas.</p>
-            </div>
-        </div>
-
-        <!-- Tahap 6: Simulasi Staf Internal -->
-        <div class="card mb-4 border">
-            <div class="card-header bg-body-tertiary">
-                <h5 class="mb-0 fw-bold">6. Skenario Simulasi: Staf Internal Mendaftar sebagai Peserta</h5>
-            </div>
-            <div class="card-body fs-10">
-                <p>Staf operasional internal dapat mensimulasikan alur pendaftaran peserta dari awal hingga akhir untuk menguji kelayakan form dan kesiapan sistem sebelum turnamen dibuka:</p>
-                <div class="text-center mb-3">
-                    <img src="{{ asset('docs/screenshots/11_simulasi_internal_daftar_peserta.png') }}" class="img-fluid rounded border shadow-sm" alt="Simulasi Pendaftaran Internal">
-                    <small class="text-muted d-block mt-1">Gambar 8: Simulasi pendaftaran peserta oleh staf internal untuk pengujian end-to-end.</small>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tahap 7: Tiket & Gate Scanner -->
-        <div class="card mb-4 border">
-            <div class="card-header bg-body-tertiary">
-                <h5 class="mb-0 fw-bold">7. Penjualan Tiket Suporter & Gate Scanner Pintu Masuk GOR</h5>
-            </div>
-            <div class="card-body fs-10">
-                <h6 class="fw-bold mb-2">Pembelian Tiket Penonton Bebas Ribet (<code>/events/{slug}/tickets</code>):</h6>
-                <div class="text-center mb-4">
-                    <img src="{{ asset('docs/screenshots/06_tiket_penonton_checkout.png') }}" class="img-fluid rounded border shadow-sm" alt="Checkout Tiket Penonton">
-                    <small class="text-muted d-block mt-1">Gambar 9: Pembelian tiket instan tanpa wajib login di awal dan tanpa syarat NIK.</small>
-                </div>
-
-                <h6 class="fw-bold mt-4 mb-2">Gate Scanner Kamera HP Panitia (<code>/panel/organizer/events/{id}/gate-scanner</code>):</h6>
-                <div class="text-center mb-3">
-                    <img src="{{ asset('docs/screenshots/08_gate_scanner_gor.png') }}" class="img-fluid rounded border shadow-sm" alt="Gate Scanner HP">
-                    <small class="text-muted d-block mt-1">Gambar 10: Pemindai QR kamera smartphone panitia di pintu masuk gelanggang.</small>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tahap 8: Escrow Payout -->
-        <div class="card mb-4 border">
-            <div class="card-header bg-body-tertiary">
-                <h5 class="mb-0 fw-bold">8. Siklus Pencairan Dana Escrow (Multi-Termin)</h5>
-            </div>
-            <div class="card-body fs-10">
-                <p>Dana registrasi tim dan omzet tiket penonton tersimpan aman di rekening penampung bersama platform, dan dicairkan bertahap (Termin 1 40% saat hari H game live, Termin 2 60% dikurangi platform fee 5% setelah turnamen tuntas dan lolos masa sanggah H+2):</p>
-                <div class="text-center mb-3">
-                    <img src="{{ asset('docs/screenshots/10_monitoring_escrow_payouts.png') }}" class="img-fluid rounded border shadow-sm" alt="Monitoring Escrow Payouts">
-                    <small class="text-muted d-block mt-1">Gambar 11: Laman monitoring escrow pool dan tombol pengajuan pencairan dana termin.</small>
-                </div>
-            </div>
-        </div>
-
-        <div class="card bg-100 border text-center p-4">
-            <h6 class="fw-bold mb-1">Dokumentasi Markdown Asli:</h6>
-            <p class="text-muted fs-11 mb-2">Tersedia di berkas <code>PANDUAN_OPERASIONAL_EVENT.md</code> pada direktori utama proyek.</p>
-            <div>
-                <a href="{{ route('events.index') }}" class="btn btn-primary btn-sm">Buka Katalog Turnamen</a>
-            </div>
-        </div>
-    </div>
-</div>
+<div class="row justify-content-center"><div class="col-xl-10">
+<header class="card border shadow-sm mb-4"><div class="card-body p-4">
+<span class="badge bg-primary mb-2">PANDUAN PENGGUNA</span><h1 class="h2 fw-bold">Panduan Event &amp; Pendaftaran Tim</h1>
+<p>Untuk penyelenggara, pengurus komunitas, atlet, pelatih dan tenaga pendukung. Berlaku lintas cabang olahraga; dokumen, biaya, kuota dan tahapan mengikuti konfigurasi masing-masing event.</p>
+<p class="text-muted mb-0">Basket hanya contoh. Angka usia, kuota dan biaya pada ilustrasi bukan ketentuan semua event.</p>
+</div></header>
+<nav class="card border mb-4" aria-label="Daftar isi panduan"><div class="card-body d-flex flex-wrap gap-2">
+@foreach(['persiapan'=>'Akun & komunitas','penyelenggara'=>'Buat event','pendaftaran'=>'Daftarkan tim','pemeriksaan'=>'Pemeriksaan & pembayaran','panitia'=>'Operasional','bantuan'=>'Kendala umum'] as $id=>$label)
+<a class="btn btn-sm btn-outline-primary" href="#{{ $id }}">{{ $label }}</a>
+@endforeach
+</div></nav>
+<section id="persiapan" class="card border mb-4" style="scroll-margin-top:6rem">
+<div class="card-header"><h2 class="h5 mb-0">1. Siapkan akun &amp; komunitas</h2></div><div class="card-body">
+<ol><li>Masuk dan pilih komunitas yang diwakili sebelum membuka <a href="{{ url('/panel/events') }}">daftar event panel</a>.</li>
+<li>Saat membuat komunitas di <code>/panel/community/create</code>, pastikan sub-tipe, cabor dan legalitas sesuai. Bank/perusahaan memakai <strong>Instansi/Lembaga — Perusahaan</strong>, bukan sekolah.</li>
+<li>Siapkan keanggotaan aktif dan consent anggota. Atlet dan Pelatih &amp; Tenaga Pendukung dikelola terpisah; pendukung tidak otomatis menjadi pengurus.</li>
+<li>Lengkapi profil/dokumen privat. Berkas tersedia <strong>bukan otomatis terverifikasi</strong>; panitia tetap memeriksa.</li></ol>
+<div class="alert alert-subtle-info mb-0">Fitur wilayah tetap tersedia, tetapi <strong>verifikasi wilayah bukan syarat</strong> roster atau pendaftaran. Akun/keanggotaan aktif, consent, usia/gender, legalitas komunitas, dokumen, kapasitas dan konflik roster tetap diperiksa.</div>
+</div></section>
+<section id="penyelenggara" class="card border mb-4" style="scroll-margin-top:6rem">
+<div class="card-header"><h2 class="h5 mb-0">2. Penyelenggara: kategori &amp; publikasi</h2></div><div class="card-body">
+<p>Ajukan akses di <code>/panel/organizer/apply</code>. Pengajuan pending dan <strong>menunggu review admin</strong>; mengirim form tidak langsung memberi role organizer. Persyaratan dokumen mengikuti form aktif.</p>
+<ol><li>Setelah disetujui, buka <code>/panel/organizer/events/create</code>: isi cabor, venue, jadwal dan batas pendaftaran.</li>
+<li>Kelola workspace <code>/panel/organizer/events/{event}/manage</code>. Lengkapi dokumen dinamis seperti rekomendasi induk cabor, izin tempat/keramaian dan technical handbook.</li>
+<li>Atur kategori: format, usia/gender, min/max roster, kapasitas, batas tim per entitas, biaya, alur pendaftaran dan dokumen.</li>
+<li>Atur sub-tipe secara eksplisit. Kategori khusus SMP/SMA/universitas menerima entitas akademik yang cocok; sekolah tetap boleh ikut kategori umum jika diizinkan. Nama kategori tidak menggantikan konfigurasi.</li>
+<li>Aktifkan jabatan pendukung dan min/max tiap peran. Kuota terpisah dari atlet; satu orang boleh beberapa jabatan sesuai aturan event.</li>
+<li>Ajukan publikasi dan ikuti moderasi admin sebelum memeriksa halaman publik.</li></ol>
+<p class="text-muted mb-0">Aturan personel disimpan sebagai snapshot saat pengiriman. Perubahan konfigurasi tidak otomatis menulis ulang pendaftaran lama.</p>
+</div></section>
+<section id="pendaftaran" class="card border mb-4" style="scroll-margin-top:6rem">
+<div class="card-header"><h2 class="h5 mb-0">3. Wizard pendaftaran tiga langkah</h2></div><div class="card-body">
+<p>Buka <code>/panel/events/{slug}/register</code> dari katalog event. Pengurus berwenang mengelola tim komunitas aktif.</p>
+<h3 class="h6 mt-4">Langkah 1 — Kategori &amp; Informasi Tim</h3>
+<ul><li>Pilih kategori sesuai sub-tipe/jenjang komunitas lalu isi informasi tim. Sekolah mengikuti master jenjang/NPSN, bukan nama komunitas.</li>
+<li>Jika kategori tidak tersedia, periksa komunitas aktif, syarat dan kapasitas. Backend memeriksa ulang; request manual tidak melewati aturan.</li>
+<li>Draft belum berarti tim terkirim. Tunggu indikator tersimpan; konflik revisi perlu dimuat ulang, bukan ditimpa.</li>
+<li>Accordion tim tersedia untuk pindah draft dalam halaman yang sama. Periksa nama tim aktif sebelum mengubah roster/dokumen.</li></ul>
+<h3 class="h6 mt-4">Langkah 2 — Roster &amp; Dokumen</h3>
+<ol><li>Klik <strong>Tambah Atlet dari Anggota Aktif</strong>: cari nama, centang beberapa orang atau pilih semua baris terlihat.</li>
+<li>Klik <strong>Tambahkan ke Roster</strong> untuk menerapkan. Batal/menutup modal tidak mengubah roster. Lengkapi nomor punggung, kapten, posisi dan dokumen sesuai kategori.</li>
+<li>Klik <strong>Tambah Coach / Tenaga Pendukung dari Anggota Aktif</strong>: pilih orang dan <strong>dropdown jabatan</strong> sesuai event. Untuk peran lain pada orang sama, tambah lagi sesuai batas jabatan.</li>
+<li>Lengkapi dokumen tim/legalitas pada bagian terpisah. Berkas tersedia dapat digunakan sesuai akses/kebutuhan, tetapi tetap perlu pemeriksaan.</li></ol>
+@foreach([
+['12_bulk_atlet.png',1140,850,'Modal tabel atlet: pencarian, checkbox banyak anggota, ringkasan dokumen dan konfirmasi','Pilihan DEMO masih di modal, belum masuk roster. Kuota/biaya contoh bukan aturan universal.'],
+['13_bulk_pendukung.png',1140,337,'Modal tenaga pendukung dengan checkbox dan dropdown jabatan','Jabatan mengikuti event, bukan role akses sistem. Panel modal diambil utuh setelah animasi selesai.'],
+] as [$file,$width,$height,$alt,$caption])
+<figure class="my-4"><a href="{{ asset('docs/screenshots/'.$file) }}" target="_blank" rel="noopener" aria-label="Buka gambar ukuran penuh: {{ $alt }}"><img src="{{ asset('docs/screenshots/'.$file) }}" class="img-fluid rounded border" width="{{ $width }}" height="{{ $height }}" loading="lazy" alt="{{ $alt }}"></a><figcaption class="text-muted fs-10 mt-2">Ilustrasi DEMO dari UI terkini. {{ $caption }} Klik gambar untuk ukuran penuh.</figcaption></figure>
+@endforeach
+<h4 class="h6">Link roster anggota</h4>
+<p>Link atlet dan pendukung terpisah. Penerima mengikuti login/daftar, data yang diminta dan consent. Pendukung baru menunggu persetujuan keanggotaan pengurus di <code>/panel/coaches</code>, lalu kembali ke link dan bergabung roster secara eksplisit. Persetujuan keanggotaan tidak otomatis memasukkan orang ke tim atau memberi hak pengurus.</p>
+<div class="alert alert-subtle-warning">Bagikan link hanya kepada penerima yang dituju. Jangan mempublikasikan token undangan, identitas pribadi, dokumen atlet atau isi vault.</div>
+<h3 class="h6 mt-4">Langkah 3 — Tinjau, Kirim &amp; Pemeriksaan</h3>
+<ol><li>Tinjau kategori, tim, roster, pendukung dan berkas.</li><li>Klik <strong>Daftarkan Tim Ini</strong> sekali dan tunggu server. Modal berhasil muncul setelah konfirmasi server; gunakan <strong>Lihat Ringkasan Tim</strong> untuk status lanjutan.</li>
+<li>Jika gagal validasi, baca alasan modal dan perbaiki. Sesi habis perlu login ulang.</li><li>Jika koneksi putus, <strong>hasil pengiriman belum pasti</strong>. Muat ulang draft untuk cek hasil server sebelum mencoba lagi; jangan kirim berulang.</li></ol>
+<figure class="my-4"><a href="{{ asset('docs/screenshots/14_hasil_validasi.png') }}" target="_blank" rel="noopener" aria-label="Buka contoh modal hasil ukuran penuh"><img src="{{ asset('docs/screenshots/14_hasil_validasi.png') }}" class="img-fluid rounded border" width="500" height="261" loading="lazy" alt="Modal pendaftaran belum terkirim dengan alasan validasi tenaga pendukung"></a><figcaption class="text-muted fs-10 mt-2">Contoh validasi memakai komponen aplikasi, bukan pengiriman tim nyata. Sukses mengirim bukan otomatis lolos pemeriksaan. Klik gambar untuk ukuran penuh.</figcaption></figure>
+</div></section>
+<section id="pemeriksaan" class="card border mb-4" style="scroll-margin-top:6rem">
+<div class="card-header"><h2 class="h5 mb-0">4. Pemeriksaan, revisi &amp; pembayaran</h2></div><div class="card-body">
+<p>Panitia memeriksa tim di <code>/panel/organizer/events/{event}/teams</code>. Ikuti status aktual ringkasan, bukan asumsi dari pembayaran/email saja.</p>
+<div class="table-responsive"><table class="table table-bordered fs-10"><caption class="visually-hidden">Alur pendaftaran kategori</caption><thead><tr><th scope="col">Alur</th><th scope="col">Tahapan peserta</th></tr></thead><tbody>
+<tr><th scope="row">screening_first</th><td>Pemeriksaan berkas dahulu. Tagihan kategori berbayar mengikuti kelulusan kurasi dan ketentuan kategori.</td></tr>
+<tr><th scope="row">payment_first</th><td>Tagihan saat pendaftaran; bayar tidak menggantikan pemeriksaan roster/dokumen.</td></tr>
+<tr><th scope="row">by_invitation</th><td>Perlu otorisasi undangan; jika berbayar ikuti tagihan dan tenggat.</td></tr>
+<tr><th scope="row">Gratis / waiting list</th><td>Gratis tetap perlu pemeriksaan. Waiting list mengikuti kapasitas, bukan peserta sah.</td></tr></tbody></table></div>
+<ul><li>Revisi mengikuti catatan panitia dan bagian yang diizinkan, lalu kirim kembali.</li><li>Ikuti nominal/metode/tenggat invoice. Transfer manual, bila tersedia, memerlukan persetujuan risiko, bukti dan konfirmasi petugas.</li><li>Status <code>confirmed</code> mengunci perubahan roster biasa. Bayar saja belum membuktikan seluruh syarat terpenuhi.</li><li>Email notifikasi tambahan; proses kirim diterima bukan bukti masuk inbox. Periksa panel.</li></ul>
+<p>Transfer manual langsung ke penyelenggara tidak masuk perhitungan escrow platform. Pengajuan pencairan memerlukan pemeriksaan dan proses admin, bukan transfer otomatis. Bendahara panitia hanya dapat mengonfirmasi bukti pembayaran sesuai izin; tidak dapat mengubah rekening atau mencairkan dana.</p>
+<p class="mb-0">Dana, biaya platform, pencairan dan sengketa mengikuti metode pembayaran serta kebijakan aktif. Panduan tidak menjanjikan semua transfer masuk escrow, pencairan otomatis atau proteksi mutlak 100%.</p>
+</div></section>
+<section id="panitia" class="card border mb-4" style="scroll-margin-top:6rem">
+<div class="card-header"><h2 class="h5 mb-0">5. Kepanitiaan &amp; operasional</h2></div><div class="card-body">
+<p>Pemilik mengatur jabatan panitia dari preset atau akses khusus. Penerima link memberi consent dan menunggu persetujuan pemilik. Hak hanya berlaku pada event terkait, bukan organizer/admin global.</p>
+<ul><li>Akses meliputi melihat/memeriksa tim, konfirmasi pembayaran, dokumen, jadwal atau hasil sesuai izin.</li><li>Akses panitia, rekening/payout, perubahan event dan penghapusan peserta tetap dibatasi pihak berwenang.</li><li>Bagan, jadwal dan hasil mengikuti format kategori/kesiapan peserta, bukan selalu delapan tim.</li><li>Jika tiket tersedia, ikuti checkout dan status bayar. Petugas gate mengikuti validasi scanner; QR tidak boleh dipakai ulang.</li></ul>
+<p class="mb-0">Latihan memakai data DEMO di lingkungan pengujian. Jangan mengirim tim nyata, membayar atau membuka dokumen privat demi screenshot.</p>
+</div></section>
+<section id="bantuan" class="card border mb-4" style="scroll-margin-top:6rem">
+<div class="card-header"><h2 class="h5 mb-0">6. Kendala umum</h2></div><div class="card-body"><dl class="mb-0">
+<dt>Kategori tidak muncul</dt><dd>Periksa komunitas aktif, sub-tipe, master jenjang sekolah, kapasitas dan aturan. Hubungi pengurus/penyelenggara bila data salah.</dd>
+<dt>Anggota tidak ada di modal</dt><dd>Periksa akun/keanggotaan aktif, kelayakan dan apakah sudah dipilih. Pendukung perlu keanggotaan pendukung/pengurus, bukan sekadar atlet.</dd>
+<dt>Dokumen ada tetapi belum selesai</dt><dd>Periksa jenis, akses dan status pemeriksaan. Berkas tersedia bukan bukti sah untuk semua kategori.</dd>
+<dt>Draft konflik/belum tersimpan</dt><dd>Hindari edit tim sama di banyak tab. Periksa indikator simpan; muat ulang saat konflik, jangan timpa perubahan server.</dd>
+<dt>Screenshot modal sulit dibaca</dt><dd class="mb-0">Klik PNG ukuran penuh. Ilustrasi baru memakai data DEMO dan panel modal utuh setelah animasi selesai, tanpa backdrop menutupi isi. Tampilan ponsel dapat berbeda.</dd>
+</dl></div></section>
+<div class="card border text-center mb-4"><div class="card-body"><p class="fs-10 text-muted">Versi teks: <code>PANDUAN_OPERASIONAL_EVENT.md</code>. Ilustrasi UI bukan bukti transaksi berhasil.</p><a href="{{ route('events.index') }}" class="btn btn-primary btn-sm">Buka Katalog Event</a></div></div>
+</div></div>
 @endsection

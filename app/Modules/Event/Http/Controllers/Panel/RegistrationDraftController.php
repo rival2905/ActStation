@@ -43,9 +43,11 @@ class RegistrationDraftController extends Controller
             'candidates' => $this->rosterProvider->candidatesForDraft(
                 (string) $draftModel->id,
                 (int) $draftModel->community_id,
-            )->map(fn ($candidate): array => $candidate->jsonSerialize() + [
+            )->map(fn ($candidate): array => array_replace($candidate->jsonSerialize(), [
+                'meets_membership_requirements' => $candidate->meetsMembershipRequirements && $draftModel->category->acceptsAthleteGender($candidate->gender),
+                'reason' => $draftModel->category->acceptsAthleteGender($candidate->gender) ? $candidate->reason : 'Jenis kelamin atlet tidak sesuai dengan kategori.',
                 'documents' => $this->athleteWorkspace->getRequiredAthleteDocumentsForDraft($draftModel, $candidate->userId),
-            ])->values(),
+            ]))->values(),
         ]);
     }
 

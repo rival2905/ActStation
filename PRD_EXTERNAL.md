@@ -1,5 +1,19 @@
 # Product Requirement Document (PRD) — Fitur Eksternal ActStation
 
+## Kelayakan gender roster langkah 2
+
+Tambah Atlet hanya menawarkan gender sesuai kategori; gender kosong tidak eligible pada Putra/Putri. Mixed tetap menerima. Create/update draft dan submit akhir memeriksa profil server, bukan data gender kiriman. Kandidat link serta bulk batch tidak boleh melewati aturan. Atlet salah gender yang sudah tersimpan tetap tampil dengan alasan dan tindakan Keluarkan dari Tim, bukan otomatis dihapus; payload lama/revision tidak diubah oleh GET. Gender kategori atlet tidak membatasi coach/tenaga pendukung. Target draft SMA Putri tercatat 1 male/2 female lama; pengurus perlu mengeluarkan male agar bisa menyimpan kembali. Read-only render sudah0 opsi salah gender; full730 PHP/5012 assertions,129 Node/build/Pint/Blade/diff lulus.
+
+
+## Panduan event publik terkini
+
+Audit agent dicocokkan dengan EventPayoutService dan EventCommitteeAccess: pembayaran manual langsung organizer dikecualikan dari escrow, payout melalui proses admin, bendahara tidak punya akses rekening/payout. Peringatan eksplisit ditambahkan pada panduan web dan teks; regresi konten publik diperluas.
+
+/panduan-event dan PANDUAN_OPERASIONAL_EVENT.md diselaraskan dengan multi-cabor, klasifikasi komunitas/kategori akademik, wizard tiga langkah, autosave/konflik, modal bulk atlet/pendukung dan dropdown jabatan, consent/approval undangan, dokumen privat, verifikasi wilayah bukan prerequisite, hasil submit JSON, pemeriksaan/pembayaran dan kepanitiaan event-scoped. Hilangkan klaim vault otomatis terverifikasi/permanen, upgrade organizer instan dan jaminan escrow mutlak. Angka biaya/kuota contoh tidak menjadi aturan umum.
+
+Tiga PNG baru dari render DEMO read-only menggunakan Blade/JS produksi: 12_bulk_atlet.png, 13_bulk_pendukung.png, 14_hasil_validasi.png, mirror docs/screenshots dan public/docs/screenshots. Pesan validasi merupakan contoh komponen UI, bukan transaksi nyata. Screenshot modal menunggu CSS/font/animasi, crop panel utuh dari viewport, tanpa backdrop menutupi isi; vision check ketiganya terbaca. Gambar bisa dibuka ukuran penuh dengan alt/caption dan daftar isi anchor. Gambar lama 01–11 tidak dipakai panduan ini, file tetap untuk referensi lama. Tidak mengirim draft, email atau pembayaran, tidak membuka dokumen privat. HTTP publik/gambar200 dan tidak ada horizontal overflow pada viewport1600/390. Tes konten publik/regresi mirror PNG, Blade/Pint/build/diff diverifikasi.
+
+
 ## Pilihan kategori sesuai komunitas aktif
 
 Kategori khusus SMP/SMA/perguruan tinggi hanya ditawarkan kepada entitas akademik sesuai jenjang/sub-tipe. Sekolah masih boleh mengikuti kategori umum yang mengizinkannya; aturan institusi/klub/komunitas umum lainnya tetap. Syarat berdasar konfigurasi kategori, bukan teks nama. Klub tidak dapat melewati batas kategori akademik walaupun flag lama allow_club aktif. Backend create/update draft dan final submission menolak kategori tidak sesuai, bukan hanya menyembunyikan opsi. Tidak ada kategori cocok menampilkan penjelasan untuk komunitas aktif; data lama tidak dihapus.

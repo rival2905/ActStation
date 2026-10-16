@@ -128,6 +128,33 @@ beforeEach(function (): void {
     ]);
 });
 
+test('draft rejects athlete gender mismatch before saving while mixed remains available', function (?string $gender, string $categoryGender): void {
+    $this->category->update(['gender' => $categoryGender]);
+    $this->athletes[0]->update(['gender' => $gender]);
+    $this->actingAs($this->manager);
+    $payload = ['event_category_id' => $this->category->id, 'team_name' => 'Gender Guard', 'members' => [['user_id' => $this->athletes[0]->id, 'jersey_number' => 7]]];
+    $this->postJson(route('panel.registration-drafts.store', $this->event->slug), $payload)
+        ->assertUnprocessable()->assertJsonValidationErrors('members.0.gender');
+    $this->assertDatabaseMissing('event_registration_drafts', ['event_id' => $this->event->id]);
+    $draft = RegistrationDraft::create(['user_id' => $this->manager->id, 'community_id' => $this->community->id, 'event_id' => $this->event->id, 'event_category_id' => $this->category->id, 'payload' => ['team_name' => 'Preserve', 'members' => []], 'revision' => 1, 'expires_at' => now()->addDay()]);
+    $this->putJson(route('panel.registration-drafts.update', [$this->event->slug, $draft->id]), $payload + ['revision' => 1])
+        ->assertUnprocessable()->assertJsonValidationErrors('members.0.gender');
+    expect($draft->fresh()->revision)->toBe(1)->and($draft->fresh()->payload['members'])->toBe([]);
+    $this->category->update(['gender' => 'mixed']);
+    $this->putJson(route('panel.registration-drafts.update', [$this->event->slug, $draft->id]), $payload + ['revision' => 1])->assertOk();
+})->with([['male', 'female'], ['female', 'male'], [null, 'female']]);
+
+test('registration athlete choices exclude other genders from each category', function (): void {
+    $this->category->update(['gender' => 'female']);
+    $this->athletes[1]->update(['gender' => 'female']);
+    $this->athletes[2]->update(['gender' => null]);
+    $response = $this->actingAs($this->manager)->get(route('panel.community-events.create', $this->event->slug))->assertOk();
+    $dom = new \DOMDocument;
+    @$dom->loadHTML($response->getContent());
+    $checks = (new \DOMXPath($dom))->query('//*[@id="roster-cat-'.$this->category->id.'"]//tr[@data-meets-requirements="1"]//input[contains(@class,"athlete-check")]');
+    expect(collect($checks)->map(fn ($check) => (int) $check->getAttribute('value'))->all())->toBe([$this->athletes[1]->id]);
+});
+
 test('draft creation stores allowlisted partial payload without secret token or arbitrary fields', function (): void {
     $response = $this->actingAs($this->manager)
         ->postJson(route('panel.registration-drafts.store', $this->event->slug), [

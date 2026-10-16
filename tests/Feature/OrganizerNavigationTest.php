@@ -26,7 +26,28 @@ test('external users can find organizer application from their requests page', f
 test('public organizer guide states admin review rather than instant verification', function (): void {
     $this->get(route('panduan.event'))->assertOk()
         ->assertSee('menunggu review admin')
-        ->assertDontSee('otomatis meng-upgrade role');
+        ->assertDontSee('otomatis meng-upgrade role')
+        ->assertSee('Kategori &amp; Informasi Tim', false)
+        ->assertSee('Tambah Atlet dari Anggota Aktif')
+        ->assertSee('dropdown jabatan')
+        ->assertSee('hasil pengiriman belum pasti')
+        ->assertSee('bukan otomatis terverifikasi')
+        ->assertSee('verifikasi wilayah bukan syarat')
+        ->assertSee('12_bulk_atlet.png')
+        ->assertSee('13_bulk_pendukung.png')
+        ->assertSee('14_hasil_validasi.png')
+        ->assertSee('Transfer manual langsung ke penyelenggara tidak masuk perhitungan escrow platform')
+        ->assertSee('tidak dapat mengubah rekening atau mencairkan dana')
+        ->assertDontSee('jaminan proteksi dana 100%')
+        ->assertDontSee('Turnamen Basket &amp; Regulasi Escrow', false);
+
+    foreach (['12_bulk_atlet.png', '13_bulk_pendukung.png', '14_hasil_validasi.png'] as $file) {
+        $public = public_path('docs/screenshots/'.$file);
+        expect(is_file($public))->toBeTrue()
+            ->and(file_get_contents($public))->toBe(file_get_contents(base_path('docs/screenshots/'.$file)));
+        [$width, $height] = getimagesize($public);
+        expect($width)->toBeGreaterThanOrEqual(500)->and($height)->toBeGreaterThanOrEqual(250);
+    }
 });
 
 test('organizers can find create and manage event links in sidebar', function (): void {

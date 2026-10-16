@@ -304,6 +304,9 @@ class RegistrationDraftService implements RegistrationDraftProvider
 
                 $existingPayload = (array) ($lockedDraft->payload ?? []);
                 $newPayload = array_merge($existingPayload, $this->extractAllowlistedPayload($data, $categoryId));
+                if ($categoryChanged) {
+                    $newPayload['members'] = [];
+                }
                 app(TeamPersonnelRoster::class)->validate($lockedDraft->event, (int) $lockedDraft->community_id, $newPayload['personnel'] ?? [], false);
                 $this->assertDraftMembersAllowed((string) $lockedDraft->id, (int) $lockedDraft->community_id, $newPayload);
 
@@ -557,7 +560,9 @@ class RegistrationDraftService implements RegistrationDraftProvider
     /** @param array<string, mixed> $payload */
     private function assertDraftMembersAllowed(string $draftId, int $communityId, array $payload): void
     {
-        foreach ((array) ($payload['members'] ?? []) as $member) {
+        $category = isset($payload['event_category_id']) ? EventCategory::find($payload['event_category_id']) : null;
+        $genders = User::query()->whereIn('id', collect($payload['members'] ?? [])->pluck('user_id'))->pluck('gender', 'id');
+        foreach ((array) ($payload['members'] ?? []) as $index => $member) {
             $userId = (int) ($member['user_id'] ?? 0);
             $eligible = $userId > 0 && $this->rosterProvider->eligibleAthletes($communityId, 0)
                 ->contains(fn ($athlete): bool => $athlete->userId === $userId);
@@ -565,6 +570,11 @@ class RegistrationDraftService implements RegistrationDraftProvider
                 throw ValidationException::withMessages([
                     'members' => 'Anggota draft harus berasal dari roster komunitas atau calon draft yang sah.',
                     'athlete_documents' => 'Unggahan dokumen atlet hanya untuk roster komunitas atau calon draft yang sah.',
+                ]);
+            }
+            if ($category && ! $category->acceptsAthleteGender($genders->get($userId))) {
+                throw ValidationException::withMessages([
+                    "members.{$index}.gender" => 'Jenis kelamin atlet tidak sesuai dengan kategori. Pilih atlet sesuai kategori atau keluarkan dari roster.',
                 ]);
             }
         }

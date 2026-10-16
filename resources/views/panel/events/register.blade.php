@@ -715,12 +715,15 @@
                                             $userVault = $vaultDocuments->get($athlete->userId) ?? collect();
                                             $reqDocs = $category->required_documents ?? [];
                                         @endphp
-                                        <tr>
+                                        <tr data-meets-requirements="{{ $category->acceptsAthleteGender($athlete->gender) ? '1' : '0' }}" data-reason="{{ $category->acceptsAthleteGender($athlete->gender) ? '' : 'Jenis kelamin atlet tidak sesuai dengan kategori. Keluarkan dari roster.' }}">
                                             <td class="text-center">
                                                 <input type="checkbox" class="form-check-input athlete-check" name="members[{{ $index }}][user_id]" value="{{ $athlete->userId }}" onchange="toggleAthleteRow(this, {{ $index }})">
                                             </td>
                                             <td>
                                                 <div class="fw-semi-bold">{{ $athlete->name }}</div>
+                                                @unless($category->acceptsAthleteGender($athlete->gender))
+                                                    <div class="text-danger fs-11">Jenis kelamin atlet tidak sesuai kategori. Keluarkan dari roster.</div>
+                                                @endunless
                                                 @if($athlete->studentIdentifierType && $athlete->studentIdentifierValue)
                                                 <div class="small text-muted">{{ strtoupper($athlete->studentIdentifierType) }}: {{ $athlete->studentIdentifierValue }}</div>
                                                 @endif

@@ -95,6 +95,21 @@ function rf02CreateInvite(object $test, ?RegistrationDraft $draft = null): array
         ->json();
 }
 
+test('candidate gender mismatch stays visible but cannot be selected or saved', function (): void {
+    $this->category->update(['gender' => 'female']);
+    $athlete = User::factory()->create(['gender' => 'male', 'is_active' => true]);
+    CommunityAthlete::create(['community_id' => $this->community->id, 'user_id' => $athlete->id, 'status' => 'active', 'region_status' => 'pending', 'joined_at' => now()]);
+    rf02CreateInvite($this);
+    $invitationId = CommunityInvitation::where('registration_draft_id', $this->draft->id)->value('id');
+    RegistrationDraftCandidate::create(['registration_draft_id' => $this->draft->id, 'user_id' => $athlete->id, 'community_invitation_id' => $invitationId]);
+    $this->actingAs($this->manager)->getJson(route('panel.registration-drafts.candidates.index', [$this->event->slug, $this->draft->id]))
+        ->assertOk()->assertJsonPath('candidates.0.meets_membership_requirements', false)
+        ->assertJsonPath('candidates.0.reason', 'Jenis kelamin atlet tidak sesuai dengan kategori.');
+    $this->category->update(['gender' => 'mixed']);
+    $this->getJson(route('panel.registration-drafts.candidates.index', [$this->event->slug, $this->draft->id]))
+        ->assertOk()->assertJsonPath('candidates.0.meets_membership_requirements', true);
+});
+
 test('candidate roster exposes uploaded pending vault evidence without approving membership', function (): void {
     Storage::fake('local');
     $code = 'candidate_vault_birth';

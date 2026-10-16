@@ -1541,6 +1541,8 @@ export class RegistrationDraftUI {
             const current = section?.querySelectorAll('.athlete-check:checked').length || 0;
             const max = Number(this.document.getElementById('event_category_id')?.selectedOptions?.[0]?.dataset.maxRoster || Infinity);
             if (current + entries.length > max) return fail(`Roster maksimal ${max} atlet. Pilih sesuai sisa kuota.`);
+            const invalid = entries.find(entry => entry.source?.closest?.('tr')?.dataset?.meetsRequirements === '0');
+            if (invalid) return fail(invalid.source.closest('tr').dataset.reason || 'Atlet tidak memenuhi syarat kategori.');
             selected.push(...entries.map(entry => entry.source));
         } else {
             const counts = new Map();
