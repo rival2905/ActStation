@@ -2,4 +2,5 @@ ln -s /home/rivaldoi/actstation.net/public/assets /home/rivaldoi/actstation.net/
 ln -s /home/rivaldoi/actstation.net/public/index.php /home/rivaldoi/actstation.net/index.php
 ln -s /home/rivaldoi/actstation.net/public/.htaccess /home/rivaldoi/actstation.net/.htaccess
 
-ln -s /home/rivaldoi/actstation.net/storage/app/public/users /home/rivaldoi/actstation.net/storage
+ln -s /home/rivaldoi/actstation.net/storage/app/public/event_banners /home/rivaldoi/actstation.net/storage
+ln -s /home/rivaldoi/actstation.net/storage/app/public/event_documents /home/rivaldoi/actstation.net/storage

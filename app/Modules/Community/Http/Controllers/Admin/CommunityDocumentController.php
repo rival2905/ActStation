@@ -55,7 +55,9 @@ class CommunityDocumentController extends Controller
             abort(404, 'File dokumen tidak ditemukan.');
         }
 
-        return Storage::disk('local')->download($document->file_path, $document->name);
+        $downloadName = $document->name.(pathinfo($document->name, PATHINFO_EXTENSION) === '' && ($ext = pathinfo($document->file_path, PATHINFO_EXTENSION)) ? ".{$ext}" : '');
+
+        return Storage::disk('local')->download($document->file_path, $downloadName);
     }
 
     public function destroy(Community $community, Document $document): RedirectResponse

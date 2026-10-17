@@ -135,12 +135,14 @@ class PublicEventController extends Controller
             abort(404, 'Dokumen publik tidak ditemukan untuk event ini.');
         }
 
+        $downloadName = $document->name.(pathinfo($document->name, PATHINFO_EXTENSION) === '' && ($ext = pathinfo($document->file_path, PATHINFO_EXTENSION)) ? ".{$ext}" : '');
+
         if (Storage::disk('public')->exists($document->file_path)) {
-            return Storage::disk('public')->download($document->file_path, $document->name);
+            return Storage::disk('public')->download($document->file_path, $downloadName);
         }
 
         if (Storage::disk('local')->exists($document->file_path)) {
-            return Storage::disk('local')->download($document->file_path, $document->name);
+            return Storage::disk('local')->download($document->file_path, $downloadName);
         }
 
         abort(404, 'File fisik dokumen tidak ditemukan.');

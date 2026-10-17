@@ -70,12 +70,14 @@ class OrganizerDocumentController extends Controller
             abort(404, 'Dokumen tidak ditemukan untuk event ini.');
         }
 
+        $downloadName = $this->buildDownloadName($document);
+
         if (Storage::disk('public')->exists($document->file_path)) {
-            return Storage::disk('public')->download($document->file_path, $document->name);
+            return Storage::disk('public')->download($document->file_path, $downloadName);
         }
 
         if (Storage::disk('local')->exists($document->file_path)) {
-            return Storage::disk('local')->download($document->file_path, $document->name);
+            return Storage::disk('local')->download($document->file_path, $downloadName);
         }
 
         abort(404, 'File dokumen fisik tidak ditemukan di penyimpanan server.');
@@ -176,5 +178,23 @@ class OrganizerDocumentController extends Controller
         }
 
         app(EventCommitteeAccess::class)->authorize($event, 'documents.manage');
+    }
+
+    /**
+     * Bangun nama file unduhan dengan ekstensi yang benar dari file_path asli.
+     */
+    private function buildDownloadName(Document $document): string
+    {
+        $originalExt = pathinfo($document->file_path, PATHINFO_EXTENSION);
+        $nameExt = pathinfo($document->name, PATHINFO_EXTENSION);
+
+        if ($nameExt !== '' && strtolower($nameExt) === strtolower($originalExt)) {
+            return $document->name;
+        }
+
+        // ponytail: slug sanitize jika nama mengandung karakter tidak aman untuk filename
+        $safeName = str_replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], '-', $document->name);
+
+        return $originalExt ? "{$safeName}.{$originalExt}" : $safeName;
     }
 }
