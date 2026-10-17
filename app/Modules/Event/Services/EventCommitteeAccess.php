@@ -11,6 +11,7 @@ use App\Modules\Event\Models\EventCommitteeMember;
 class EventCommitteeAccess
 {
     public const CAPABILITIES = [
+        'ticketing.manage' => ['label' => 'Kelola Tiket Penonton', 'description' => 'Mengatur pembukaan penjualan, kategori, harga dan kuota tiket event ini. Tidak dapat mengubah rekening, mencairkan dana atau memindai tiket.'],
         'teams.view' => ['label' => 'Lihat Tim Peserta', 'description' => 'Melihat pendaftaran, roster dan dokumen persyaratan privat peserta event ini.'],
         'teams.review' => ['label' => 'Periksa Tim & Dokumen', 'description' => 'Memutuskan pemeriksaan berkas, menyetujui tim dan meminta perbaikan. Tidak dapat menghapus peserta.'],
         'payments.confirm' => ['label' => 'Konfirmasi Pembayaran', 'description' => 'Memeriksa dan mengonfirmasi bukti pembayaran manual peserta. Tidak dapat mengubah rekening atau mencairkan dana.'],
@@ -67,6 +68,7 @@ class EventCommitteeAccess
                 'confirmManualPayment' => 'payments.confirm',
                 default => null,
             },
+            'OrganizerTicketController' => 'ticketing.manage',
             'OrganizerDocumentController' => 'documents.manage',
             'OrganizerScheduleController' => 'schedule.manage',
             'OrganizerResultController' => 'results.manage',

@@ -19,6 +19,7 @@ class VenueCourt extends Model
         'venue_id',
         'name',
         'surface',
+        'condition',
         'is_indoor',
         'is_active',
     ];

@@ -299,6 +299,9 @@ class CommunityEventRegistrationController extends Controller
             'team_documents.*' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
             'athlete_documents' => ['nullable', 'array'],
             'athlete_documents.*.*' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+            'personnel_licenses' => ['nullable', 'array'],
+            'personnel_licenses.*' => ['nullable', 'array'],
+            'personnel_licenses.*.*' => ['nullable', 'file', 'image', 'mimes:jpeg,jpg,png,webp', 'max:1024'],
         ]);
         /** @var EventCategory $category */
         $category = EventCategory::query()
@@ -553,7 +556,20 @@ class CommunityEventRegistrationController extends Controller
                 ]);
 
                 $this->rosterValidator->validate($participant, $validated['members']);
-                app(TeamPersonnelRoster::class)->sync($participant, $validated['personnel'] ?? []);
+                $licensePaths = [];
+                $uploadedLicenses = $request->file('personnel_licenses') ?? [];
+                foreach ($uploadedLicenses as $uId => $roles) {
+                    if (is_array($roles)) {
+                        foreach ($roles as $rId => $file) {
+                            if ($file instanceof UploadedFile) {
+                                $path = $file->store('participant_documents/personnel_licenses', 'local');
+                                $newlyStoredFiles[] = $path;
+                                $licensePaths["{$uId}:{$rId}"] = $path;
+                            }
+                        }
+                    }
+                }
+                app(TeamPersonnelRoster::class)->sync($participant, $validated['personnel'] ?? [], $licensePaths);
 
                 foreach ($validated['members'] as $member) {
                     EventParticipantMember::create([
@@ -672,7 +688,7 @@ class CommunityEventRegistrationController extends Controller
                     $tombstonePayload['_submitted'] = true;
                     $tombstonePayload['_participant_id'] = $participant->id;
                     $lockedDraft->payload = $tombstonePayload;
-                    $lockedDraft->files = ['team_documents' => [], 'athlete_documents' => []];
+                    $lockedDraft->files = ['team_documents' => [], 'athlete_documents' => [], 'personnel_licenses' => []];
                     $lockedDraft->participant_id = $participant->id;
                     $lockedDraft->save();
                 }

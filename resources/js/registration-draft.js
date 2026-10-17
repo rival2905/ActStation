@@ -537,6 +537,20 @@ export class RegistrationDraftManager {
                 }
             });
         }
+
+        // 3. Personnel licenses
+        if (this.serverFiles.personnel_licenses) {
+            Object.entries(this.serverFiles.personnel_licenses).forEach(([uid, roles]) => {
+                if (roles && typeof roles === 'object') {
+                    Object.entries(roles).forEach(([rid, meta]) => {
+                        const input = this.document.querySelector(`input[name="personnel_licenses[${uid}][${rid}]"]`);
+                        if (input && meta) {
+                            this.updateFileBadge(input, meta);
+                        }
+                    });
+                }
+            });
+        }
     }
 
     escapeHtml(str) {
@@ -576,6 +590,27 @@ export class RegistrationDraftManager {
         if (!fieldName || !inputEl.files || inputEl.files.length === 0) return;
 
         const file = inputEl.files[0];
+
+        if (inputEl.classList?.contains('personnel-license-input') && file.size > 1048576) {
+            inputEl.value = '';
+            this.dirtyFiles.delete(fieldName);
+            const parent = inputEl.parentNode;
+            let oldBadge = parent?.querySelector('.staged-file-badge');
+            if (oldBadge) oldBadge.remove();
+            let err = parent?.querySelector('.license-error-badge');
+            if (!err && parent) {
+                err = this.document.createElement('div');
+                err.className = 'license-error-badge mt-1 fs-11 text-danger d-flex align-items-center';
+                parent.appendChild(err);
+            }
+            if (err) {
+                err.innerHTML = '<span class="fas fa-exclamation-circle me-1"></span>Ukuran berkas melebihi 1 MB. Pilih berkas yang lebih kecil.';
+            }
+            return;
+        }
+        const errBadge = inputEl.parentNode?.querySelector('.license-error-badge');
+        if (errBadge) errBadge.remove();
+
         this.dirtyFiles.set(fieldName, file);
 
         // Remove old server badge and safely render upload badge via escaped HTML and textContent
@@ -649,9 +684,18 @@ export class RegistrationDraftManager {
         }
         if (this.serverFiles.athlete_documents) {
             Object.entries(this.serverFiles.athlete_documents).forEach(([uid, docs]) => {
-                if (docs) {
+                if (docs && typeof docs === 'object') {
                     Object.keys(docs).forEach(code => {
                         this.clearFiles.add(`athlete_documents.${uid}.${code}`);
+                    });
+                }
+            });
+        }
+        if (this.serverFiles.personnel_licenses) {
+            Object.entries(this.serverFiles.personnel_licenses).forEach(([uid, roles]) => {
+                if (roles && typeof roles === 'object') {
+                    Object.keys(roles).forEach(rid => {
+                        this.clearFiles.add(`personnel_licenses.${uid}.${rid}`);
                     });
                 }
             });
@@ -724,9 +768,22 @@ export class RegistrationDraftManager {
     applyPersonnel(selection = []) {
         const keys = new Set(selection.map(row => `${row.user_id}:${row.role_id}`));
         this.document?.querySelectorAll('.personnel-role-check').forEach(input => {
-            input.checked = keys.has(`${input.dataset.userId}:${input.dataset.roleId}`);
-            const role = input.parentElement?.querySelector('.personnel-role-value');
-            if (role) role.disabled = !input.checked;
+            const isChecked = keys.has(`${input.dataset.userId}:${input.dataset.roleId}`);
+            input.checked = isChecked;
+            const choice = typeof input.closest === 'function' ? input.closest('[data-personnel-choice]') : null;
+            const role = choice?.querySelector?.('.personnel-role-value') || input.parentElement?.querySelector?.('.personnel-role-value');
+            if (role) role.disabled = !isChecked;
+            const licGroup = choice?.querySelector?.('.personnel-license-group') || input.parentElement?.querySelector?.('.personnel-license-group');
+            if (licGroup?.style) {
+                licGroup.style.display = isChecked ? 'block' : 'none';
+                const licInput = licGroup.querySelector?.('.personnel-license-input');
+                if (licInput) {
+                    licInput.disabled = !isChecked;
+                    if (!isChecked) {
+                        licInput.value = '';
+                    }
+                }
+            }
         });
     }
 
@@ -831,9 +888,17 @@ export class RegistrationDraftManager {
         // Dirty files snapshot
         const filesToSend = dirtyFilesMap || this.dirtyFiles;
         const selectedUserIds = new Set((payload.members || []).map(member => String(member.user_id)));
+        const selectedPersonnelKeys = new Set((payload.personnel || []).map(p => `${p.user_id}:${p.role_id}`));
         filesToSend.forEach((file, fieldKey) => {
             const athlete = fieldKey.match(/^athlete_documents\[([^\]]+)\]/);
-            if (!athlete || selectedUserIds.has(athlete[1])) fd.append(fieldKey, file);
+            const personnel = fieldKey.match(/^personnel_licenses\[([^\]]+)\]\[([^\]]+)\]/);
+            if (athlete) {
+                if (selectedUserIds.has(athlete[1])) fd.append(fieldKey, file);
+            } else if (personnel) {
+                if (selectedPersonnelKeys.has(`${personnel[1]}:${personnel[2]}`)) fd.append(fieldKey, file);
+            } else {
+                fd.append(fieldKey, file);
+            }
         });
 
         // Clear files array
@@ -1592,10 +1657,21 @@ export class RegistrationDraftUI {
         button.disabled = !choices.some(input => !input.checked && !input.disabled) || Boolean(this.manager?.isSubmitted);
         button.setAttribute('aria-expanded', String(Boolean(this.personnelPickerOpen)));
         choices.forEach(input => {
-            const choice = input.closest('[data-personnel-choice]');
+            const choice = typeof input.closest === 'function' ? input.closest('[data-personnel-choice]') : null;
             if (choice) choice.hidden = !input.checked;
-            const companion = input.parentElement?.querySelector('.personnel-role-value');
+            const companion = choice?.querySelector?.('.personnel-role-value') || input.parentElement?.querySelector?.('.personnel-role-value');
             if (companion) companion.disabled = !input.checked || input.disabled;
+            const licGroup = choice?.querySelector?.('.personnel-license-group') || input.parentElement?.querySelector?.('.personnel-license-group');
+            if (licGroup?.style) {
+                licGroup.style.display = input.checked ? 'block' : 'none';
+                const licInput = licGroup.querySelector?.('.personnel-license-input');
+                if (licInput) {
+                    licInput.disabled = !input.checked || input.disabled;
+                    if (!input.checked) {
+                        licInput.value = '';
+                    }
+                }
+            }
         });
         this.document.querySelectorAll('[data-personnel-role]').forEach(group => {
             const count = group.querySelectorAll('.personnel-role-check:checked').length;
@@ -1624,7 +1700,29 @@ export class RegistrationDraftUI {
                 role.type = 'hidden'; role.className = 'personnel-role-value'; role.name = `personnel[${index}][role_id]`; role.value = roleId; role.disabled = true;
                 const label = this.document.createElement('label');
                 label.className = 'form-check-label'; label.htmlFor = input.id; label.textContent = person.name;
-                choice.append(input, role, label); group.appendChild(choice);
+                choice.append(input, role, label);
+                if (group.dataset.licenseAllowed === '1') {
+                    const licDiv = this.document.createElement('div');
+                    licDiv.className = 'mt-2 personnel-license-group';
+                    licDiv.dataset.licenseFor = `${person.user_id}:${roleId}`;
+                    licDiv.style.display = 'none';
+                    const licLabel = this.document.createElement('label');
+                    licLabel.className = 'form-label fs-11 text-muted mb-1';
+                    licLabel.htmlFor = `personnel_license_${person.user_id}_${roleId}`;
+                    licLabel.textContent = 'Foto Lisensi (Opsional, Maks. 1 MB, JPG/PNG/WebP)';
+                    const licInput = this.document.createElement('input');
+                    licInput.type = 'file';
+                    licInput.className = 'form-control form-control-sm personnel-license-input';
+                    licInput.id = `personnel_license_${person.user_id}_${roleId}`;
+                    licInput.name = `personnel_licenses[${person.user_id}][${roleId}]`;
+                    licInput.accept = 'image/jpeg,image/png,image/webp';
+                    licInput.dataset.userId = String(person.user_id);
+                    licInput.dataset.roleId = roleId;
+                    licInput.disabled = true;
+                    licDiv.append(licLabel, licInput);
+                    choice.appendChild(licDiv);
+                }
+                group.appendChild(choice);
             });
         });
         this.updatePersonnelPicker();

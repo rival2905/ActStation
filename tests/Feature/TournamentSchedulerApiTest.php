@@ -12,6 +12,7 @@ use App\Modules\Event\Models\EventParticipant;
 use App\Modules\Event\Models\Game;
 use App\Modules\Event\Models\TournamentPhase;
 use App\Modules\Event\Models\TournamentPool;
+use App\Modules\Event\Services\EventVenueService;
 use App\Modules\MasterData\Models\SportCategory;
 use Carbon\Carbon;
 use Database\Seeders\RolePermissionSeeder;
@@ -351,6 +352,8 @@ test('schedule settings, breaks, dan sync courts dapat dikelola', function (): v
         'created_at' => now(),
         'updated_at' => now(),
     ]);
+
+    app(EventVenueService::class)->sync($this->event, [$venueId], []);
 
     $syncResponse = $this->actingAs($this->admin)
         ->postJson(route('admin.events.scheduler.api.courts.sync', $this->event), [

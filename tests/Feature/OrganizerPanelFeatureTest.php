@@ -9,8 +9,10 @@ use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventCategory;
 use App\Modules\Event\Models\EventParticipant;
 use App\Modules\Event\Models\Game;
+use App\Modules\Event\Services\EventVenueService;
 use App\Modules\MasterData\Models\SportCategory;
 use App\Modules\MasterData\Models\Venue;
+use App\Modules\MasterData\Models\VenueCourt;
 use App\Modules\Payment\Models\Transaction;
 use App\Modules\Ticketing\Models\Ticket;
 use App\Modules\Ticketing\Models\TicketCategory;
@@ -347,6 +349,11 @@ test('organizer dapat membuat tiket per-game yang mengikat langsung ke jadwal pe
         'round_label' => 'Semifinal',
     ]);
 
+    $venue = Venue::create(['name' => 'DEMO Ticket Venue', 'is_active' => true]);
+    $court = VenueCourt::create(['venue_id' => $venue->id, 'name' => 'DEMO Ticket Court', 'is_active' => true]);
+    app(EventVenueService::class)->sync($event, [$venue->id], [$court->id]);
+    $game->update(['venue_id' => $venue->id, 'venue_court_id' => $court->id]);
+
     // 1. Simpan kategori tiket per-game terikat ke game_id
     $res = $this->actingAs($this->user)->post(route('panel.organizer.ticketing.store', $event->id), [
         'name' => 'Tiket Suporter Semifinal SMA 1 vs SMA 2',
@@ -369,6 +376,8 @@ test('organizer dapat membuat tiket per-game yang mengikat langsung ke jadwal pe
     $schedRes = $this->actingAs($this->user)->get(route('panel.organizer.scheduling.index', $event->id));
     $schedRes->assertOk();
     $schedRes->assertSee('Tiket Suporter Semifinal SMA 1 vs SMA 2');
+
+    $event->update(['ticket_sales_starts_at' => now()->subMinute()]);
 
     // 3. Cek halaman publik tiket menampilkan info match akurat
     $pubRes = $this->get(route('events.tickets', $event->slug));

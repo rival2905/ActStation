@@ -25,7 +25,12 @@ class UpdateEventRequest extends FormRequest
 
         return [
             'sport_category_id' => ['required', 'integer'],
-            'venue_id' => ['nullable', 'integer'],
+            'venue_id' => ['nullable', 'integer', 'exists:venues,id'],
+            'venue_selection_present' => ['nullable', 'boolean'],
+            'venue_ids' => ['required_if:venue_selection_present,1', 'array', 'min:1', 'max:100'],
+            'venue_ids.*' => ['required', 'integer', 'distinct'],
+            'venue_court_ids' => ['nullable', 'array', 'max:500'],
+            'venue_court_ids.*' => ['required', 'integer', 'distinct'],
             'title' => ['required', 'string', 'max:255'],
             'slug' => ['nullable', 'string', 'max:255', Rule::unique('events', 'slug')->ignore($eventId)],
             'description' => ['nullable', 'string'],

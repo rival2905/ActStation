@@ -11,6 +11,7 @@ use App\Modules\Event\Http\Requests\Admin\TransitionStatusRequest;
 use App\Modules\Event\Http\Requests\Admin\UpdateEventRequest;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Services\EventLifecycleService;
+use App\Modules\Event\Services\EventVenueService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -62,9 +63,9 @@ class EventController extends Controller
             ->where('is_active', true)
             ->get(['id', 'name']);
 
-        $venues = DB::table('venues')->get(['id', 'name']);
+        $venueData = app(EventVenueService::class)->formData(isset($event) ? $event : null);
 
-        return view('admin.events.create', compact('sportCategories', 'venues'));
+        return view('admin.events.create', array_merge(compact('sportCategories'), $venueData));
     }
 
     public function store(StoreEventRequest $request): RedirectResponse
@@ -83,7 +84,18 @@ class EventController extends Controller
             $data['slug'] = $slug;
         }
 
-        $event = Event::create($data);
+        $venueIds = $data['venue_ids'] ?? (empty($data['venue_id']) ? [] : [$data['venue_id']]);
+        $courtIds = $data['venue_court_ids'] ?? [];
+        unset($data['venue_ids'], $data['venue_court_ids'], $data['venue_selection_present']);
+        $event = DB::transaction(function () use ($data, $venueIds, $courtIds): Event {
+            $data['venue_id'] = null;
+            $event = Event::create($data);
+            if ($venueIds !== []) {
+                app(EventVenueService::class)->sync($event, $venueIds, $courtIds);
+            }
+
+            return $event;
+        });
 
         return redirect()
             ->route('admin.events.show', $event)
@@ -118,9 +130,9 @@ class EventController extends Controller
             ->where('is_active', true)
             ->get(['id', 'name']);
 
-        $venues = DB::table('venues')->get(['id', 'name']);
+        $venueData = app(EventVenueService::class)->formData(isset($event) ? $event : null);
 
-        return view('admin.events.edit', compact('event', 'sportCategories', 'venues'));
+        return view('admin.events.edit', array_merge(compact('event', 'sportCategories'), $venueData));
     }
 
     public function update(UpdateEventRequest $request, Event $event): RedirectResponse
@@ -130,7 +142,19 @@ class EventController extends Controller
         if (empty($data['slug'])) {
         }
 
-        $event->update($data);
+        $venues = app(EventVenueService::class);
+        $venueIds = $data['venue_ids'] ?? $venues->venueIds($event);
+        if (! empty($data['venue_id']) && ! in_array((int) $data['venue_id'], $venueIds, true)) {
+            $venueIds[] = (int) $data['venue_id'];
+        }
+        $courtIds = $data['venue_court_ids'] ?? (isset($data['venue_selection_present']) ? [] : null);
+        unset($data['venue_ids'], $data['venue_court_ids'], $data['venue_selection_present'], $data['venue_id']);
+        DB::transaction(function () use ($event, $data, $venues, $venueIds, $courtIds): void {
+            if ($venueIds !== []) {
+                $venues->sync($event, $venueIds, $courtIds);
+            }
+            $event->update($data);
+        });
 
         return redirect()
             ->route('admin.events.show', $event)

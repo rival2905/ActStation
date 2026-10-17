@@ -38,6 +38,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class TournamentSchedulerController extends Controller
@@ -290,7 +291,25 @@ class TournamentSchedulerController extends Controller
     {
         abort_unless((int) $game->event_id === (int) $event->id, 404);
 
-        $game->update($request->validated());
+        DB::transaction(function () use ($event, $game, $request): void {
+            Event::query()->lockForUpdate()->findOrFail($event->id);
+            $game = Game::whereKey($game->id)->lockForUpdate()->firstOrFail();
+            $data = $request->validated();
+            if (array_key_exists('venue_court_id', $data) || array_key_exists('game_time', $data)) {
+                if ($game->is_bye || in_array($game->game_status, ['live', 'ongoing', 'finished', 'cancelled', 'bye'], true)) {
+                    throw ValidationException::withMessages(['venue_court_id' => 'Penempatan hanya dapat diubah sebelum pertandingan berjalan.']);
+                }
+                app(ScheduleCalculator::class)->assertCourtAvailable($game, array_key_exists('venue_court_id', $data) ? ($data['venue_court_id'] === null ? null : (int) $data['venue_court_id']) : ($game->venue_court_id === null ? null : (int) $game->venue_court_id), array_key_exists('game_time', $data) ? $data['game_time'] : $game->game_time);
+            }
+            if (array_key_exists('venue_court_id', $data)) {
+                if ($data['venue_court_id'] !== null) {
+                    abort_unless($event->eventCourts()->where('venue_court_id', $data['venue_court_id'])->exists(), 422);
+                }
+                $data['venue_id'] = $data['venue_court_id'] === null ? null
+                    : DB::table('venue_courts')->where('id', $data['venue_court_id'])->value('venue_id');
+            }
+            $game->update($data);
+        });
 
         return new GameResource($game->fresh(['teamA', 'teamB', 'bracketNode', 'officials.user']));
     }

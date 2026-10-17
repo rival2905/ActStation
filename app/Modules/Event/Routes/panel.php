@@ -10,6 +10,7 @@ use App\Modules\Event\Http\Controllers\Panel\CommunityRosterController;
 use App\Modules\Event\Http\Controllers\Panel\EventCommitteeController;
 use App\Modules\Event\Http\Controllers\Panel\EventInvitationController;
 use App\Modules\Event\Http\Controllers\Panel\EventPersonnelSettingsController;
+use App\Modules\Event\Http\Controllers\Panel\EventVenueController;
 use App\Modules\Event\Http\Controllers\Panel\OrganizerCategoryController;
 use App\Modules\Event\Http\Controllers\Panel\OrganizerDocumentController;
 use App\Modules\Event\Http\Controllers\Panel\OrganizerEventController;
@@ -48,6 +49,11 @@ Route::middleware(['auth', 'EnsurePanelAccess'])->group(function (): void {
 
     // 2. Panel Organizer (PRD_EXTERNAL §6.2)
     Route::prefix('organizer')->name('organizer.')->group(function (): void {
+        Route::post('events/{event}/venues', [EventVenueController::class, 'store'])->name('venues.store');
+        Route::post('events/{event}/venues/courts', [EventVenueController::class, 'store'])->name('venues.courts.store');
+        Route::get('events/{event}/venues', [EventVenueController::class, 'edit'])->name('venues.edit');
+        Route::put('events/{event}/venues', [EventVenueController::class, 'update'])->name('venues.update');
+
         // Just-In-Time KYC
         Route::get('apply', [OrganizerKycController::class, 'show'])->name('apply');
         Route::post('apply', [OrganizerKycController::class, 'store'])->name('apply.store');
@@ -127,6 +133,7 @@ Route::middleware(['auth', 'EnsurePanelAccess'])->group(function (): void {
 
         Route::get('events/{event}/team-inspections/{kind}/{id}', [TeamInspectionController::class, 'show'])->name('teams.inspection.show');
         Route::get('events/{event}/team-inspections/{kind}/{id}/documents/{owner}/{code}/download', [TeamInspectionController::class, 'download'])->name('teams.inspection.download');
+        Route::get('events/{event}/team-inspections/{kind}/{id}/personnel-license/{personnelKey}/download', [TeamInspectionController::class, 'downloadPersonnelLicense'])->name('teams.personnel-license.download');
         Route::post('events/{event}/team-inspections/{kind}/{id}/documents/{owner}/{code}/review', [TeamInspectionController::class, 'review'])->name('teams.inspection.review');
 
         // Tim & Roster
@@ -138,6 +145,7 @@ Route::middleware(['auth', 'EnsurePanelAccess'])->group(function (): void {
         Route::delete('events/{event}/teams/{participant}', [OrganizerTeamController::class, 'destroy'])->name('teams.destroy');
 
         // Scheduling
+        Route::put('events/{event}/scheduling/{game}/court', [OrganizerScheduleController::class, 'updateCourt'])->name('scheduling.court.update');
         Route::get('events/{event}/scheduling', [OrganizerScheduleController::class, 'index'])->name('scheduling.index');
         Route::post('events/{event}/scheduling/auto-recalculate', [OrganizerScheduleController::class, 'autoRecalculate'])->name('scheduling.autoRecalculate');
 
@@ -146,6 +154,7 @@ Route::middleware(['auth', 'EnsurePanelAccess'])->group(function (): void {
         Route::post('events/{event}/results/{game}/score', [OrganizerResultController::class, 'recordScore'])->name('results.recordScore');
 
         // Ticketing
+        Route::put('events/{event}/ticketing/sales', [OrganizerTicketController::class, 'updateSales'])->name('ticketing.sales.update');
         Route::get('events/{event}/ticketing', [OrganizerTicketController::class, 'index'])->name('ticketing.index');
         Route::post('events/{event}/ticketing', [OrganizerTicketController::class, 'store'])->name('ticketing.store');
         Route::put('events/{event}/ticketing/{category}', [OrganizerTicketController::class, 'update'])->name('ticketing.update');

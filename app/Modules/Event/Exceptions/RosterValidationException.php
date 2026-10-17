@@ -23,6 +23,11 @@ class RosterValidationException extends Exception
         parent::__construct($message, $code);
     }
 
+    public function errors(): array
+    {
+        return $this->errors;
+    }
+
     public function render(Request $request): Response|RedirectResponse|JsonResponse
     {
         if ($request->expectsJson() || $request->is('api/*')) {

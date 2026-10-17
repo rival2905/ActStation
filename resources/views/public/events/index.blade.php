@@ -214,9 +214,11 @@
                                     <a class="btn btn-sm btn-outline-primary d-lg-block mb-lg-2 me-2 me-lg-0" href="{{ route('events.show', $event->slug) }}">
                                         <span class="fas fa-info-circle me-1"></span>Detail Event
                                     </a>
+@if($event->ticketSalesAreOpen())
                                     <a class="btn btn-sm btn-primary d-lg-block" href="{{ route('events.tickets', $event->slug) }}">
                                         <span class="fas fa-ticket-alt me-1"></span>Beli Tiket
                                     </a>
+@endif
                                 </div>
                             </div>
                         </div>

@@ -2,7 +2,38 @@
 
 @section('title', 'Form Pendaftaran Tim — ' . $event->title)
 
+@push('styles')
+<style>
+.registration-workspace { --registration-gap: 1.25rem; }
+.registration-workspace .card { box-shadow: none; border: 1px solid var(--falcon-border-color); }
+.registration-workspace .card-header { padding: 1rem 1.25rem; }
+.registration-workspace .accordion-button { align-items: flex-start; }
+.registration-workspace .accordion-button .badge { white-space: normal; text-align: left; }
+.registration-workspace .team-header-name { overflow-wrap: anywhere; }
+.registration-workspace .form-label { font-weight: 600; }
+.registration-workspace .nav-wizard .nav-link { padding-inline: .25rem; }
+.registration-workspace .nav-wizard .nav-link:focus-visible { outline: 2px solid var(--falcon-primary); outline-offset: 2px; }
+.registration-workspace .registration-actions { position: sticky; bottom: 0; z-index: 1010; background: var(--falcon-body-bg); box-shadow: 0 -3px 12px rgba(0,0,0,.06); }
+.registration-workspace #team-form-body-content { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 0 var(--registration-gap); }
+.registration-workspace #team-form-body-content > * { grid-column: 1 / -1; min-width: 0; }
+.registration-workspace #team-form-body-content > .registration-contact { grid-column: auto; }
+.registration-workspace .table th { white-space: nowrap; }
+.registration-workspace summary { cursor: pointer; }
+@media (max-width: 575.98px) {
+    .registration-workspace .card-body, .registration-workspace .card-header { padding: 1rem; }
+    .registration-workspace #team-form-body-content { grid-template-columns: minmax(0,1fr); }
+    .registration-workspace .registration-actions .registration-save-note { width: 100%; order: 3; text-align: center; }
+    .registration-workspace .nav-wizard .nav-item-circle { width: 2rem; height: 2rem; line-height: 2rem; }
+    .registration-workspace .nav-wizard .nav-link { font-size: .75rem; }
+    .registration-workspace #step1-top-actions { flex-wrap: wrap; }
+}
+@media (min-width: 1200px) {
+    .navbar-vertical-collapsed .navbar-vertical:not(:hover) [data-panel-context] { display: none; }
+}
+</style>
+@endpush
 @section('content')
+<div class="registration-workspace">
 @php
     $activeRegistrations = $registrations->filter(fn ($r) => in_array($r->status, ['registered', 'revision_needed', 'verified', 'confirmed', 'waiting_list'], true)
         || ($r->status === 'pending_payment' && ($r->payment_deadline_at === null || $r->payment_deadline_at->isFuture())));
@@ -21,15 +52,16 @@
     $activeTeamName = old('team_name', $activeDraft ? ($activeDraft->payload['team_name'] ?? $community->name) : $community->name);
     $activeCategoryName = $activeDraft?->category?->name ?? ($selectedCategoryId ? ($event->categories->firstWhere('id', $selectedCategoryId)?->name ?? 'Belum memilih kategori') : 'Belum memilih kategori');
 @endphp
-<div class="card mb-3">
+<div class="card mb-3 border-primary-subtle">
     <div class="card-body">
-        <div class="d-flex align-items-center">
-            <a href="{{ route('panel.community-events.index') }}" class="btn btn-sm btn-outline-secondary me-3">
+        <div class="d-flex align-items-start gap-2">
+            <a href="{{ route('panel.community-events.index') }}" class="btn btn-sm btn-falcon-default me-2" aria-label="Kembali ke daftar turnamen">
                 <span class="fas fa-arrow-left"></span>
             </a>
             <div>
-                <h5 class="mb-0">Pendaftaran Tim: {{ $event->title }}</h5>
-                <small class="text-muted">Komunitas Pendaftar: <strong>{{ $community->name }}</strong></small>
+                <div class="text-primary fs-11 fw-semi-bold text-uppercase mb-1">Pendaftaran Tim</div>
+                <h1 class="fs-7 mb-2 text-break">{{ $event->title }}</h1>
+                <small class="text-muted">Mewakili: <strong>{{ $community->name }}</strong></small>
             </div>
         </div>
     </div>
@@ -134,8 +166,8 @@
 
     <div class="card mb-3">
         <div class="card-header bg-body-tertiary d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <div><small class="text-muted">Tim yang sedang diisi</small><h6 class="mb-0" data-registration-active-team>{{ $activeTeamName }}</h6><span class="badge badge-subtle-primary" data-registration-active-category>{{ $activeCategoryName }}</span></div>
-            <div class="d-flex align-items-center gap-2">
+            <div><small class="text-muted">Sedang mengisi tim</small><h6 class="mb-0" data-registration-active-team>{{ $activeTeamName }}</h6><span class="badge badge-subtle-primary" data-registration-active-category>{{ $activeCategoryName }}</span></div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
                 <div id="draft-status-indicator" class="d-flex flex-wrap align-items-center gap-2 fs-11">
                     <span class="spinner-border spinner-border-sm text-primary d-none" id="draft-spinner" role="status"></span>
                     <span id="draft-status-icon" class="fas fa-check-circle text-success"></span>
@@ -150,13 +182,7 @@
         </div>
         <div class="card-body py-2">
             <p class="fs-10 mb-2">Isi dan kirim satu tim setiap kali. Tim lain tetap draft; pembayaran tiap tim terpisah.</p>
-            @if($registrationDrafts->isNotEmpty())
-                <div class="d-flex flex-wrap gap-2" aria-label="Pilih tim draft">
-                    @foreach($registrationDrafts as $draft)
-                        <a class="btn btn-sm btn-outline-secondary text-start" data-registration-team-switch href="{{ route('panel.community-events.create', ['slug' => $event->slug, 'draft_id' => $draft->id]) }}">{{ $draft->payload['team_name'] ?? 'Tim belum diberi nama' }}<small class="d-block">{{ $draft->category?->name ?? 'Kategori belum dipilih' }} · Draft</small></a>
-                    @endforeach
-                </div>
-            @endif
+
         </div>
     </div>
     <div id="registration-final-errors" class="alert alert-danger" role="alert" aria-live="assertive" hidden></div>
@@ -177,11 +203,11 @@
         <div class="col-12">
             <div class="card mb-3" id="registration-pane-category" role="region" aria-labelledby="registration-tab-category" data-registration-step-pane="category">
                 <div class="card-header bg-body-tertiary d-flex justify-content-between align-items-center py-2">
-                    <h6 class="mb-0">1. Kategori & Informasi Tim</h6>
+                    <div><h6 class="mb-1">1. Kategori & Informasi Tim</h6><p class="fs-10 text-muted mb-0">Pilih kategori, isi identitas, lalu simpan sebelum menambah atlet.</p></div>
                 </div>
                 <div class="card-body">
-                    <details class="mb-3" open>
-                        <summary class="fw-semi-bold mb-3">Tim & kategori komunitas ini: {{ $registrationDrafts->count() }} draft, {{ $registrations->count() }} terkirim</summary>
+                    <details class="mb-3">
+                        <summary class="fw-semi-bold mb-3">Ringkasan pendaftaran: {{ $registrationDrafts->count() }} draft, {{ $registrations->count() }} terkirim</summary>
 {{-- Top Summary: Kuota Kategori, Pendaftaran Diserahkan & Draft Pendaftaran Aktif --}}
 <div class="row g-3 mb-3">
     <div class="col-md-4">
@@ -192,9 +218,9 @@
                         <span class="fas fa-clipboard-check text-success fs-8"></span>
                     </div>
                     <div>
-                        <h6 class="text-700 mb-0 fs-11">Tim Terdaftar</h6>
+                        <h6 class="text-700 mb-0 fs-11">Tim Terkirim</h6>
                         <h4 class="fw-bold mb-0 text-900">{{ $registrations->count() }}</h4>
-                        <small class="text-muted fs-11">Pendaftaran resmi komunitas</small>
+                        <small class="text-muted fs-11">Menunggu atau selesai diperiksa</small>
                     </div>
                 </div>
             </div>
@@ -405,7 +431,7 @@
 
                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                         <div>
-                            <h6 class="mb-0 fs-10 text-uppercase text-600 fw-semi-bold">Pilihan Tim &amp; Draft Registrasi</h6>
+                            <h6 class="mb-0 fs-10 text-uppercase text-600 fw-semi-bold">Pilih tim yang ingin dilengkapi</h6>
                             <small class="text-muted">Isi satu tim aktif di bawah. Klik draft lain untuk beralih dan melanjutkan.</small>
                         </div>
                         <div class="d-flex align-items-center gap-2" id="step1-top-actions" style="display: {{ ($activeDraftId || $registrationDrafts->isNotEmpty()) ? 'inline-flex' : 'none' }} !important;">
@@ -508,14 +534,14 @@
                                         <small class="text-muted fs-10">Nama tim yang akan dicantumkan di bagan dan jadwal pertandingan.</small>
                                     </div>
 
-                                    <div class="mb-3">
+                                    <div class="mb-3 registration-contact">
                                         <label class="form-label" for="contact_person">Nama Manajer / PIC <span class="text-danger">*</span></label>
                                         <input type="text" class="form-control" id="contact_person" name="contact_person" maxlength="255" value="{{ old('contact_person', $activeDraft ? ($activeDraft->payload['contact_person'] ?? Auth::user()?->name) : Auth::user()?->name) }}" required>
                                     </div>
 
-                                    <div class="mb-3">
+                                    <div class="mb-3 registration-contact">
                                         <label class="form-label" for="contact_phone">Nomor WhatsApp PIC <span class="text-danger">*</span></label>
-                                        <input type="text" class="form-control" id="contact_phone" name="contact_phone" maxlength="20" value="{{ old('contact_phone', $activeDraft ? ($activeDraft->payload['contact_phone'] ?? Auth::user()?->phone_number) : Auth::user()?->phone_number) }}" required placeholder="08xxxxxxxxxx">
+                                        <input type="tel" inputmode="tel" autocomplete="tel" class="form-control" id="contact_phone" name="contact_phone" maxlength="20" value="{{ old('contact_phone', $activeDraft ? ($activeDraft->payload['contact_phone'] ?? Auth::user()?->phone_number) : Auth::user()?->phone_number) }}" required placeholder="08xxxxxxxxxx">
                                     </div>
 
                                     <div class="mb-3">
@@ -523,8 +549,8 @@
                                         <textarea class="form-control" id="notes" name="notes" rows="2" placeholder="Catatan untuk panitia...">{{ old('notes', $activeDraft ? ($activeDraft->payload['notes'] ?? '') : '') }}</textarea>
                                     </div>
 
-                                    <div class="border rounded p-3 bg-100">
-                                        <h6 class="fs-10 fw-bold mb-2">Biaya Pendaftaran per Kategori</h6>
+                                    <details class="border rounded p-3 bg-100">
+                                        <summary class="fs-10 fw-bold">Biaya & ketentuan kategori</summary>
                                         <div class="d-flex flex-column gap-1">
                                             @foreach($event->categories as $category)
                                                 <div class="mb-1">
@@ -538,12 +564,12 @@
                                                 </div>
                                             @endforeach
                                         </div>
-                                    </div>
+                                    </details>
 
                                     <div class="mt-3 pt-3 border-top">
                                         <div id="save-team-feedback" class="mb-2" style="display: none;"></div>
-                                        <div class="d-flex align-items-center gap-2">
-                                            <button type="button" class="btn btn-outline-primary" data-registration-save-team>
+                                        <div class="d-flex flex-wrap align-items-center gap-2">
+                                            <button type="button" class="btn btn-primary" data-registration-save-team>
                                                 <span class="fas fa-save me-1"></span>{{ $activeDraft ? 'Simpan & Lengkapi Tim' : 'Simpan & Daftarkan Tim' }}
                                             </button>
                                             <button type="button" class="btn btn-sm btn-outline-danger" id="btn-delete-active-team" onclick="deleteDraft(window.registrationDraftManager?.draftId)" style="display: {{ $activeDraft ? 'inline-block' : 'none' }};">
@@ -592,13 +618,13 @@
         <div class="col-12">
             <div class="card mb-3" id="registration-pane-roster" role="region" aria-labelledby="registration-tab-roster" data-registration-step-pane="roster" hidden>
                 <div class="card-header bg-body-tertiary d-flex flex-wrap justify-content-between align-items-center gap-2">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
                         <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" onclick="window.registrationDraftUI?.navigateStep('category')">
                             <span class="fas fa-arrow-left me-1"></span>Kembali ke Kategori
                         </button>
                         <h6 class="mb-0">2. Roster & Dokumen</h6>
                     </div>
-                    <span class="badge bg-primary">Jalur 1: Atlet Terverifikasi</span>
+                    <span class="badge badge-subtle-primary">Atlet, pendukung & berkas tim</span>
                 </div>
                 <div class="card-body p-3">
                     <p class="fs-10 text-muted">Lengkapi satu tim tersimpan pada satu waktu. Roster, dokumen dan tautan undangan setiap tim terpisah.</p>
@@ -856,13 +882,13 @@
 
             <div class="card mt-3" id="registration-pane-review" role="region" aria-labelledby="registration-tab-review" data-registration-step-pane="review" hidden>
                 <div class="card-header bg-body-tertiary d-flex flex-wrap justify-content-between align-items-center gap-2">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
                         <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" onclick="window.registrationDraftUI?.navigateStep('roster')">
                             <span class="fas fa-arrow-left me-1"></span>Kembali ke Roster
                         </button>
                         <h6 class="mb-0">3. Tinjau, Kirim &amp; Pemeriksaan</h6>
                     </div>
-                    <span class="badge bg-primary">Pengiriman Mandiri Tiap Tim</span>
+                    <span class="badge badge-subtle-primary">Kirim satu tim</span>
                 </div>
                 <div class="card-body p-3">
                     <div class="alert alert-subtle-info fs-10 mb-3">
@@ -922,15 +948,15 @@
             </div>
         </div>
     </div>
-    <div class="card mt-3"><div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div class="card mt-3 registration-actions"><div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
         <button type="button" class="btn btn-outline-secondary" data-registration-step-prev disabled><span class="fas fa-chevron-left me-2"></span>Kembali</button>
-        <small class="text-muted">Perubahan draft disimpan secara manual. Draft tidak mengambil kuota.</small>
+        <small class="text-muted registration-save-note">Simpan identitas tim terlebih dahulu. Perubahan roster disimpan pada draft aktif; periksa status penyimpanan sebelum keluar.</small>
         <button type="button" class="btn btn-primary" data-registration-step-next>Lanjut<span class="fas fa-chevron-right ms-2"></span></button>
     </div></div>
 </form>
 
 <div class="modal fade" id="registration-bulk-modal" tabindex="-1" aria-labelledby="registration-bulk-title" aria-describedby="registration-bulk-context" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+    <div class="modal-dialog modal-xl modal-fullscreen-sm-down modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
         <div class="modal-header"><div><h5 id="registration-bulk-title" class="modal-title">Tambah Anggota Aktif</h5><p id="registration-bulk-context" class="text-muted fs-10 mb-0"></p></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button></div>
         <div class="modal-body p-0">
             <div class="p-3 bg-body-tertiary"><label for="registration-bulk-search" class="visually-hidden">Cari anggota</label><input type="search" id="registration-bulk-search" class="form-control form-control-sm" placeholder="Cari nama atau informasi anggota"><p class="text-muted fs-10 mt-2 mb-0">Centang beberapa anggota. Untuk tenaga pendukung, pilih jabatan tiap orang. Satu orang dapat ditambahkan lagi dengan jabatan lain. Pilihan belum masuk roster sampai dikonfirmasi.</p></div>
@@ -966,6 +992,8 @@
             </div>
         </div>
     </div>
+</div>
+
 </div>
 
 @push('scripts')

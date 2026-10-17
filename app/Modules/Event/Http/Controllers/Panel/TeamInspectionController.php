@@ -42,6 +42,13 @@ class TeamInspectionController extends Controller
         return back()->with('success', 'Keputusan dokumen disimpan. Status pendaftaran tidak berubah.');
     }
 
+    public function downloadPersonnelLicense(Request $request, Event $event, string $kind, string $id, string $personnelKey): StreamedResponse
+    {
+        $this->authorizeEvent($request, $event);
+
+        return $this->inspection->downloadPersonnelLicense($event, $kind, $id, $personnelKey);
+    }
+
     private function authorizeEvent(Request $request, Event $event): void
     {
         if ($request->routeIs('admin.*')) {

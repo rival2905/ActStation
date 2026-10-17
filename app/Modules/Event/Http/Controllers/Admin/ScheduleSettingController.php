@@ -13,6 +13,7 @@ use App\Modules\Event\Http\Resources\ScheduleBreakResource;
 use App\Modules\Event\Http\Resources\ScheduleSettingResource;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventScheduleBreak;
+use App\Modules\Event\Services\EventVenueService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -75,10 +76,8 @@ class ScheduleSettingController extends Controller
         /** @var list<int> $courtIds */
         $courtIds = $request->input('venue_court_ids', []);
 
-        $event->eventCourts()->whereNotIn('venue_court_id', $courtIds)->delete();
-        foreach ($courtIds as $courtId) {
-            $event->eventCourts()->firstOrCreate(['venue_court_id' => $courtId]);
-        }
+        $venues = app(EventVenueService::class);
+        $venues->sync($event, $venues->venueIds($event), $courtIds);
 
         return CourtResource::collection($event->fresh('eventCourts')->eventCourts);
     }

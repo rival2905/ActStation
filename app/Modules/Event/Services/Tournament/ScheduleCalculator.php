@@ -12,6 +12,7 @@ use App\Modules\Event\Models\Game;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
 class ScheduleCalculator
@@ -31,7 +32,7 @@ class ScheduleCalculator
         ?int $minTeamRest = null
     ): Collection {
         return DB::transaction(function () use ($event, $games, $courts, $settings, $breaks, $minTeamRest): Collection {
-            $eventModel = $event instanceof Event ? $event : Event::findOrFail($event);
+            $eventModel = Event::query()->lockForUpdate()->findOrFail($event instanceof Event ? $event->id : $event);
 
             $settingModel = $settings ?? EventScheduleSetting::query()->where('event_id', $eventModel->id)->first();
             $dailyStartTime = $settingModel?->start_time ?? '08:00';
@@ -131,6 +132,7 @@ class ScheduleCalculator
                 $game->update([
                     'game_time' => $bestSlotStart,
                     'venue_court_id' => $venueCourtId,
+                    'venue_id' => DB::table('venue_courts')->where('id', $venueCourtId)->value('venue_id'),
                 ]);
 
                 // Advance court clock
@@ -150,6 +152,27 @@ class ScheduleCalculator
 
             return $scheduledGames;
         });
+    }
+
+    public function assertCourtAvailable(Game $game, ?int $courtId, mixed $time): void
+    {
+        if ($courtId === null || $time === null) {
+            return;
+        }
+        $start = Carbon::parse($time);
+        $setting = EventScheduleSetting::where('event_id', $game->event_id)->first();
+        $duration = max(1, $this->getGameDuration($game, $setting?->durations));
+        $gap = max(0, (int) $setting?->break_between_games);
+        $end = $start->copy()->addMinutes($duration + $gap);
+        $others = Game::where('event_id', $game->event_id)->where('id', '!=', $game->id)
+            ->where('venue_court_id', $courtId)->whereNotNull('game_time')->where('is_bye', false)
+            ->whereNotIn('game_status', ['cancelled', 'bye'])->get();
+        foreach ($others as $other) {
+            $otherEnd = $other->game_time->copy()->addMinutes(max(1, $this->getGameDuration($other, $setting?->durations)) + $gap);
+            if ($start->lt($otherEnd) && $end->gt($other->game_time)) {
+                throw ValidationException::withMessages(['venue_court_id' => 'Lapangan dipakai laga lain pada rentang waktu ini. Ubah waktu atau pilih lapangan lain.']);
+            }
+        }
     }
 
     private function getGameDuration(Game $game, mixed $durations): int

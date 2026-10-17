@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventCategory;
 use App\Modules\Event\Models\EventParticipant;
+use App\Modules\Event\Models\Game;
 use App\Modules\MasterData\Models\DevelopmentLevel;
 use App\Modules\MasterData\Models\SportCategory;
 use App\Modules\Ticketing\Models\Ticket;
@@ -104,6 +105,9 @@ test('pengunjung publik dapat melihat katalog turnamen dan detail event', functi
 });
 
 test('penonton dapat membeli tiket pertandingan tanpa wajib login di awal', function (): void {
+    $this->event->update(['ticket_sales_starts_at' => now()->subMinute()]);
+    Game::create(['event_id' => $this->event->id, 'event_category_id' => $this->category->id,
+        'game_time' => $this->event->starts_at, 'game_status' => 'scheduled', 'is_bye' => false]);
     $response = $this->post(route('events.tickets.checkout', $this->event->slug), [
         'ticket_category_id' => $this->ticketCategory->id,
         'quantity' => 2,

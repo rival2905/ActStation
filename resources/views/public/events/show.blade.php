@@ -108,9 +108,11 @@
                 <a href="{{ route('events.register', $event->slug) }}" class="btn btn-primary btn-sm me-2">
                     <span class="fas fa-clipboard-check me-1"></span>Daftar Event
                 </a>
+@if($event->ticketSalesAreOpen())
                 <a href="{{ route('events.tickets', $event->slug) }}" class="btn btn-outline-success btn-sm">
                     <span class="fas fa-ticket-alt me-1"></span>Beli Tiket
                 </a>
+@endif
             </div>
         </div>
     </div>
@@ -267,13 +269,17 @@
                 <h6 class="mb-0">Informasi Lokasi & Venue</h6>
             </div>
             <div class="card-body fs-10">
+                @forelse($eventVenues as $location)
                 <div class="d-flex align-items-start mb-2">
                     <span class="fas fa-map-marker-alt text-danger me-2 mt-1"></span>
                     <div>
-                        <div class="fw-bold">{{ $event->venue?->name ?? 'Venue Terdaftar' }}</div>
-                        <p class="text-muted mb-0">{{ $event->venue?->address ?? 'Alamat venue terverifikasi di master data' }}</p>
+                        <div class="fw-bold">{{ $location->name }}</div>
+                        <p class="text-muted mb-0">{{ $location->address ?? 'Alamat belum tersedia' }}</p>
                     </div>
                 </div>
+                @empty
+                    <p class="mb-0">Venue belum ditentukan.</p>
+                @endforelse
             </div>
         </div>
 

@@ -27,13 +27,15 @@ class PublicTicketPurchaseController extends Controller
             ->whereIn('status', ['published', 'ongoing', 'completed'])
             ->firstOrFail();
 
+        $ticketSalesOpen = $event->ticketSalesAreOpen();
+
         $ticketCategories = TicketCategory::query()
             ->where('event_id', $event->id)
             ->where('is_active', true)
             ->with(['game.category', 'game.teamA', 'game.teamB'])
-            ->get();
+            ->get()->filter(fn (TicketCategory $category) => $category->isOnSale())->values();
 
-        return view('public.events.tickets', compact('event', 'ticketCategories'));
+        return view('public.events.tickets', compact('event', 'ticketCategories', 'ticketSalesOpen'));
     }
 
     public function checkout(Request $request, string $slug): RedirectResponse
@@ -42,6 +44,8 @@ class PublicTicketPurchaseController extends Controller
             ->where('slug', $slug)
             ->whereIn('status', ['published', 'ongoing'])
             ->firstOrFail();
+
+        abort_unless($event->ticketSalesAreOpen(), 403, 'Penjualan tiket belum dibuka atau jadwal pertandingan belum tersedia.');
 
         $validated = $request->validate([
             'ticket_category_id' => ['required', 'integer', 'exists:ticket_categories,id'],
@@ -56,6 +60,8 @@ class PublicTicketPurchaseController extends Controller
             ->where('id', $validated['ticket_category_id'])
             ->where('event_id', $event->id)
             ->firstOrFail();
+
+        abort_unless($category->isOnSale(), 403, 'Kategori tiket belum tersedia untuk dibeli, habis, atau jadwal laganya belum tersedia.');
 
         $quantity = (int) $validated['quantity'];
         if (($category->sold_count + $quantity) > $category->quota) {

@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace App\Modules\MasterData\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\MasterData\Http\Requests\UpdateVenueCreationSettingsRequest;
 use App\Modules\MasterData\Http\Requests\VenueRequest;
 use App\Modules\MasterData\Models\Venue;
+use App\Modules\MasterData\Services\VenueCatalogService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
@@ -43,7 +46,23 @@ class VenueController extends Controller
         $venues = $query->latest()->paginate(15)->withQueryString();
         $filters = $request->only(['search', 'province_id', 'city_id', 'is_active']);
 
-        return view('admin.venues.index', compact('venues', 'filters'));
+        $allowPanelVenueCreation = app(VenueCatalogService::class)->allowsPanelCreation(false);
+        $allowPanelCourtCreation = app(VenueCatalogService::class)->allowsPanelCreation(true);
+
+        return view('admin.venues.index', compact('venues', 'filters', 'allowPanelVenueCreation', 'allowPanelCourtCreation'));
+    }
+
+    public function updateCreationSettings(UpdateVenueCreationSettingsRequest $request): RedirectResponse
+    {
+        DB::transaction(function () use ($request): void {
+            foreach ($request->validated() as $key => $value) {
+                DB::table('settings')->updateOrInsert(['group' => 'venues', 'key' => $key], [
+                    'value' => $value ? '1' : '0', 'type' => 'boolean', 'updated_at' => now(),
+                ]);
+            }
+        });
+
+        return redirect()->route('admin.venues.index')->with('success', 'Izin penambahan venue dan lapangan oleh organizer/panitia diperbarui.');
     }
 
     public function create(): View

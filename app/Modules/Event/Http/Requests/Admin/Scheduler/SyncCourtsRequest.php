@@ -19,8 +19,8 @@ class SyncCourtsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'venue_court_ids' => ['required', 'array'],
-            'venue_court_ids.*' => ['integer'],
+            'venue_court_ids' => ['present', 'array', 'max:500'],
+            'venue_court_ids.*' => ['required', 'integer', 'distinct'],
         ];
     }
 }

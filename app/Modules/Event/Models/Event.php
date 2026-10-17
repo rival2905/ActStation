@@ -39,6 +39,7 @@ class Event extends Model
         'starts_at',
         'ends_at',
         'registration_deadline',
+        'ticket_sales_starts_at',
         'cancel_reason',
         'venue_approval_doc',
         'kyc_notes',
@@ -64,12 +65,23 @@ class Event extends Model
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
             'registration_deadline' => 'datetime',
+            'ticket_sales_starts_at' => 'datetime',
         ];
     }
 
     protected static function newFactory(): EventFactory
     {
         return EventFactory::new();
+    }
+
+    public function ticketSalesAreOpen(): bool
+    {
+        return in_array($this->status, ['published', 'ongoing'], true)
+            && $this->ticket_sales_starts_at !== null
+            && $this->ticket_sales_starts_at->lte(now())
+            && $this->ends_at !== null && $this->ends_at->gt(now())
+            && $this->games()->whereNotNull('game_time')->where('game_time', '>=', now())
+                ->where('is_bye', false)->whereNotIn('game_status', ['finished', 'cancelled'])->exists();
     }
 
     public function registrationPriceLabel(): string

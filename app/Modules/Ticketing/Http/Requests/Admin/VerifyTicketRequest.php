@@ -18,6 +18,8 @@ class VerifyTicketRequest extends FormRequest
         return [
             'token' => ['required', 'string', 'max:255'],
             'gate' => ['nullable', 'string', 'max:50'],
+            'venue_id' => ['nullable', 'integer'],
+            'venue_court_id' => ['nullable', 'integer'],
             'notes' => ['nullable', 'string', 'max:500'],
         ];
     }

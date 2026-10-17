@@ -42,6 +42,35 @@
 
 @include('events._workspace_nav', ['event' => $event, 'workspace' => $workspace, 'activeTab' => 'ticketing'])
 
+<div class="card mb-3">
+    <div class="card-header"><h5 class="mb-0">Pembukaan penjualan tiket</h5></div>
+    <div class="card-body">
+        <p class="mb-2">Atur satu kali untuk seluruh hari event. Setelah dibuka, tiket hari berikutnya juga dapat dipesan tanpa pengaturan pembukaan harian.</p>
+        <p class="fs-10 text-muted">Tombol Beli Tiket hanya muncul setelah waktu pembukaan tercapai dan ada pertandingan mendatang yang sudah dijadwalkan. Jadwal kosong, laga tanpa waktu, atau bye tidak membuka penjualan.</p>
+        <div class="alert {{ $event->ticketSalesAreOpen() ? 'alert-success' : 'alert-warning' }} py-2" role="status">
+            {{ $event->ticketSalesAreOpen() ? 'Penjualan dibuka sesuai waktu dan jadwal event.' : 'Penjualan belum dibuka atau jadwal pertandingan belum tersedia.' }}
+        </div>
+        @if($workspace !== 'admin' || auth()->user()?->can('ticket-category.update'))
+        <form method="POST" action="{{ route($workspaceRoutePrefix.'ticketing.sales.update', $event) }}">
+            @csrf
+            @method('PUT')
+            <div class="row g-2 align-items-end">
+                <div class="col-md-6">
+                    <label class="form-label" for="ticket_sales_starts_at">Mulai pembelian tiket (WIB)</label>
+                    <input type="datetime-local" class="form-control @error('ticket_sales_starts_at') is-invalid @enderror" id="ticket_sales_starts_at" name="ticket_sales_starts_at" value="{{ old('ticket_sales_starts_at', $event->ticket_sales_starts_at?->copy()->timezone('Asia/Jakarta')->format('Y-m-d\TH:i')) }}" aria-describedby="ticket-sales-help">
+                    @error('ticket_sales_starts_at')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                </div>
+                <div class="col-md-auto"><button class="btn btn-primary" type="submit">Simpan pembukaan</button></div>
+                @if(($workspace === 'admin' && auth()->user()?->can('event-schedule.view')) || ($workspace !== 'admin' && app(\App\Modules\Event\Services\EventCommitteeAccess::class)->allows($event, auth()->user(), 'schedule.manage')))
+                <div class="col-md-auto"><a class="btn btn-outline-secondary" href="{{ route($workspaceRoutePrefix.'scheduling.index', $event) }}">Periksa jadwal</a></div>
+                @endif
+            </div>
+            <p id="ticket-sales-help" class="fs-10 text-muted mt-2 mb-0">Kosongkan lalu simpan untuk menutup penjualan. Tanpa pengaturan, tiket belum dijual. Waktu WIB berlaku untuk semua hari event; tidak mengubah masa berlaku tiap jenis tiket.</p>
+        </form>
+        @endif
+    </div>
+</div>
+
 <!-- 3 Kartu Ringkasan Penjualan & Omzet (PRD_EXTERNAL §4.9 A.1) -->
 <div class="row g-3 mb-4">
     <div class="col-md-4">
@@ -174,7 +203,7 @@
                                     data-round="{{ $roundLabel }}"
                                     data-category="{{ $catLabel }}"
                                     @selected(request('game_id') == $g->id)>
-                                    [{{ $timeLabel }}] {{ $teamAName }} vs {{ $teamBName }} ({{ $roundLabel }} - {{ $catLabel }})
+                                    [{{ $timeLabel }}] {{ $teamAName }} vs {{ $teamBName }} ({{ $roundLabel }} - {{ $catLabel }}) — {{ collect($locations['courts'])->firstWhere('id', (int)$g->venue_court_id)['name'] ?? 'Lapangan belum diatur' }}
                                 </option>
                             @endforeach
                         </select>
@@ -182,6 +211,7 @@
                             Tiket per-game akan mengikat akurat ke pertandingan yang dijadwalkan di <a href="{{ route($workspaceRoutePrefix.'scheduling.index', $event->id) }}" target="_blank">Penjadwalan (Scheduling)</a>.
                         </div>
                     </div>
+                    @include('events.ticket-location-select', ['ticketCategory' => null, 'locationId' => 'new-ticket'])
                     <div class="mb-3">
                         <label class="form-label fw-bold" for="ticket_desc">Keterangan / Fasilitas Tiket</label>
                         <textarea class="form-control form-control-sm" id="ticket_desc" name="description" rows="2" placeholder="Fasilitas tiket..."></textarea>
@@ -258,7 +288,7 @@
                 <tbody>
                     @forelse($categories as $tc)
                     <tr>
-                        <td class="fw-bold">{{ $tc->name }}</td>
+<td class="fw-bold">{{ $tc->name }}<div class="fs-11 text-muted fw-normal">{{ $tc->locationLabel() }}</div></td>
                         <td>Rp {{ number_format((float) $tc->price, 0, ',', '.') }}</td>
                         <td>
                             <span class="badge bg-dark">{{ strtoupper($tc->seating_tier ?? 'STANDARD') }}</span>
@@ -338,11 +368,12 @@
                                                                 $roundLabel = $g->round_label ?: ($g->match_label ?: 'Match #'.$g->id);
                                                             @endphp
                                                             <option value="{{ $g->id }}" @selected($tc->game_id === $g->id)>
-                                                                [{{ $timeLabel }}] {{ $teamAName }} vs {{ $teamBName }} ({{ $roundLabel }})
+                                                                [{{ $timeLabel }}] {{ $teamAName }} vs {{ $teamBName }} ({{ $roundLabel }}) — {{ collect($locations['courts'])->firstWhere('id', (int)$g->venue_court_id)['name'] ?? 'Lapangan belum diatur' }}
                                                             </option>
                                                         @endforeach
                                                     </select>
                                                 </div>
+                                                <div class="col-12">@include('events.ticket-location-select', ['ticketCategory' => $tc, 'locationId' => 'edit-ticket-'.$tc->id])</div>
                                                 <div class="col-md-4">
                                                     <label class="form-label" for="ticket_tier_{{ $tc->id }}">Kenyamanan kursi</label>
                                                     <select class="form-select" id="ticket_tier_{{ $tc->id }}" name="seating_tier" required>
@@ -387,6 +418,27 @@
 </div>
 
 @push('scripts')
+<script>
+document.querySelectorAll('[data-ticket-location]').forEach(fieldset => {
+    const form = fieldset.closest('form');
+    const scope = fieldset.querySelector('[name=location_scope]');
+    const access = form.querySelector('[name=access_type]');
+    const sync = () => {
+        const perGame = access.value === 'per_game';
+        scope.disabled = perGame;
+        ['venue', 'court'].forEach(type => {
+            const group = fieldset.querySelector('[data-location-' + type + ']');
+            const select = group.querySelector('select');
+            const visible = !perGame && scope.value === type;
+            group.hidden = !visible;
+            select.disabled = !visible;
+            select.required = visible;
+        });
+    };
+    form.addEventListener('change', sync);
+    sync();
+});
+</script>
 <script>
 function onAccessTypeChange() {
     const access = document.getElementById('access_type').value;

@@ -31,7 +31,9 @@ class TicketValidationController extends Controller
                 $request->input('token'),
                 (int) auth()->id(),
                 $request->input('gate'),
-                $request->input('notes')
+                $request->input('notes'),
+                $request->filled('venue_id') ? $request->integer('venue_id') : null,
+                $request->filled('venue_court_id') ? $request->integer('venue_court_id') : null
             );
 
             return redirect()

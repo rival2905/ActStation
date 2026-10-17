@@ -7,6 +7,7 @@ namespace App\Modules\Event\Http\Controllers\Public;
 use App\Http\Controllers\Controller;
 use App\Modules\Community\Models\Document;
 use App\Modules\Event\Models\Event;
+use App\Modules\Event\Services\EventVenueService;
 use App\Modules\MasterData\Models\SportCategory;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -121,7 +122,9 @@ class PublicEventController extends Controller
             ])
             ->firstOrFail();
 
-        return view('public.events.show', compact('event'));
+        $eventVenues = DB::table('venues')->whereIn('id', app(EventVenueService::class)->venueIds($event))->orderBy('name')->get(['id', 'name', 'address']);
+
+        return view('public.events.show', compact('event', 'eventVenues'));
     }
 
     public function downloadDocument(string $slug, Document $document): StreamedResponse|RedirectResponse

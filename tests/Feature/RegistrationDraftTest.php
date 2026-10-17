@@ -823,7 +823,7 @@ test('submitted draft files cleared from DB atomically and show reports no tombs
 
     $draft = RegistrationDraft::findOrFail($draftId);
     expect($draft->isSubmitted())->toBeTrue();
-    expect($draft->files)->toBe(['team_documents' => [], 'athlete_documents' => []]);
+    expect($draft->files)->toBe(['team_documents' => [], 'athlete_documents' => [], 'personnel_licenses' => []]);
 
     $showResponse = $this->actingAs($this->manager)
         ->getJson(route('panel.registration-drafts.show', ['slug' => $this->event->slug, 'draft' => $draftId]));
@@ -831,7 +831,8 @@ test('submitted draft files cleared from DB atomically and show reports no tombs
     $showResponse->assertOk()
         ->assertJsonPath('draft.is_submitted', true)
         ->assertJsonPath('draft.files.team_documents', [])
-        ->assertJsonPath('draft.files.athlete_documents', []);
+        ->assertJsonPath('draft.files.athlete_documents', [])
+        ->assertJsonPath('draft.files.personnel_licenses', []);
 
     $payload = $showResponse->json('draft.payload');
     expect($payload)->not->toHaveKey('_tombstone')

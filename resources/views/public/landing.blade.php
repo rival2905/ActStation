@@ -216,7 +216,9 @@
                                 </div>
                                 <div class="mt-auto d-flex gap-2">
                                     <a href="{{ route('events.show', $event->slug) }}" class="btn btn-outline-primary btn-sm flex-grow-1">Detail Turnamen</a>
+@if($event->ticketSalesAreOpen())
                                     <a href="{{ route('events.tickets', $event->slug) }}" class="btn btn-primary btn-sm">Beli Tiket</a>
+@endif
                                 </div>
                             </div>
                         </div>

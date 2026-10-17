@@ -46,6 +46,15 @@
                     @enderror
                 </div>
 
+                <div class="col-md-3">
+                    <label class="form-label" for="validation-venue">ID venue pintu masuk</label>
+                    <input class="form-control" type="number" min="1" id="validation-venue" name="venue_id" value="{{ old('venue_id') }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="validation-court">ID lapangan pintu masuk</label>
+                    <input class="form-control" type="number" min="1" id="validation-court" name="venue_court_id" value="{{ old('venue_court_id') }}">
+                    <p class="fs-11 text-muted">Gunakan workspace event untuk memilih lokasi bernama. Wajib sesuai cakupan tiket terbatas.</p>
+                </div>
                 <div class="col-md-4">
                     <label class="form-label fw-semibold" for="gateInput">Pintu Masuk (Gate)</label>
                     <input class="form-control @error('gate') is-invalid @enderror" id="gateInput" type="text" name="gate" value="{{ old('gate', request('gate', 'Gate Utama')) }}" placeholder="Contoh: Gate 1, Gate Barat" />

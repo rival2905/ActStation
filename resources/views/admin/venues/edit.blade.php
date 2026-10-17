@@ -2,6 +2,18 @@
 
 @section('title', 'Edit Venue - ActStation')
 
+@push('styles')
+<link rel="stylesheet" href="{{ asset('assets/vendors/leaflet/leaflet.css') }}" />
+<style>
+    #venueMap {
+        height: 320px;
+        width: 100%;
+        border-radius: 0.375rem;
+        z-index: 1;
+    }
+</style>
+@endpush
+
 @section('content')
 <div class="row gy-3 mb-3">
     <div class="col-12">
@@ -68,20 +80,54 @@
                     </div>
                 </div>
 
-                <div class="col-md-6">
-                    <label class="form-label" for="latitude">Latitude</label>
-                    <input class="form-control @error('latitude') is-invalid @enderror" id="latitude" type="text" name="latitude" value="{{ old('latitude', $venue->latitude) }}" placeholder="Contoh: -6.917464" />
-                    @error('latitude')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                    @enderror
-                </div>
+                <div class="col-12">
+                    <div class="border rounded p-3 bg-body-tertiary">
+                        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                            <div>
+                                <h6 class="fs-11 fw-bold text-700 mb-0">
+                                    <span class="fas fa-map-marked-alt text-primary me-1"></span>Titik Koordinat Geospasial
+                                </h6>
+                                <small class="text-600 fs-11">Pilih titik lokasi venue di peta atau masukkan koordinat secara manual.</small>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-xs btn-outline-primary" id="btnGetCurrentLocation">
+                                    <span class="fas fa-crosshairs me-1"></span>Gunakan Lokasi Saya
+                                </button>
+                                <button type="button" class="btn btn-xs btn-outline-danger" id="btnClearCoordinates">
+                                    <span class="fas fa-times me-1"></span>Hapus Titik
+                                </button>
+                            </div>
+                        </div>
 
-                <div class="col-md-6">
-                    <label class="form-label" for="longitude">Longitude</label>
-                    <input class="form-control @error('longitude') is-invalid @enderror" id="longitude" type="text" name="longitude" value="{{ old('longitude', $venue->longitude) }}" placeholder="Contoh: 107.619123" />
-                    @error('longitude')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                    @enderror
+                        <div id="geoAlert" class="alert alert-warning alert-dismissible py-1 px-2 fs-11 d-none" role="alert">
+                            <span id="geoAlertText"></span>
+                            <button type="button" class="btn-close py-2" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-6">
+                                <label class="form-label fs-11 fw-semi-bold mb-1" for="latitude">Latitude</label>
+                                <input class="form-control form-control-sm @error('latitude') is-invalid @enderror" id="latitude" name="latitude" type="number" step="any" min="-90" max="90" value="{{ old('latitude', $venue->latitude) }}" placeholder="-6.9175000" />
+                                @error('latitude')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fs-11 fw-semi-bold mb-1" for="longitude">Longitude</label>
+                                <input class="form-control form-control-sm @error('longitude') is-invalid @enderror" id="longitude" name="longitude" type="number" step="any" min="-180" max="180" value="{{ old('longitude', $venue->longitude) }}" placeholder="107.6191000" />
+                                @error('longitude')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        </div>
+
+                        <div class="position-relative">
+                            <div id="venueMap" role="region" aria-label="Peta pemilihan lokasi venue" tabindex="0"></div>
+                        </div>
+                        <small class="text-muted fs-11 d-block mt-1">
+                            <i class="fas fa-info-circle me-1"></i>Klik pada peta atau geser penanda (marker) untuk menentukan titik lokasi. Nilai latitude dan longitude akan terisi otomatis.
+                        </small>
+                    </div>
                 </div>
 
                 <div class="col-12">
@@ -142,3 +188,144 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script src="{{ asset('assets/vendors/leaflet/leaflet.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var mapEl = document.getElementById('venueMap');
+    if (!mapEl || typeof L === 'undefined') return;
+
+    L.Icon.Default.imagePath = "{{ asset('assets/img/icons/leaflet') }}/";
+
+    var latInput = document.getElementById('latitude');
+    var lngInput = document.getElementById('longitude');
+
+    function isValidCoord(lat, lng) {
+        if (lat === '' || lng === '' || lat === null || lng === null) return false;
+        var nLat = Number(lat);
+        var nLng = Number(lng);
+        return !isNaN(nLat) && !isNaN(nLng) && nLat >= -90 && nLat <= 90 && nLng >= -180 && nLng <= 180;
+    }
+
+    function updateInputs(lat, lng) {
+        if (latInput) latInput.value = Number(lat).toFixed(7);
+        if (lngInput) lngInput.value = Number(lng).toFixed(7);
+    }
+
+    var initLat = latInput ? latInput.value.trim() : '';
+    var initLng = lngInput ? lngInput.value.trim() : '';
+    var hasCoords = isValidCoord(initLat, initLng);
+
+    var defaultCenter = [-6.9175, 107.6191];
+    var mapCenter = hasCoords ? [Number(initLat), Number(initLng)] : defaultCenter;
+    var mapZoom = hasCoords ? 15 : 11;
+
+    var map = L.map('venueMap').setView(mapCenter, mapZoom);
+    setTimeout(function() { map.invalidateSize(); }, 200);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 18
+    }).addTo(map);
+
+    var marker = null;
+    if (hasCoords) {
+        marker = L.marker(mapCenter, { draggable: true }).addTo(map);
+        marker.on('dragend', function(e) {
+            var pos = e.target.getLatLng();
+            updateInputs(pos.lat, pos.lng);
+        });
+    }
+
+    map.on('click', function(e) {
+        updateInputs(e.latlng.lat, e.latlng.lng);
+        if (marker) {
+            marker.setLatLng(e.latlng);
+        } else {
+            marker = L.marker(e.latlng, { draggable: true }).addTo(map);
+            marker.on('dragend', function(evt) {
+                var pos = evt.target.getLatLng();
+                updateInputs(pos.lat, pos.lng);
+            });
+        }
+    });
+
+    function syncFromInputs() {
+        var lat = latInput ? latInput.value.trim() : '';
+        var lng = lngInput ? lngInput.value.trim() : '';
+        if (isValidCoord(lat, lng)) {
+            var target = [Number(lat), Number(lng)];
+            if (marker) {
+                marker.setLatLng(target);
+            } else {
+                marker = L.marker(target, { draggable: true }).addTo(map);
+                marker.on('dragend', function(evt) {
+                    var pos = evt.target.getLatLng();
+                    updateInputs(pos.lat, pos.lng);
+                });
+            }
+            map.setView(target, 15);
+        }
+    }
+
+    if (latInput) latInput.addEventListener('input', syncFromInputs);
+    if (lngInput) lngInput.addEventListener('input', syncFromInputs);
+
+    var clearBtn = document.getElementById('btnClearCoordinates');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function() {
+            if (latInput) latInput.value = '';
+            if (lngInput) lngInput.value = '';
+            if (marker) {
+                map.removeLayer(marker);
+                marker = null;
+            }
+        });
+    }
+
+    var geoBtn = document.getElementById('btnGetCurrentLocation');
+    if (geoBtn) {
+        geoBtn.addEventListener('click', function() {
+            var alertEl = document.getElementById('geoAlert');
+            var alertText = document.getElementById('geoAlertText');
+            if (!navigator.geolocation) {
+                if (alertEl && alertText) {
+                    alertText.textContent = 'Fitur geolokasi tidak didukung browser Anda.';
+                    alertEl.classList.remove('d-none');
+                }
+                return;
+            }
+            geoBtn.disabled = true;
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    geoBtn.disabled = false;
+                    var lat = position.coords.latitude;
+                    var lng = position.coords.longitude;
+                    updateInputs(lat, lng);
+                    var target = [lat, lng];
+                    if (marker) {
+                        marker.setLatLng(target);
+                    } else {
+                        marker = L.marker(target, { draggable: true }).addTo(map);
+                        marker.on('dragend', function(evt) {
+                            var pos = evt.target.getLatLng();
+                            updateInputs(pos.lat, pos.lng);
+                        });
+                    }
+                    map.setView(target, 16);
+                },
+                function(err) {
+                    geoBtn.disabled = false;
+                    if (alertEl && alertText) {
+                        alertText.textContent = 'Gagal mendeteksi lokasi: ' + (err.message || 'Izin akses ditolak');
+                        alertEl.classList.remove('d-none');
+                    }
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        });
+    }
+});
+</script>
+@endpush

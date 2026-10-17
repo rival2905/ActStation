@@ -94,7 +94,7 @@ test('step1 renders add team action and accordion with active editable item and 
     assert.match(view, /\(string\)\s*\$draft->id\s*===\s*\$activeDraftId/);
 
     // Overview tables remain native details
-    assert.match(categoryView, /<details[^>]*class="mb-3"[^>]*open>/);
+    assert.match(categoryView, /<details class="mb-3">/);
 });
 
 test('registration form has data-autosave="false" and removes automatic saving copy', () => {

@@ -111,7 +111,7 @@ export function useScheduler(apiBase, eventId) {
                 });
             }
             state.games = loadedGames;
-            state.courts = Array.isArray(data.courts) ? data.courts : [];
+            state.courts = Array.isArray(data.courts) ? data.courts.map(court => ({ ...court, id: court.venue_court_id })) : [];
             if (Array.isArray(data.all_courts)) state.allCourts = data.all_courts;
             if (data.settings) state.settings = { ...state.settings, ...data.settings };
             state.breaks = Array.isArray(data.breaks) ? data.breaks : [];

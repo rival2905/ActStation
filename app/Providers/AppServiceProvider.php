@@ -6,6 +6,7 @@ use App\Contracts\AthleteDocumentVault;
 use App\Contracts\CommunityLookup;
 use App\Contracts\ContextualAthleteInvitation;
 use App\Contracts\DevelopmentLevelLookup;
+use App\Contracts\EventLocationLookup;
 use App\Contracts\EventLookup;
 use App\Contracts\Events\PaymentRefunded;
 use App\Contracts\Events\PaymentSucceeded;
@@ -15,6 +16,7 @@ use App\Contracts\RosterProvider;
 use App\Contracts\SchoolLookup;
 use App\Contracts\TeamDocumentInspection;
 use App\Contracts\TeamPersonnelProvider;
+use App\Contracts\VenueCatalog;
 use App\Listeners\AuthActivitySubscriber;
 use App\Models\User;
 use App\Modules\Community\Models\Community;
@@ -28,6 +30,7 @@ use App\Modules\Community\Services\TeamDocumentInspectionService;
 use App\Modules\Community\Services\TeamPersonnelProviderService;
 use App\Modules\Event\Listeners\HandleRegistrationPaymentRefunded as EventPaymentRefunded;
 use App\Modules\Event\Listeners\HandleRegistrationPaymentSucceeded as EventPaymentSucceeded;
+use App\Modules\Event\Services\EventLocationService;
 use App\Modules\Event\Services\EventLookupService;
 use App\Modules\Event\Services\EventRegistrationEmailService;
 use App\Modules\Event\Services\RegistrationDraftService;
@@ -35,6 +38,7 @@ use App\Modules\Marketplace\Listeners\HandlePaymentRefunded as MarketplacePaymen
 use App\Modules\Marketplace\Listeners\HandlePaymentSucceeded as MarketplacePaymentSucceeded;
 use App\Modules\MasterData\Services\DevelopmentLevelLookupService;
 use App\Modules\MasterData\Services\SchoolLookupService;
+use App\Modules\MasterData\Services\VenueCatalogService;
 use App\Modules\Ticketing\Listeners\HandlePaymentRefunded;
 use App\Modules\Ticketing\Listeners\HandlePaymentSucceeded;
 use App\Services\OfficialDirectoryService;
@@ -61,6 +65,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(OfficialDirectory::class, OfficialDirectoryService::class);
         $this->app->bind(DevelopmentLevelLookup::class, DevelopmentLevelLookupService::class);
         $this->app->bind(SchoolLookup::class, SchoolLookupService::class);
+        $this->app->bind(VenueCatalog::class, VenueCatalogService::class);
+        $this->app->bind(EventLocationLookup::class, EventLocationService::class);
         $this->app->singleton(EventRegistrationEmailService::class);
     }
 

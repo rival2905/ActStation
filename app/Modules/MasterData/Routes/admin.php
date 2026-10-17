@@ -32,6 +32,8 @@ Route::delete('sport-categories/{sportCategory}', [SportCategoryController::clas
     ->name('sport-categories.destroy');
 
 // Venues
+Route::put('venues/creation-settings', [VenueController::class, 'updateCreationSettings'])
+    ->middleware('permission:venue.update')->name('venues.creation-settings.update');
 Route::get('venues', [VenueController::class, 'index'])
     ->middleware('permission:venue.view')
     ->name('venues.index');

@@ -40,6 +40,15 @@
     </li>
 </ul>
 
+@if(! $ticketSalesOpen)
+<div class="alert alert-info" role="status">
+    <h5>Penjualan tiket belum dibuka</h5>
+    @if($event->ticket_sales_starts_at)
+        <p class="mb-1">Rencana pembukaan: {{ $event->ticket_sales_starts_at->copy()->timezone('Asia/Jakarta')->format('d M Y H:i') }} WIB.</p>
+    @endif
+    <p class="mb-0">Pembelian tersedia setelah waktu pembukaan tercapai dan jadwal pertandingan tersedia. Event yang sudah selesai tidak menerima pembelian.</p>
+</div>
+@else
 <div class="row g-4">
     <!-- Katalog Kategori Tiket -->
     <div class="col-lg-7">
@@ -64,7 +73,8 @@
                                 @endif
                                 <span class="badge bg-light text-muted border">{{ strtoupper($tc->access_type ?? 'FULLDAY') }}</span>
                             </div>
-                            <h5 class="fw-bold mb-1">{{ $tc->name }}</h5>
+<h5 class="fw-bold mb-1">{{ $tc->name }}</h5>
+                            <p class="fs-10 text-primary mb-1">{{ $tc->locationLabel() }}</p>
                             @if($tc->access_type === 'per_game' && $tc->game)
                                 <div class="p-2 my-2 rounded bg-light border border-primary-subtle fs-11">
                                     <div class="fw-bold text-primary">
@@ -175,6 +185,8 @@
         </div>
     </div>
 </div>
+
+@endif
 
 @push('scripts')
 <script>

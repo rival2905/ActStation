@@ -11,7 +11,7 @@
             </a>
             <div>
                 <h5 class="mb-0">Buat Turnamen Baru (Draf Event)</h5>
-                <small class="text-muted">Cabang Olahraga: <strong>Basketball</strong> | Pastikan bukti izin venue telah disiapkan.</small>
+                <small class="text-muted">Pilih cabang olahraga serta venue dan lapangan yang digunakan. Siapkan bukti izin setiap lokasi.</small>
             </div>
         </div>
     </div>
@@ -116,16 +116,7 @@
                 </div>
                 <div class="card-body">
                     <div class="mb-3">
-                        <label class="form-label fs-10 fw-bold" for="venue_id">Pilih Venue Terdaftar <span class="text-danger">*</span></label>
-                        <select class="form-select form-select-sm" id="venue_id" name="venue_id" required>
-                            <option value="">-- Pilih GOR / Gelanggang --</option>
-                            @foreach($venues as $v)
-                            <option value="{{ $v->id }}" {{ old('venue_id') == $v->id ? 'selected' : '' }}>
-                                {{ $v->name }} ({{ $v->city_id ?? 'Kota' }})
-                            </option>
-                            @endforeach
-                        </select>
-                        <small class="text-muted fs-11">Penyelenggara wajib memilih venue berstandar dari master data.</small>
+                        @include('events.venues._picker')
                     </div>
 
                     <div class="mb-3">

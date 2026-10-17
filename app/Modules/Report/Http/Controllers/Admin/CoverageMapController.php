@@ -43,8 +43,11 @@ class CoverageMapController extends Controller
         return response()->json($result);
     }
 
-    public function details(string $type, int|string $id): JsonResponse
+    public function details(Request $request, ?string $type = null, int|string|null $id = null): JsonResponse
     {
+        $type = $type ?? (string) $request->input('type', '');
+        $id = $id ?? $request->input('id', '');
+
         if (! in_array($type, ['school', 'community', 'venue'], true) || ! is_numeric($id) || (int) $id <= 0) {
             abort(404);
         }

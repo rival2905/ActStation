@@ -103,6 +103,7 @@ test('organizer melihat 10 tab navigasi workspace di seluruh sub-menu event', fu
     'Ringkasan event' => ['panel.organizer.events.manage', 'overview'],
     'Personel' => ['panel.organizer.events.personnel.edit', 'personnel'],
     'Panitia' => ['panel.organizer.committee.index', 'committee'],
+    'Venue & Lapangan' => ['panel.organizer.venues.edit', 'venues'],
     'Kategori' => ['panel.organizer.categories.index', 'categories'],
     'Dokumen Event' => ['panel.organizer.documents.index', 'documents'],
     'Tim Peserta' => ['panel.organizer.teams.index', 'teams'],

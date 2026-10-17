@@ -16,14 +16,35 @@
         <p class="text-muted fs-10">Anggota aktif dari daftar Pelatih &amp; Tenaga Pendukung serta pengurus aktif dapat dipilih. Orang baru melalui link menunggu persetujuan keanggotaan di /panel/coaches, lalu kembali untuk bergabung roster.</p>
         @endif
         @forelse(($personnelOptions['requirements'] ?? []) as $requirement)
-        <fieldset class="border rounded p-3 mb-3" data-personnel-role="{{ $requirement['role_id'] }}" data-min="{{ $requirement['min'] }}" data-max="{{ $requirement['max'] }}" data-role-name="{{ $requirement['name'] }}">
+        <fieldset class="border rounded p-3 mb-3" data-personnel-role="{{ $requirement['role_id'] }}" data-min="{{ $requirement['min'] }}" data-max="{{ $requirement['max'] }}" data-role-name="{{ $requirement['name'] }}" data-role-code="{{ $requirement['role_code'] ?? '' }}" data-license-allowed="{{ !empty($requirement['license_allowed']) ? '1' : '0' }}">
             <legend class="fs-10 float-none w-auto px-2">{{ $requirement['name'] }} — {{ $requirement['min'] > 0 ? 'Wajib' : 'Opsional' }} ({{ $requirement['min'] }}–{{ $requirement['max'] }}) <span class="text-muted" data-personnel-count></span></legend>
             @forelse(($personnelOptions['people'] ?? []) as $person)
                 @php($selected = in_array($person['user_id'].':'.$requirement['role_id'], $selectedPersonnelKeys, true))
+                @php($stagedLicense = $activeDraft?->files['personnel_licenses'][$person['user_id']][$requirement['role_id']] ?? null)
                 <div class="form-check" data-personnel-choice>
                     <input class="form-check-input personnel-role-check" type="checkbox" id="personnel-{{ $personnelIndex }}" data-user-id="{{ $person['user_id'] }}" data-role-id="{{ $requirement['role_id'] }}" data-person-name="{{ $person['name'] }}" name="personnel[{{ $personnelIndex }}][user_id]" value="{{ $person['user_id'] }}" @checked($selected)>
                     <input class="personnel-role-value" type="hidden" name="personnel[{{ $personnelIndex }}][role_id]" value="{{ $requirement['role_id'] }}" @disabled(!$selected)>
                     <label class="form-check-label" for="personnel-{{ $personnelIndex }}">{{ $person['name'] }} @if($person['is_official'])<span class="text-muted">(Pengurus)</span>@endif</label>
+                    @if(!empty($requirement['license_allowed']))
+                        <div class="mt-2 personnel-license-group" data-license-for="{{ $person['user_id'] }}:{{ $requirement['role_id'] }}" style="display: {{ $selected ? 'block' : 'none' }};">
+                            <label class="form-label fs-11 text-muted mb-1" for="personnel_license_{{ $person['user_id'] }}_{{ $requirement['role_id'] }}">
+                                <span class="fas fa-id-card me-1"></span>Foto Lisensi (Opsional, Maks. 1 MB, JPG/PNG/WebP)
+                            </label>
+                            <input type="file"
+                                   class="form-control form-control-sm personnel-license-input"
+                                   id="personnel_license_{{ $person['user_id'] }}_{{ $requirement['role_id'] }}"
+                                   name="personnel_licenses[{{ $person['user_id'] }}][{{ $requirement['role_id'] }}]"
+                                   accept="image/jpeg,image/png,image/webp"
+                                   data-user-id="{{ $person['user_id'] }}"
+                                   data-role-id="{{ $requirement['role_id'] }}"
+                                   @disabled(!$selected)>
+                            @if($stagedLicense)
+                                <div class="staged-file-badge mt-1 fs-11 text-success d-flex align-items-center">
+                                    <span class="fas fa-check-circle me-1"></span><span>Tersimpan di server: <strong>{{ $stagedLicense['name'] ?? 'Lisensi' }}</strong> ({{ round(($stagedLicense['size'] ?? 0) / 1024) }} KB)</span>
+                                </div>
+                            @endif
+                        </div>
+                    @endif
                 </div>
                 @php($personnelIndex++)
             @empty
@@ -39,8 +60,20 @@
 <script>
 document.addEventListener('change', event => {
     if (event.target.matches('.personnel-role-check')) {
-        const role = event.target.parentElement.querySelector('.personnel-role-value');
+        const choice = event.target.closest('[data-personnel-choice]');
+        const role = choice?.querySelector('.personnel-role-value');
         if (role) role.disabled = !event.target.checked;
+        const licGroup = choice?.querySelector('.personnel-license-group');
+        if (licGroup) {
+            licGroup.style.display = event.target.checked ? 'block' : 'none';
+            const licInput = licGroup.querySelector('.personnel-license-input');
+            if (licInput) {
+                licInput.disabled = !event.target.checked;
+                if (!event.target.checked) {
+                    licInput.value = '';
+                }
+            }
+        }
     }
 });
 </script>

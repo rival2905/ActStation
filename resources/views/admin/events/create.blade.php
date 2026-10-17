@@ -49,18 +49,7 @@
                 </div>
 
                 <div class="col-md-6">
-                    <label class="form-label" for="venue_id">Lokasi / Venue</label>
-                    <select class="form-select @error('venue_id') is-invalid @enderror" id="venue_id" name="venue_id">
-                        <option value="">Pilih Venue (Opsional)...</option>
-                        @foreach($venues as $venue)
-                            <option value="{{ $venue->id }}" {{ old('venue_id') == $venue->id ? 'selected' : '' }}>
-                                {{ $venue->name }}
-                            </option>
-                        @endforeach
-                    </select>
-                    @error('venue_id')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                    @enderror
+                    @include('events.venues._picker')
                 </div>
 
                 <div class="col-md-3">

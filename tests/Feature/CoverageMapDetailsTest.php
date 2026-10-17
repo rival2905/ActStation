@@ -304,3 +304,20 @@ test('cabor filter only includes linked entities coverage and accepts legacy sch
     expect($ids)->toContain($linkedSchoolId);
     expect($ids)->not->toContain($unlinkedSchoolId);
 });
+
+test('coverage map index page renders without url generation exception and details supports query params', function (): void {
+    $admin = User::factory()->create(['is_active' => true]);
+    $admin->assignRole('admin');
+
+    $indexResponse = $this->actingAs($admin)->get(route('admin.coverage-map.index'));
+    $indexResponse->assertOk();
+
+    $queryParamResponse = $this->actingAs($admin)->getJson(route('admin.coverage-map.details', [
+        'type' => 'school',
+        'id' => 99999999,
+    ]));
+    $queryParamResponse->assertNotFound();
+
+    $queryUrlResponse = $this->actingAs($admin)->getJson('/admin/coverage-map/details?type=school&id=99999999');
+    $queryUrlResponse->assertNotFound();
+});

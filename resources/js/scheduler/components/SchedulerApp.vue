@@ -631,9 +631,7 @@ const saveManualSchedule = async () => {
 
 // Save schedule settings and court sync
 const saveAllSettings = async () => {
-  if (selectedCourtIds.value.length > 0) {
-    await syncCourts(selectedCourtIds.value);
-  }
+  await syncCourts(selectedCourtIds.value);
   await saveSettings(settingsForm.value);
   showSettingsModal.value = false;
 };

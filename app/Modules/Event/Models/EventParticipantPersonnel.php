@@ -12,7 +12,7 @@ class EventParticipantPersonnel extends Model
 {
     protected $table = 'event_participant_personnel';
 
-    protected $fillable = ['event_participant_id', 'user_id', 'role_id', 'role_name'];
+    protected $fillable = ['event_participant_id', 'user_id', 'role_id', 'role_name', 'license_path'];
 
     public function user(): BelongsTo
     {

@@ -19,11 +19,13 @@ class ValidationService
         int $validatedByUserId,
         ?string $gate = null,
         ?string $notes = null,
+        ?int $venueId = null,
+        ?int $courtId = null,
     ): TicketValidation {
         $clean = trim($token);
         $hashedToken = hash('sha256', $clean);
 
-        return DB::transaction(function () use ($hashedToken, $validatedByUserId, $gate, $notes): TicketValidation {
+        return DB::transaction(function () use ($hashedToken, $validatedByUserId, $gate, $notes, $venueId, $courtId): TicketValidation {
             /** @var Ticket|null $ticket */
             $ticket = Ticket::where('qr_code', $hashedToken)
                 ->lockForUpdate()
@@ -47,6 +49,10 @@ class ValidationService
 
             if ($ticket->status !== 'active') {
                 throw new TicketValidationException("Tiket tidak aktif (status: {$ticket->status}).");
+            }
+
+            if (! $ticket->category->allowsLocation($venueId, $courtId)) {
+                throw new TicketValidationException('Pilih lokasi pintu masuk yang sesuai cakupan tiket. '.$ticket->category->locationLabel());
             }
 
             $ticket->update([

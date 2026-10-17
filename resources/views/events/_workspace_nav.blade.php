@@ -7,6 +7,7 @@
     $currentTab = $activeTab ?? match (true) {
         request()->routeIs('*personnel*') => 'personnel',
         request()->routeIs('*committee*') => 'committee',
+        request()->routeIs('*venues*') => 'venues',
         request()->routeIs('*categories*') => 'categories',
         request()->routeIs('*documents*') => 'documents',
         request()->routeIs('*teams*') => 'teams',
@@ -26,6 +27,7 @@
             ['overview', 'Ringkasan event', 'Kondisi dan langkah berikutnya', $isAdminWorkspace ? 'admin.events.workspace.manage' : 'panel.organizer.events.manage', $isAdminWorkspace || $eventOwner],
         ],
         'Persiapan' => [
+            ['venues', 'Venue & Lapangan', 'Lokasi dan lapangan untuk event ini', $workspaceRoutePrefix.'venues.edit', $allowed('event.view', 'schedule.manage')],
             ['categories', 'Kategori', 'Usia, gender, kuota dan biaya', $isAdminWorkspace ? 'admin.events.categories.index' : 'panel.organizer.categories.index', $allowed('event-category.view')],
             ['documents', 'Dokumen Event', 'Legalitas, teknis dan akses berkas', $workspaceRoutePrefix.'documents.index', $isAdminWorkspace || $committeeAccess->allows($event, auth()->user(), 'documents.manage')],
             ['personnel', 'Pelatih & Tenaga Pendukung', 'Jabatan dan batas personel tim', $isAdminWorkspace ? 'admin.events.personnel.edit' : 'panel.organizer.events.personnel.edit', $allowed('event.update')],
@@ -40,7 +42,7 @@
             ['results', 'Hasil & Skor', 'Skor langsung dan hasil akhir', $workspaceRoutePrefix.'results.index', $allowed('event-result.view', 'results.manage')],
         ],
         'Tiket & Dana' => [
-            ['ticketing', 'Tiket Penonton', 'Harga, kuota dan penjualan', $workspaceRoutePrefix.'ticketing.index', $allowed('ticket-category.view')],
+            ['ticketing', 'Tiket Penonton', 'Harga, kuota dan penjualan', $workspaceRoutePrefix.'ticketing.index', $allowed('ticket-category.view', 'ticketing.manage')],
             ['gate_scanner', 'Scan Tiket', 'Validasi masuk pengunjung', $workspaceRoutePrefix.'gate-scanner.index', $allowed('ticket-validation.scan')],
             ['payouts', 'Dana & Pencairan', 'Perhitungan escrow dan pengajuan', $workspaceRoutePrefix.'payouts.index', $allowed('transaction.view')],
         ],

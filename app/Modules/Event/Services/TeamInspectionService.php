@@ -65,21 +65,69 @@ class TeamInspectionService
                 'category_name' => $registration->category?->name ?? 'Belum dipilih', 'community_name' => $community?->name,
                 'contact_person' => $payload['contact_person'] ?? null, 'contact_phone' => $payload['contact_phone'] ?? null],
             'members' => $result,
-            'personnel' => $this->personnel($registration),
+            'personnel' => $this->personnel($registration, $event, $kind, $workspace),
             'documents' => $this->documents($event, $registration, $kind, 'team', $workspace),
         ];
     }
 
-    private function personnel(RegistrationDraft|EventParticipant $registration): array
+    private function personnel(RegistrationDraft|EventParticipant $registration, Event $event, string $kind, string $workspace): array
     {
         if ($registration instanceof EventParticipant) {
-            return $registration->personnel()->with('user:id,name')->get()->map(fn ($row) => ['name' => $row->user?->name ?? 'Akun tidak tersedia', 'role_name' => $row->role_name])->all();
+            return $registration->personnel()->with('user:id,name')->get()->map(function ($row) use ($event, $registration, $workspace): array {
+                $hasLicense = ! empty($row->license_path);
+
+                return [
+                    'id' => $row->id,
+                    'user_id' => $row->user_id,
+                    'role_id' => $row->role_id,
+                    'name' => $row->user?->name ?? 'Akun tidak tersedia',
+                    'role_name' => $row->role_name,
+                    'has_license' => $hasLicense,
+                    'license_url' => $hasLicense ? route(($workspace === 'admin' ? 'admin.events.workspace.' : 'panel.organizer.').'teams.personnel-license.download', [$event, 'participant', $registration->id, $row->id]) : null,
+                ];
+            })->all();
         }
         $roles = collect(app(TeamPersonnelProvider::class)->roles())->keyBy('id');
         $selection = $registration->payload['personnel'] ?? [];
         $users = User::whereIn('id', array_column($selection, 'user_id'))->pluck('name', 'id');
+        $stagedLicenses = $registration->files['personnel_licenses'] ?? [];
 
-        return array_map(fn ($row) => ['name' => $users->get($row['user_id'], 'Akun tidak tersedia'), 'role_name' => $roles->get($row['role_id'])['name'] ?? 'Peran tidak tersedia'], $selection);
+        return array_map(function ($row) use ($users, $roles, $stagedLicenses, $event, $registration, $workspace): array {
+            $uid = $row['user_id'] ?? 0;
+            $rid = $row['role_id'] ?? 0;
+            $hasLicense = ! empty($stagedLicenses[$uid][$rid]['staged_path']);
+
+            return [
+                'id' => null,
+                'user_id' => $uid,
+                'role_id' => $rid,
+                'name' => $users->get($uid, 'Akun tidak tersedia'),
+                'role_name' => $roles->get($rid)['name'] ?? 'Peran tidak tersedia',
+                'has_license' => $hasLicense,
+                'license_url' => $hasLicense ? route(($workspace === 'admin' ? 'admin.events.workspace.' : 'panel.organizer.').'teams.personnel-license.download', [$event, 'draft', $registration->id, "{$uid}-{$rid}"]) : null,
+            ];
+        }, $selection);
+    }
+
+    public function downloadPersonnelLicense(Event $event, string $kind, string $id, string $personnelKey): StreamedResponse
+    {
+        $registration = $this->registration($event, $kind, $id);
+        if ($registration instanceof EventParticipant) {
+            $personnel = $registration->personnel()->whereKey((int) $personnelKey)->firstOrFail();
+            abort_unless(! empty($personnel->license_path) && Storage::disk('local')->exists($personnel->license_path), 404);
+            $ext = pathinfo($personnel->license_path, PATHINFO_EXTENSION) ?: 'jpg';
+
+            return Storage::disk('local')->download($personnel->license_path, "lisensi-{$personnel->role_name}-{$personnel->user_id}.{$ext}");
+        }
+
+        $parts = explode('-', $personnelKey);
+        abort_unless(count($parts) === 2, 404);
+        [$uid, $rid] = [(int) $parts[0], (int) $parts[1]];
+        $meta = $registration->files['personnel_licenses'][$uid][$rid] ?? null;
+        abort_unless($meta && ! empty($meta['staged_path']) && Storage::disk('local')->exists($meta['staged_path']), 404);
+        $name = $meta['name'] ?? "lisensi-personel-{$uid}.jpg";
+
+        return Storage::disk('local')->download($meta['staged_path'], $name);
     }
 
     public function download(Event $event, string $kind, string $id, string $owner, string $code): StreamedResponse

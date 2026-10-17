@@ -114,14 +114,7 @@
                 </div>
                 <div class="card-body">
                     <div class="mb-3">
-                        <label class="form-label fs-10 fw-bold" for="venue_id">Pilih Venue Terdaftar <span class="text-danger">*</span></label>
-                        <select class="form-select form-select-sm" id="venue_id" name="venue_id" required>
-                            @foreach($venues as $v)
-                            <option value="{{ $v->id }}" {{ old('venue_id', $event->venue_id) == $v->id ? 'selected' : '' }}>
-                                {{ $v->name }} ({{ $v->city_id ?? 'Kota' }})
-                            </option>
-                            @endforeach
-                        </select>
+                        @include('events.venues._picker')
                     </div>
 
                     <div class="mb-3">

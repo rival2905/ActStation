@@ -30,6 +30,29 @@
     </div>
 </div>
 
+@can('venue.update')
+<div class="card mb-3">
+    <div class="card-header"><h5 class="mb-0">Izin tambah data dari workspace event</h5></div>
+    <div class="card-body">
+        @if(session('success'))<div class="alert alert-success" role="status">{{ session('success') }}</div>@endif
+        @if($errors->any())<div class="alert alert-danger" role="alert">Pengaturan gagal disimpan. Periksa pilihan izin.</div>@endif
+        <form method="POST" action="{{ route('admin.venues.creation-settings.update') }}">
+            @csrf
+            @method('PUT')
+            @foreach(['allow_panel_venue_creation' => ['Izinkan organizer/panitia menambah venue', $allowPanelVenueCreation], 'allow_panel_court_creation' => ['Izinkan organizer/panitia menambah lapangan', $allowPanelCourtCreation]] as $key => [$label, $enabled])
+                <input type="hidden" name="{{ $key }}" value="0">
+                <div class="form-check form-switch mb-2">
+                    <input class="form-check-input" type="checkbox" name="{{ $key }}" id="{{ $key }}" value="1" @checked(old($key, $enabled))>
+                    <label class="form-check-label" for="{{ $key }}">{{ $label }}</label>
+                </div>
+            @endforeach
+            <p class="fs-10 text-muted">Berlaku global untuk pemilik event dan panitia dengan akses kelola jadwal. Tidak memberi izin edit/hapus master. Mematikan opsi tidak menghapus data, tidak membatasi wilayah, dan tidak menghalangi pemilihan venue/lapangan yang sudah ada. Admin tetap dapat menambah lewat master data.</p>
+            <button class="btn btn-primary btn-sm" type="submit">Simpan izin penambahan</button>
+        </form>
+    </div>
+</div>
+@endcan
+
 <x-table-filter :action="route('admin.venues.index')" :reset-url="route('admin.venues.index')">
     <div class="col-md-5">
         <input type="text" name="search" class="form-control form-control-sm" placeholder="Cari nama venue, alamat..." value="{{ $filters['search'] ?? request('search') }}">

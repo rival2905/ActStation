@@ -61,6 +61,8 @@
 
 @include('events._workspace_nav', ['event' => $event, 'workspace' => $workspace, 'activeTab' => 'scheduling'])
 
+@if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
+<div class="alert alert-info">Lapangan mengikuti pilihan tersimpan di <a href="{{ route($workspaceRoutePrefix.'venues.edit', $event) }}">Venue & Lapangan</a>. Pilih lapangan per laga lalu simpan. Tiket per laga mengikuti lokasi terbaru. Hitung Jadwal Otomatis dapat mengganti penempatan manual.</div>
 <!-- 4 Kartu Metrik Jadwal Pertandingan -->
 <div class="row g-3 mb-3">
     <div class="col-6 col-md-3">
@@ -147,6 +149,7 @@
                 <thead class="bg-200">
                     <tr>
                         <th scope="col" style="width: 150px;">Waktu & Jam</th>
+                        <th scope="col">Venue & Lapangan</th>
                         <th scope="col">Kategori & Babak</th>
                         <th scope="col" class="text-end" style="width: 25%;">Tim A</th>
                         <th scope="col" class="text-center" style="width: 70px;">VS</th>
@@ -170,6 +173,22 @@
                                 <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
                                     <span class="fas fa-exclamation-circle me-1"></span>Belum Diatur
                                 </span>
+                            @endif
+                        </td>
+                        <td>
+                            @php $courtEditable = !$game->is_bye && !in_array($game->game_status, ['live', 'ongoing', 'finished', 'cancelled', 'bye'], true) && ($workspace !== 'admin' || auth()->user()->can('tournament.schedule')); @endphp
+                            @if($courtEditable)
+                            <form method="POST" action="{{ route($workspaceRoutePrefix.'scheduling.court.update', [$event, $game]) }}" class="d-flex flex-column gap-1" style="min-width:200px">
+                                @csrf @method('PUT')
+                                <label class="visually-hidden" for="game-court-{{ $game->id }}">Lapangan laga {{ $game->id }}</label>
+                                <select class="form-select form-select-sm" id="game-court-{{ $game->id }}" name="venue_court_id">
+                                    <option value="">Belum ditempatkan</option>
+                                    @foreach($locations['courts'] as $court)<option value="{{ $court['id'] }}" @selected((int)$game->venue_court_id === $court['id'])>{{ $court['name'] }}</option>@endforeach
+                                </select>
+                                <button type="submit" class="btn btn-outline-primary btn-sm">Simpan lapangan</button>
+                            </form>
+                            @else
+                                {{ collect($locations['courts'])->firstWhere('id', (int)$game->venue_court_id)['name'] ?? 'Belum ditempatkan' }}
                             @endif
                         </td>
                         <td>
@@ -242,7 +261,7 @@
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="7" class="text-center py-5">
+                        <td colspan="8" class="text-center py-5">
                             <div class="d-flex flex-column align-items-center justify-content-center">
                                 <span class="fas fa-calendar-times fa-3x text-400 mb-3"></span>
                                 <h6 class="fw-bold text-dark mb-1">Belum Ada Pertandingan Terbentuk</h6>

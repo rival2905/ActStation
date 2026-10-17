@@ -82,6 +82,9 @@ class RegistrationDraftRequest extends FormRequest
             'athlete_documents' => ['nullable', 'array'],
             'athlete_documents.*' => ['nullable', 'array'],
             'athlete_documents.*.*' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+            'personnel_licenses' => ['nullable', 'array'],
+            'personnel_licenses.*' => ['nullable', 'array'],
+            'personnel_licenses.*.*' => ['nullable', 'file', 'image', 'mimes:jpeg,jpg,png,webp', 'max:1024'],
             'clear_files' => ['nullable', 'array'],
             'clear_files.*' => ['nullable', 'string', 'max:255'],
         ];

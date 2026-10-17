@@ -43,6 +43,15 @@
 
                 <form id="scannerForm" onsubmit="submitScanToken(); return false;">
                     @csrf
+                    <div class="mb-3 text-start">
+                        <label class="form-label" for="scanner-location">Lokasi pintu masuk</label>
+                        <select class="form-select" id="scanner-location">
+                            <option value="">Pilih lokasi untuk tiket terbatas</option>
+                            @foreach($locations['venues'] as $venue)<option value="venue:{{ $venue['id'] }}">{{ $venue['name'] }} — Pintu venue</option>@endforeach
+                            @foreach($locations['courts'] as $court)<option value="court:{{ $court['id'] }}">{{ $court['name'] }}</option>@endforeach
+                        </select>
+                        <p class="fs-11 text-muted">Tiket per laga/lapangan harus dipindai di lapangan yang sesuai. Tiket tetap sekali pakai; memilih semua lokasi bukan izin masuk berulang.</p>
+                    </div>
                     <div class="input-group mb-3">
                         <input type="text" class="form-control font-monospace" id="scanInput" aria-label="Kode tiket pengunjung" placeholder="Ketik kode tiket / scan QR..." autofocus required>
                         <button class="btn btn-primary" type="submit" id="btnScan">
@@ -78,6 +87,7 @@ function submitScanToken() {
     if (btn.disabled) return;
     btn.disabled = true;
 
+    const [locationType, locationId] = document.getElementById('scanner-location').value.split(':');
     fetch("{{ route($workspaceRoutePrefix.'gate-scanner.verify', $event->id) }}", {
         method: "POST",
         headers: {
@@ -85,7 +95,7 @@ function submitScanToken() {
             "X-CSRF-TOKEN": "{{ csrf_token() }}",
             "Accept": "application/json"
         },
-        body: JSON.stringify({ token: token })
+        body: JSON.stringify({ token: token, venue_id: locationType === 'venue' ? Number(locationId) : null, venue_court_id: locationType === 'court' ? Number(locationId) : null })
     })
     .then(async response => {
         const data = await response.json();
@@ -119,7 +129,7 @@ function renderScanResult(isOk, data) {
         title.innerText = "TIKET SAH (VERIFIED)";
         msg.className = "fw-bold mb-2 text-dark fs-8";
         msg.innerText = data.message;
-        details.innerHTML = '<strong>' + (data.holder_name || '-') + '</strong> | Zona: <span class="badge bg-success font-monospace fs-10">' + (data.seat || '-') + '</span>';
+        details.textContent = (data.holder_name || '-') + ' | Zona: ' + (data.seat || '-') + ' | ' + (data.location || '');
     } else {
         // Layar Merah: Ditolak (PRD_EXTERNAL §4.9 C.2)
         card.className = "card shadow-lg border-3 border-danger bg-danger-subtle";
@@ -128,7 +138,7 @@ function renderScanResult(isOk, data) {
         title.innerText = "AKSES DITOLAK!";
         msg.className = "fw-bold mb-2 text-danger fs-9";
         msg.innerText = data.message || 'Tiket tidak sah.';
-        details.innerHTML = data.holder_name ? 'Pemilik: <strong>' + data.holder_name + '</strong>' : '';
+        details.textContent = data.holder_name ? 'Pemilik: ' + data.holder_name : '';
     }
 }
 </script>

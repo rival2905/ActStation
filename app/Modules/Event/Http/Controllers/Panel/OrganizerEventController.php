@@ -7,14 +7,15 @@ namespace App\Modules\Event\Http\Controllers\Panel;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Modules\Event\Exceptions\InvalidLifecycleTransitionException;
+use App\Modules\Event\Http\Requests\Panel\OrganizerEventRequest;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Services\EventLifecycleService;
+use App\Modules\Event\Services\EventVenueService;
 use App\Modules\MasterData\Models\SportCategory;
-use App\Modules\MasterData\Models\Venue;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -52,13 +53,13 @@ class OrganizerEventController extends Controller
                 ->with('warning', 'Lengkapi profil identitas PIC & rekening payout sebelum membuat turnamen baru.');
         }
 
-        $venues = Venue::query()->where('is_active', true)->get();
+        $venueData = app(EventVenueService::class)->formData(isset($event) ? $event : null);
         $sports = SportCategory::query()->where('is_active', true)->get();
 
-        return view('panel.organizer.events.create', compact('venues', 'sports'));
+        return view('panel.organizer.events.create', array_merge(compact('sports'), $venueData));
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(OrganizerEventRequest $request): RedirectResponse
     {
         /** @var User $user */
         $user = Auth::user();
@@ -67,31 +68,14 @@ class OrganizerEventController extends Controller
             abort(403, 'Akses ditolak. Profil penyelenggara belum diverifikasi admin.');
         }
 
-        $validated = $request->validate([
-            'sport_category_id' => ['nullable', 'integer', 'exists:sport_categories,id'],
-            'title' => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string'],
-            'venue_id' => ['required', 'integer', 'exists:venues,id'],
-            'starts_at' => ['required', 'date'],
-            'ends_at' => ['required', 'date', 'after:starts_at'],
-            'registration_deadline' => ['nullable', 'date', 'before_or_equal:starts_at'],
-            'registration_open' => ['nullable', 'boolean'],
-            'max_participants' => ['nullable', 'integer', 'min:1'],
-            'venue_approval_doc' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:4096'],
-            'banner_image' => ['nullable', 'image', 'max:4096'],
-            'allow_manual_payment' => ['nullable', 'boolean'],
-            'manual_bank_name' => ['nullable', 'string', 'max:50'],
-            'manual_bank_account_number' => ['nullable', 'string', 'max:50'],
-            'manual_bank_account_holder' => ['nullable', 'string', 'max:255'],
-            'manual_payment_instructions' => ['nullable', 'string'],
-        ]);
+        $validated = $request->validated();
 
         $slug = Str::slug($validated['title']).'-'.Str::lower(Str::random(5));
         $sportCategoryId = $validated['sport_category_id'] ?? (SportCategory::query()->where('slug', 'basketball')->value('id') ?? 1);
 
         $eventData = [
             'sport_category_id' => (int) $sportCategoryId,
-            'venue_id' => $validated['venue_id'],
+            'venue_id' => ($validated['venue_ids'][0] ?? $validated['venue_id'] ?? null),
             'user_id' => Auth::id(),
             'title' => $validated['title'],
             'slug' => $slug,
@@ -117,7 +101,13 @@ class OrganizerEventController extends Controller
             $eventData['venue_approval_doc'] = $request->file('venue_approval_doc')->store('venue_approvals', 'public');
         }
 
-        $event = Event::create($eventData);
+        $event = DB::transaction(function () use ($eventData, $validated): Event {
+            $eventData['venue_id'] = null;
+            $event = Event::create($eventData);
+            app(EventVenueService::class)->sync($event, $validated['venue_ids'] ?? [$validated['venue_id']], $validated['venue_court_ids'] ?? []);
+
+            return $event;
+        });
 
         return redirect()
             ->route('panel.organizer.events.manage', $event->id)
@@ -128,40 +118,22 @@ class OrganizerEventController extends Controller
     {
         $this->authorizeOrganizer($event);
 
-        $venues = Venue::query()->where('is_active', true)->get();
+        $venueData = app(EventVenueService::class)->formData(isset($event) ? $event : null);
         $sports = SportCategory::query()->where('is_active', true)->get();
 
-        return view('panel.organizer.events.edit', compact('event', 'venues', 'sports'));
+        return view('panel.organizer.events.edit', array_merge(compact('event', 'sports'), $venueData));
     }
 
-    public function update(Request $request, Event $event): RedirectResponse
+    public function update(OrganizerEventRequest $request, Event $event): RedirectResponse
     {
         $this->authorizeOrganizer($event);
 
-        $validated = $request->validate([
-            'sport_category_id' => ['nullable', 'integer', 'exists:sport_categories,id'],
-            'title' => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string'],
-            'venue_id' => ['required', 'integer', 'exists:venues,id'],
-            'starts_at' => ['required', 'date'],
-            'ends_at' => ['required', 'date', 'after:starts_at'],
-            'registration_deadline' => ['nullable', 'date', 'before_or_equal:starts_at'],
-            'registration_open' => ['nullable', 'boolean'],
-            'max_participants' => ['nullable', 'integer', 'min:1'],
-            'venue_approval_doc' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:4096'],
-            'banner_image' => ['nullable', 'image', 'max:4096'],
-            'allow_manual_payment' => ['nullable', 'boolean'],
-            'manual_bank_name' => ['nullable', 'string', 'max:50'],
-            'manual_bank_account_number' => ['nullable', 'string', 'max:50'],
-            'manual_bank_account_holder' => ['nullable', 'string', 'max:255'],
-            'manual_payment_instructions' => ['nullable', 'string'],
-        ]);
+        $validated = $request->validated();
 
         $this->ensureCategoryWindowsRemainValid($event, $validated);
 
         $updateData = [
             'sport_category_id' => (int) ($validated['sport_category_id'] ?? $event->sport_category_id),
-            'venue_id' => $validated['venue_id'],
             'title' => $validated['title'],
             'description' => $validated['description'] ?? null,
             'registration_open' => $request->boolean('registration_open'),
@@ -184,7 +156,15 @@ class OrganizerEventController extends Controller
             $updateData['venue_approval_doc'] = $request->file('venue_approval_doc')->store('venue_approvals', 'public');
         }
 
-        $event->update($updateData);
+        DB::transaction(function () use ($event, $updateData, $validated): void {
+            $venueIds = $validated['venue_ids'] ?? [$validated['venue_id']];
+            $courtIds = $validated['venue_court_ids'] ?? null;
+            if (isset($validated['venue_selection_present'])) {
+                $courtIds ??= [];
+            }
+            app(EventVenueService::class)->sync($event, $venueIds, $courtIds);
+            $event->update($updateData);
+        });
 
         return redirect()
             ->route('panel.organizer.events.manage', $event->id)

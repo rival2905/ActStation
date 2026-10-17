@@ -9,6 +9,7 @@ use App\Contracts\DTOs\CommunitySummary;
 use App\Contracts\DTOs\RegistrationDraftContextDto;
 use App\Contracts\RegistrationDraftProvider;
 use App\Contracts\RosterProvider;
+use App\Contracts\TeamPersonnelProvider;
 use App\Models\User;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventCategory;
@@ -331,7 +332,18 @@ class RegistrationDraftService implements RegistrationDraftProvider
                             }
                         }
                     }
-                    $files = ['team_documents' => [], 'athlete_documents' => []];
+                    if (! empty($files['personnel_licenses'])) {
+                        foreach ($files['personnel_licenses'] as $roles) {
+                            if (is_array($roles)) {
+                                foreach ($roles as $doc) {
+                                    if (! empty($doc['staged_path'])) {
+                                        $pathsToDeleteOnSuccess[] = $doc['staged_path'];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    $files = ['team_documents' => [], 'athlete_documents' => [], 'personnel_licenses' => []];
                     $newPayload['members'] = [];
                 }
 
@@ -430,10 +442,10 @@ class RegistrationDraftService implements RegistrationDraftProvider
     public function sanitizeFilesForResponse(?array $files): array
     {
         if (! is_array($files)) {
-            return ['team_documents' => [], 'athlete_documents' => []];
+            return ['team_documents' => [], 'athlete_documents' => [], 'personnel_licenses' => []];
         }
 
-        $sanitized = ['team_documents' => [], 'athlete_documents' => []];
+        $sanitized = ['team_documents' => [], 'athlete_documents' => [], 'personnel_licenses' => []];
 
         if (! empty($files['team_documents']) && is_array($files['team_documents'])) {
             foreach ($files['team_documents'] as $code => $meta) {
@@ -455,6 +467,21 @@ class RegistrationDraftService implements RegistrationDraftProvider
                             'size' => $meta['size'] ?? null,
                             'mime' => $meta['mime'] ?? null,
                             'field_key' => $meta['field_key'] ?? "athlete_documents.{$uid}.{$code}",
+                        ];
+                    }
+                }
+            }
+        }
+
+        if (! empty($files['personnel_licenses']) && is_array($files['personnel_licenses'])) {
+            foreach ($files['personnel_licenses'] as $uid => $roles) {
+                if (is_array($roles)) {
+                    foreach ($roles as $rid => $meta) {
+                        $sanitized['personnel_licenses'][$uid][$rid] = [
+                            'name' => $meta['name'] ?? null,
+                            'size' => $meta['size'] ?? null,
+                            'mime' => $meta['mime'] ?? null,
+                            'field_key' => $meta['field_key'] ?? "personnel_licenses.{$uid}.{$rid}",
                         ];
                     }
                 }
@@ -516,6 +543,31 @@ class RegistrationDraftService implements RegistrationDraftProvider
                 }
             }
             $request->files->set('athlete_documents', $athleteUploads);
+        }
+
+        // 3. Personnel licenses
+        $personnelUploads = $request->file('personnel_licenses') ?? [];
+        $selectedPersonnelKeys = collect($request->input('personnel', []))->map(fn ($p): string => ($p['user_id'] ?? '').':'.($p['role_id'] ?? ''))->all();
+        if (! empty($stagedFiles['personnel_licenses']) && is_array($stagedFiles['personnel_licenses'])) {
+            foreach ($stagedFiles['personnel_licenses'] as $uid => $roles) {
+                if (is_array($roles)) {
+                    foreach ($roles as $rid => $meta) {
+                        if (in_array("{$uid}:{$rid}", $selectedPersonnelKeys, true) && ! isset($personnelUploads[$uid][$rid])) {
+                            $stagedPath = $meta['staged_path'] ?? null;
+                            if ($stagedPath && Storage::disk('local')->exists($stagedPath)) {
+                                $fullPath = Storage::disk('local')->path($stagedPath);
+                                $originalName = $meta['name'] ?? basename($stagedPath);
+                                $mime = $meta['mime'] ?? (@mime_content_type($fullPath) ?: 'image/jpeg');
+                                if (! isset($personnelUploads[$uid])) {
+                                    $personnelUploads[$uid] = [];
+                                }
+                                $personnelUploads[$uid][$rid] = new UploadedFile($fullPath, $originalName, $mime, null, true);
+                            }
+                        }
+                    }
+                }
+            }
+            $request->files->set('personnel_licenses', $personnelUploads);
         }
 
         (function (): void {
@@ -596,7 +648,8 @@ class RegistrationDraftService implements RegistrationDraftProvider
     ): array {
         $hasUploads = $request->hasFile('team_document')
             || ! empty($request->file('team_documents'))
-            || ! empty($request->file('athlete_documents'));
+            || ! empty($request->file('athlete_documents'))
+            || ! empty($request->file('personnel_licenses'));
 
         if (! $hasUploads) {
             return [$existingFiles, [], []];
@@ -693,7 +746,55 @@ class RegistrationDraftService implements RegistrationDraftProvider
             }
         }
 
-        // 3. Athlete documents pre-validation
+        // 3. Personnel licenses pre-validation
+        $personnelUploads = $request->file('personnel_licenses');
+        if (is_array($personnelUploads)) {
+            $allowedRoles = collect(app(TeamPersonnelProvider::class)->roles())
+                ->whereIn('code', ['coach', 'assistant_coach'])
+                ->where('is_active', true)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            $selectedPersonnelKeys = collect($payload['personnel'] ?? [])
+                ->map(fn ($p): string => ((int) ($p['user_id'] ?? 0)).':'.((int) ($p['role_id'] ?? 0)))
+                ->all();
+
+            foreach ($personnelUploads as $rawUid => $roles) {
+                $uid = (int) $rawUid;
+                if (! is_array($roles)) {
+                    continue;
+                }
+                foreach ($roles as $rawRid => $file) {
+                    $rid = (int) $rawRid;
+                    if ($file instanceof UploadedFile) {
+                        if (! in_array($rid, $allowedRoles, true)) {
+                            throw ValidationException::withMessages([
+                                'personnel_licenses' => 'Unggahan lisensi hanya diperbolehkan untuk peran Coach dan Assistant Coach.',
+                            ]);
+                        }
+                        if (! in_array("{$uid}:{$rid}", $selectedPersonnelKeys, true)) {
+                            throw ValidationException::withMessages([
+                                'personnel_licenses' => 'Unggahan lisensi ditolak: pengguna tidak terdaftar dalam peran personel tersebut.',
+                            ]);
+                        }
+                        if ($file->getSize() > 1024 * 1024) {
+                            throw ValidationException::withMessages([
+                                'personnel_licenses' => 'Ukuran gambar lisensi tidak boleh melebihi 1 MB.',
+                            ]);
+                        }
+                        $mime = $file->getMimeType();
+                        if (! in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
+                            throw ValidationException::withMessages([
+                                'personnel_licenses' => 'Format lisensi harus berupa gambar (JPG, PNG, atau WebP).',
+                            ]);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Athlete documents pre-validation
         $athleteUploads = $request->file('athlete_documents') ?? [];
         if (is_array($athleteUploads) && count($athleteUploads) > 0) {
             $selectedUserIds = [];
@@ -816,6 +917,35 @@ class RegistrationDraftService implements RegistrationDraftProvider
             }
         }
 
+        // 4. Personnel licenses storage
+        if (is_array($personnelUploads)) {
+            foreach ($personnelUploads as $rawUid => $roles) {
+                $uid = (int) $rawUid;
+                if (is_array($roles)) {
+                    foreach ($roles as $rawRid => $file) {
+                        $rid = (int) $rawRid;
+                        if ($file instanceof UploadedFile) {
+                            if (isset($existingFiles['personnel_licenses'][$uid][$rid]['staged_path'])) {
+                                $supersededPaths[] = $existingFiles['personnel_licenses'][$uid][$rid]['staged_path'];
+                            }
+                            $path = $file->store("registration_drafts/{$draftId}/personnel", 'local');
+                            $newlyUploadedPaths[] = $path;
+                            if (! isset($existingFiles['personnel_licenses'][$uid])) {
+                                $existingFiles['personnel_licenses'][$uid] = [];
+                            }
+                            $existingFiles['personnel_licenses'][$uid][$rid] = [
+                                'name' => $file->getClientOriginalName(),
+                                'size' => $file->getSize(),
+                                'mime' => $file->getMimeType(),
+                                'staged_path' => $path,
+                                'field_key' => "personnel_licenses.{$uid}.{$rid}",
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+
         return [$existingFiles, $newlyUploadedPaths, $supersededPaths];
     }
 
@@ -861,6 +991,22 @@ class RegistrationDraftService implements RegistrationDraftProvider
                         unset($files['athlete_documents'][$uid][$code]);
                         if (empty($files['athlete_documents'][$uid])) {
                             unset($files['athlete_documents'][$uid]);
+                        }
+                    }
+                }
+            } elseif (str_starts_with($key, 'personnel_licenses.')) {
+                $parts = explode('.', $key);
+                if (count($parts) === 3) {
+                    $uid = (int) $parts[1];
+                    $rid = (int) $parts[2];
+                    if (isset($files['personnel_licenses'][$uid][$rid])) {
+                        $stagedPath = $files['personnel_licenses'][$uid][$rid]['staged_path'] ?? null;
+                        if ($stagedPath && str_starts_with($stagedPath, "registration_drafts/{$draftId}/")) {
+                            $pendingDeletions[] = $stagedPath;
+                        }
+                        unset($files['personnel_licenses'][$uid][$rid]);
+                        if (empty($files['personnel_licenses'][$uid])) {
+                            unset($files['personnel_licenses'][$uid]);
                         }
                     }
                 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Event\Http\Resources;
 
 use App\Modules\Event\Models\Event;
+use App\Modules\Event\Services\EventVenueService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -38,6 +39,11 @@ class TournamentConfigResource extends JsonResource
             'schedule_settings' => $this->scheduleSetting ? new ScheduleSettingResource($this->scheduleSetting) : null,
             'schedule_breaks' => ScheduleBreakResource::collection($this->scheduleBreaks),
             'courts' => CourtResource::collection($this->eventCourts),
+            'all_courts' => collect(app(EventVenueService::class)->formData($this->resource)['venueOptions'])
+                ->whereIn('id', app(EventVenueService::class)->venueIds($this->resource))
+                ->flatMap(fn ($venue) => $venue->courts->map(fn ($court) => [
+                    'id' => $court->id, 'name' => $venue->name.' — '.$court->name,
+                ]))->values(),
             'participants' => $this->participants->map(fn ($p) => [
                 'id' => $p->id,
                 'event_category_id' => $p->event_category_id,

@@ -75,7 +75,20 @@
     <div class="card-header bg-body-tertiary"><h6 class="mb-0">Pelatih & Tenaga Pendukung</h6></div>
     <ul class="list-group list-group-flush">
         @forelse(($personnel ?? []) as $person)
-            <li class="list-group-item">{{ $person['name'] }} <span class="badge badge-subtle-info ms-2">{{ $person['role_name'] }}</span></li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    {{ $person['name'] }} <span class="badge badge-subtle-info ms-2">{{ $person['role_name'] }}</span>
+                </div>
+                @if(! empty($person['license_url']))
+                    <a href="{{ $person['license_url'] }}" target="_blank" class="btn btn-xs btn-outline-primary">
+                        <span class="fas fa-id-card me-1"></span>Unduh Lisensi
+                    </a>
+                @elseif(! empty($person['has_license']))
+                    <span class="badge badge-subtle-success"><span class="fas fa-check-circle me-1"></span>Lisensi Diunggah</span>
+                @else
+                    <span class="text-muted fs-11">Tanpa lisensi</span>
+                @endif
+            </li>
         @empty
             <li class="list-group-item text-muted">Belum ada tenaga pendukung.</li>
         @endforelse

@@ -7,6 +7,7 @@ namespace App\Modules\Event\Services;
 use App\Contracts\TeamPersonnelProvider;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventParticipant;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class TeamPersonnelRoster
@@ -18,7 +19,11 @@ class TeamPersonnelRoster
         $roles = collect($this->provider->roles())->keyBy('id');
 
         return [
-            'requirements' => collect($event->personnel_requirements ?? [])->map(fn ($rule) => array_merge($rule, ['name' => $roles->get($rule['role_id'])['name'] ?? 'Peran tidak tersedia']))->values()->all(),
+            'requirements' => collect($event->personnel_requirements ?? [])->map(fn ($rule) => array_merge($rule, [
+                'name' => $roles->get($rule['role_id'])['name'] ?? 'Peran tidak tersedia',
+                'role_code' => $roles->get($rule['role_id'])['code'] ?? null,
+                'license_allowed' => in_array($roles->get($rule['role_id'])['code'] ?? '', ['coach', 'assistant_coach'], true),
+            ]))->values()->all(),
             'people' => $this->provider->eligiblePeople($communityId),
         ];
     }
@@ -53,7 +58,11 @@ class TeamPersonnelRoster
                 throw ValidationException::withMessages(['personnel' => 'Personel/peran tidak diizinkan, tidak aktif, bukan anggota komunitas, atau duplikat.']);
             }
             $seen[$key] = true;
-            $rows[] = ['user_id' => $uid, 'role_id' => $rid, 'role_name' => $roles->get($rid)['name']];
+            $rowItem = ['user_id' => $uid, 'role_id' => $rid, 'role_name' => $roles->get($rid)['name']];
+            if (! empty($row['license_path'])) {
+                $rowItem['license_path'] = $row['license_path'];
+            }
+            $rows[] = $rowItem;
         }
         foreach ($rules as $rid => $rule) {
             $count = collect($rows)->where('role_id', $rid)->count();
@@ -65,10 +74,20 @@ class TeamPersonnelRoster
         return $rows;
     }
 
-    public function sync(EventParticipant $participant, array $selection): void
+    public function sync(EventParticipant $participant, array $selection, array $licenses = []): void
     {
         $event = clone $participant->event;
         $event->personnel_requirements = $participant->personnel_requirements ?? [];
+        $existingLicenses = $participant->personnel()->whereNotNull('license_path')->pluck('license_path', DB::raw("CONCAT(user_id, ':', role_id)"))->all();
+        foreach ($selection as &$row) {
+            $key = ($row['user_id'] ?? '').':'.($row['role_id'] ?? '');
+            if (isset($licenses[$key])) {
+                $row['license_path'] = $licenses[$key];
+            } elseif (isset($existingLicenses[$key]) && ! isset($row['license_path'])) {
+                $row['license_path'] = $existingLicenses[$key];
+            }
+        }
+        unset($row);
         $rows = $this->validate($event, (int) $participant->community_id, $selection);
         $participant->personnel()->delete();
         $participant->personnel()->createMany($rows);
