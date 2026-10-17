@@ -241,26 +241,27 @@
                 @foreach($event->categories as $category)
                 <div class="p-3 border-bottom">
                     <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start gap-2 mb-2">
-                        <div class="flex-grow-1 min-w-0">
+                        <div class="flex-grow-1 min-w-0 w-100">
                             <h6 class="fw-bold mb-1 text-primary text-break">{{ $category->name }} ({{ $category->match_type }} - {{ ucfirst($category->gender) }}) · {{ $category->ageRangeLabel() }}</h6>
                             <div class="d-flex flex-wrap gap-1">
                                 @foreach($category->allowedEntityLabels() as $lbl)
-                                    <span class="badge bg-light text-dark border fs-11">{{ $lbl }}</span>
+                                    <span class="badge bg-light text-dark border fs-11 text-wrap text-start text-break lh-base">{{ $lbl }}</span>
                                 @endforeach
                             </div>
                         </div>
-                        <div class="text-sm-end flex-shrink-0">
-                            <span class="badge bg-primary-subtle text-primary border mb-1">{{ $category->registrationPriceLabel() }}</span>
-                            <br>
-                            <span class="badge bg-100 text-dark border">
-                                @if($category->registration_flow === 'screening_first')
-                                    {{ $category->participants->count() }} Pendaftar / Kuota: {{ $category->max_teams ?? '∞' }}
-                                @else
-                                    {{ $category->participants->count() }} Tim / Kuota: {{ $category->max_teams ?? '∞' }}
-                                @endif
-                            </span>
+                        <div class="d-flex flex-wrap flex-sm-column align-items-center align-items-sm-end justify-content-between w-100 w-sm-auto gap-2 pt-2 pt-sm-0 border-top border-sm-0">
+                            <div class="d-flex flex-wrap gap-1 align-items-center justify-content-sm-end">
+                                <span class="badge bg-primary-subtle text-primary border">{{ $category->registrationPriceLabel() }}</span>
+                                <span class="badge bg-100 text-dark border">
+                                    @if($category->registration_flow === 'screening_first')
+                                        {{ $category->participants->count() }} Pendaftar / Kuota: {{ $category->max_teams ?? '∞' }}
+                                    @else
+                                        {{ $category->participants->count() }} Tim / Kuota: {{ $category->max_teams ?? '∞' }}
+                                    @endif
+                                </span>
+                            </div>
                             @if($event->registration_open)
-                                <div class="mt-1">
+                                <div>
                                     <a href="{{ route('events.register', [$event->slug, 'event_category_id' => $category->id]) }}" class="btn btn-xs btn-outline-primary">
                                         <span class="fas fa-arrow-right me-1"></span>Daftar
                                     </a>
@@ -270,8 +271,8 @@
                     </div>
 
                     @if($category->document_instructions)
-                        <div class="mb-2 fs-10 text-muted">
-                            <span class="fas fa-clipboard-check text-primary me-1"></span>
+                        <div class="mb-2 fs-10 text-muted text-break">
+                            <span class="fas fa-clipboard-check text-primary me-1 flex-shrink-0"></span>
                             <strong>Catatan Screening / TM:</strong> {{ $category->document_instructions }}
                         </div>
                     @endif
@@ -285,7 +286,7 @@
                     @else
                         <div class="d-flex flex-wrap gap-2 mt-2">
                             @foreach($category->participants as $p)
-                                <span class="badge bg-light text-dark border px-2 py-1">
+                                <span class="badge bg-light text-dark border px-2 py-1 text-wrap text-break text-start lh-base">
                                     <span class="fas fa-shield-alt text-primary me-1"></span>{{ $p->team_name }}
                                 </span>
                             @endforeach
