@@ -26,7 +26,7 @@
 
 @if($options->isEmpty())
     <div class="alert alert-subtle-warning fs-11 p-2 mb-0" role="alert">
-        Belum ada venue terdaftar. Silakan hubungi administrator untuk menambahkan master data venue.
+        Belum ada venue terdaftar. Silakan Silahkan Isi data venue melalui workspace Venue & Lapangan.
     </div>
 @else
     <style>

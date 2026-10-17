@@ -180,6 +180,7 @@
         </form>
     </div>
 </div>
+@endsection
 
 @push('scripts')
 <script src="{{ asset('assets/vendors/leaflet/leaflet.js') }}"></script>
@@ -321,4 +322,3 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 @endpush
-@endsection

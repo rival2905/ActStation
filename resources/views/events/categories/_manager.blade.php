@@ -86,7 +86,7 @@
                         <th>Roster</th>
                         <th>Tim</th>
                         <th>Registrasi</th>
-                        <th>Sumber</th>
+                        <th style="min-width: 140px; max-width: 220px;">Sumber</th>
                         <th>Dokumen</th>
                         <th>Waiting List</th>
                         <th>Visibilitas Tim</th>
@@ -127,9 +127,9 @@
                                     <small class="text-muted d-block">Tutup: {{ \Illuminate\Support\Carbon::parse($category->registration_end)->format('d/m/y H:i') }}</small>
                                 @endif
                             </td>
-                            <td>
+                            <td class="text-wrap" style="min-width: 140px; max-width: 220px;">
                                 @forelse($category->allowedEntityLabels() as $lbl)
-                                    <span class="badge badge-subtle-primary me-1 mb-1">{{ $lbl }}</span>
+                                    <span class="badge badge-subtle-primary text-wrap text-start text-break lh-sm me-1 mb-1">{{ $lbl }}</span>
                                 @empty
                                     <span class="text-muted">Tidak ada</span>
                                 @endforelse

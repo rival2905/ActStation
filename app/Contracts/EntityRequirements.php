@@ -25,7 +25,7 @@ class EntityRequirements
     public const CATEGORY_SUBTYPES = [
         'school_sd' => 'SD/MI',
         'school_smp' => 'SMP/MTs',
-        'school_sma' => 'SMA/SMK',
+        'school_sma' => 'SMA/SMK/MA',
         'university' => 'Perguruan Tinggi / Universitas',
         'institution' => 'Instansi / Lembaga',
         'free_association' => 'Komunitas Bebas / Mandiri',
@@ -41,7 +41,7 @@ class EntityRequirements
         'club' => 'Klub Olahraga',
         'school_sd' => 'SD/MI',
         'school_smp' => 'SMP/MTs',
-        'school_sma' => 'SMA/SMK',
+        'school_sma' => 'SMA/SMK/MA',
         'university' => 'Perguruan Tinggi / Universitas',
         'institution' => 'Instansi / Lembaga',
         'free_association' => 'Komunitas Bebas / Mandiri',

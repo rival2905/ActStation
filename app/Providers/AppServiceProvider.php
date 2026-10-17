@@ -6,6 +6,7 @@ use App\Contracts\AthleteDocumentVault;
 use App\Contracts\CommunityLookup;
 use App\Contracts\ContextualAthleteInvitation;
 use App\Contracts\DevelopmentLevelLookup;
+use App\Contracts\EmailDelivery;
 use App\Contracts\EventLocationLookup;
 use App\Contracts\EventLookup;
 use App\Contracts\Events\PaymentRefunded;
@@ -19,6 +20,7 @@ use App\Contracts\TeamPersonnelProvider;
 use App\Contracts\VenueCatalog;
 use App\Listeners\AuthActivitySubscriber;
 use App\Models\User;
+use App\Modules\Communication\Services\CommunicationEmailDelivery;
 use App\Modules\Community\Models\Community;
 use App\Modules\Community\Models\CommunityOfficial;
 use App\Modules\Community\Policies\CommunityPolicy;
@@ -68,6 +70,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(VenueCatalog::class, VenueCatalogService::class);
         $this->app->bind(EventLocationLookup::class, EventLocationService::class);
         $this->app->singleton(EventRegistrationEmailService::class);
+        if (! $this->app->bound(EmailDelivery::class)) {
+            $this->app->bind(EmailDelivery::class, CommunicationEmailDelivery::class);
+        }
     }
 
     /**
