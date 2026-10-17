@@ -20,8 +20,10 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
 use Spatie\Permission\Traits\HasRoles;
+use Throwable;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
@@ -141,29 +143,37 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function sendEmailVerificationNotification(): void
     {
-        $verificationUrl = URL::temporarySignedRoute(
-            'verification.verify',
-            now()->addMinutes(60),
-            [
-                'id' => $this->getKey(),
-                'hash' => sha1((string) $this->getEmailForVerification()),
-            ]
-        );
+        try {
+            if (! app()->bound(EmailDelivery::class)) {
+                return;
+            }
 
-        $payload = [
-            'recipient_user_id' => $this->getKey(),
-            'recipient_email' => (string) $this->getEmailForVerification(),
-            'recipient_name' => $this->name,
-            'subject' => 'Verifikasi Alamat Email',
-            'body' => "Halo {$this->name},\n\nSilakan klik tautan di bawah ini untuk memverifikasi alamat email akun ActStation Anda. Tautan ini berlaku selama 60 menit:\n{$verificationUrl}",
-            'action_url' => $verificationUrl,
-            'action_label' => 'Verifikasi Email',
-            'type' => 'verification',
-            'attachments' => [],
-        ];
+            $verificationUrl = URL::temporarySignedRoute(
+                'verification.verify',
+                now()->addMinutes(60),
+                [
+                    'id' => $this->getKey(),
+                    'hash' => sha1((string) $this->getEmailForVerification()),
+                ]
+            );
 
-        if (app()->bound(EmailDelivery::class)) {
+            $payload = [
+                'recipient_user_id' => $this->getKey(),
+                'recipient_email' => (string) $this->getEmailForVerification(),
+                'recipient_name' => $this->name,
+                'subject' => 'Verifikasi Alamat Email',
+                'body' => "Halo {$this->name},\n\nSilakan klik tautan di bawah ini untuk memverifikasi alamat email akun ActStation Anda. Tautan ini berlaku selama 60 menit:\n{$verificationUrl}",
+                'action_url' => $verificationUrl,
+                'action_label' => 'Verifikasi Email',
+                'type' => 'verification',
+                'attachments' => [],
+            ];
+
             app(EmailDelivery::class)->send($payload);
+        } catch (Throwable $e) {
+            Log::warning('Pengiriman email verifikasi dilewati karena kendala layanan: '.$e->getMessage(), [
+                'user_id' => $this->getKey(),
+            ]);
         }
     }
 

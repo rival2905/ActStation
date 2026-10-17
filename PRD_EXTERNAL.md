@@ -211,7 +211,10 @@ Untuk memitigasi risiko kegagalan operasional, pembukaan fitur eksternal diterap
 
 1. **Registrasi Akun Publik (`/register`)**:
    - Input nomor telepon **wajib nomor WhatsApp aktif** (digunakan untuk notifikasi pendaftaran, e-ticket, dan koordinasi darurat PIC).
-   - Sistem otomatis membuat user di tabel `users`, meng-assign role `member` (`panel_access = 'external'`), dan login session `web`.
+   - Normalisasi nomor telepon otomatis ke format E.164 (`+62...`) dilakukan sebelum validasi request, dengan pengecekan `unique:users,phone_normalized` untuk mencegah error 500 akibat tabrakan *unique database constraint*.
+   - Pembuatan user di tabel `users` otomatis diiringi guard `Role::firstOrCreate(['name' => 'member', 'guard_name' => 'web'])` agar registrasi tidak crash (`RoleDoesNotExist`) jika seeder belum dijalankan di environment production.
+   - Session di-regenerate via `$request->session()->regenerate()` setelah `Auth::login($user)`.
+   - Dispatch event `Registered($user)` memanggil `sendEmailVerificationNotification()` yang diproteksi `try-catch (\Throwable)` sehingga kegagalan eksternal/n8n/service email tidak menggugurkan registrasi akun pengguna (memenuhi aturan zero-failure registrasi di AGENTS.md).
 2. **Akses Penuh Tanpa Blokir**:
    - User baru bebas menjelajahi seluruh konten eksternal tanpa dipaksa mengisi dokumen identitas berlebih di awal.
 3. **Just-In-Time KYC**:

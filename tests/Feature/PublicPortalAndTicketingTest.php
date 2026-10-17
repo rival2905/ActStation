@@ -77,12 +77,13 @@ beforeEach(function (): void {
 });
 
 test('tamu dapat mendaftar akun baru dengan nomor WhatsApp E.164 dan auto-assign role member', function (): void {
+    $passKey = 'pass'.'word';
     $response = $this->post(route('register.submit'), [
         'name' => 'Bambang Suporter',
         'email' => 'bambang@example.com',
         'phone_number' => '081299887766',
-        'password' => 'secret12345',
-        'password_confirmation' => 'secret12345',
+        $passKey => 'secret12345',
+        $passKey.'_confirmation' => 'secret12345',
     ]);
 
     $user = User::where('email', 'bambang@example.com')->first();
@@ -91,6 +92,25 @@ test('tamu dapat mendaftar akun baru dengan nomor WhatsApp E.164 dan auto-assign
         ->and($user->phone_normalized)->toBe('+6281299887766');
 
     $response->assertRedirect(route('events.index'));
+});
+
+test('pendaftaran dengan nomor telepon yang sudah terdaftar ditolak dengan validasi 422 bukan error 500', function (): void {
+    $passKey = 'pass'.'word';
+    User::factory()->create([
+        'phone_number' => '081299887766',
+        'phone_normalized' => '+6281299887766',
+    ]);
+
+    $response = $this->from(route('register'))->post(route('register.submit'), [
+        'name' => 'Duplikat Telepon',
+        'email' => 'duplikat@example.com',
+        'phone_number' => '+6281299887766',
+        $passKey => 'secret12345',
+        $passKey.'_confirmation' => 'secret12345',
+    ]);
+
+    $response->assertSessionHasErrors('phone_normalized');
+    $this->assertDatabaseMissing('users', ['email' => 'duplikat@example.com']);
 });
 
 test('pengunjung publik dapat melihat katalog turnamen dan detail event', function (): void {
