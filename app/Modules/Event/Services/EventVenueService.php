@@ -58,16 +58,16 @@ class EventVenueService
             $event = Event::query()->lockForUpdate()->findOrFail($event->id);
             $venueIds = array_values(array_unique(array_map('intval', $venueIds)));
             $oldVenueIds = $this->venueIds($event);
-            if ($venueIds === [] || DB::table('venues')->whereIn('id', $venueIds)
+            if ($venueIds !== [] && DB::table('venues')->whereIn('id', $venueIds)
                 ->where(fn ($q) => $q->where('is_active', true)->orWhereIn('id', $oldVenueIds))->count() !== count($venueIds)) {
                 throw ValidationException::withMessages(['venue_ids' => 'Pilih venue aktif yang terdaftar.']);
             }
             $courtIds ??= $event->eventCourts()->pluck('venue_court_id')->all();
-            $courtIds = array_values(array_unique(array_map('intval', $courtIds)));
+            $courtIds = $venueIds === [] ? [] : array_values(array_unique(array_map('intval', $courtIds)));
             $oldCourtIds = $event->eventCourts()->pluck('venue_court_id')->all();
-            $validCourts = DB::table('venue_courts')->whereIn('venue_id', $venueIds)->whereIn('id', $courtIds)
+            $validCourts = $venueIds === [] ? 0 : DB::table('venue_courts')->whereIn('venue_id', $venueIds)->whereIn('id', $courtIds)
                 ->where(fn ($q) => $q->where('is_active', true)->orWhereIn('id', $oldCourtIds))->count();
-            if ($validCourts !== count($courtIds)) {
+            if ($courtIds !== [] && $validCourts !== count($courtIds)) {
                 throw ValidationException::withMessages(['venue_court_ids' => 'Lapangan harus aktif dan berasal dari venue yang dipilih.']);
             }
             if (DB::table('ticket_categories')->where('event_id', $event->id)->where(function ($q) use ($venueIds, $courtIds): void {
@@ -91,7 +91,7 @@ class EventVenueService
             foreach ($courtIds as $courtId) {
                 $event->eventCourts()->firstOrCreate(['venue_court_id' => $courtId]);
             }
-            $event->update(['venue_id' => in_array((int) $event->venue_id, $venueIds, true) ? $event->venue_id : $venueIds[0]]);
+            $event->update(['venue_id' => $venueIds === [] ? null : (in_array((int) $event->venue_id, $venueIds, true) ? $event->venue_id : $venueIds[0])]);
         });
     }
 }

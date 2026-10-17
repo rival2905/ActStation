@@ -101,10 +101,33 @@ class OrganizerEventController extends Controller
             $eventData['venue_approval_doc'] = $request->file('venue_approval_doc')->store('venue_approvals', 'public');
         }
 
-        $event = DB::transaction(function () use ($eventData, $validated): Event {
+        $event = DB::transaction(function () use ($eventData, $validated, $request): Event {
             $eventData['venue_id'] = null;
             $event = Event::create($eventData);
-            app(EventVenueService::class)->sync($event, $validated['venue_ids'] ?? [$validated['venue_id']], $validated['venue_court_ids'] ?? []);
+            $venueIds = $validated['venue_ids'] ?? (isset($validated['venue_id']) && $validated['venue_id'] ? [$validated['venue_id']] : []);
+            app(EventVenueService::class)->sync($event, $venueIds, $validated['venue_court_ids'] ?? []);
+
+            if ($request->hasFile('recommendation_doc')) {
+                $filePath = $request->file('recommendation_doc')->store('event_documents', 'public');
+                $event->documents()->create([
+                    'category' => 'federation_recommendation',
+                    'name' => 'Surat Rekomendasi Induk Cabor',
+                    'file_path' => $filePath,
+                    'status' => 'pending',
+                    'is_public' => false,
+                ]);
+            }
+
+            if ($request->hasFile('technical_handbook_doc')) {
+                $filePath = $request->file('technical_handbook_doc')->store('event_documents', 'public');
+                $event->documents()->create([
+                    'category' => 'technical_handbook',
+                    'name' => 'Technical Handbook (THB) / Buku Panduan Teknis',
+                    'file_path' => $filePath,
+                    'status' => 'pending',
+                    'is_public' => true,
+                ]);
+            }
 
             return $event;
         });
@@ -156,14 +179,55 @@ class OrganizerEventController extends Controller
             $updateData['venue_approval_doc'] = $request->file('venue_approval_doc')->store('venue_approvals', 'public');
         }
 
-        DB::transaction(function () use ($event, $updateData, $validated): void {
-            $venueIds = $validated['venue_ids'] ?? [$validated['venue_id']];
+        DB::transaction(function () use ($event, $updateData, $validated, $request): void {
+            $venueIds = $validated['venue_ids'] ?? (isset($validated['venue_id']) && $validated['venue_id'] ? [$validated['venue_id']] : []);
             $courtIds = $validated['venue_court_ids'] ?? null;
             if (isset($validated['venue_selection_present'])) {
                 $courtIds ??= [];
             }
             app(EventVenueService::class)->sync($event, $venueIds, $courtIds);
             $event->update($updateData);
+
+            if ($request->hasFile('recommendation_doc')) {
+                $filePath = $request->file('recommendation_doc')->store('event_documents', 'public');
+                $existingDoc = $event->documents()->whereIn('category', ['federation_recommendation', 'perbasi_recommendation'])->first();
+                if ($existingDoc) {
+                    $existingDoc->update([
+                        'file_path' => $filePath,
+                        'name' => 'Surat Rekomendasi Induk Cabor',
+                        'status' => 'pending',
+                    ]);
+                } else {
+                    $event->documents()->create([
+                        'category' => 'federation_recommendation',
+                        'name' => 'Surat Rekomendasi Induk Cabor',
+                        'file_path' => $filePath,
+                        'status' => 'pending',
+                        'is_public' => false,
+                    ]);
+                }
+            }
+
+            if ($request->hasFile('technical_handbook_doc')) {
+                $filePath = $request->file('technical_handbook_doc')->store('event_documents', 'public');
+                $existingDoc = $event->documents()->where('category', 'technical_handbook')->first();
+                if ($existingDoc) {
+                    $existingDoc->update([
+                        'file_path' => $filePath,
+                        'name' => 'Technical Handbook (THB) / Buku Panduan Teknis',
+                        'status' => 'pending',
+                        'is_public' => true,
+                    ]);
+                } else {
+                    $event->documents()->create([
+                        'category' => 'technical_handbook',
+                        'name' => 'Technical Handbook (THB) / Buku Panduan Teknis',
+                        'file_path' => $filePath,
+                        'status' => 'pending',
+                        'is_public' => true,
+                    ]);
+                }
+            }
         });
 
         return redirect()

@@ -72,6 +72,17 @@ Kategori khusus SMP/SMA/perguruan tinggi hanya ditawarkan kepada entitas akademi
 Bank Mandiri dikoreksi ke Instansi/Lembaga jenis Perusahaan (institution/corporate) atas permintaan pengguna. Tiga kategori pelajar event Piala Kemerdekaan yang sebelumnya terbuka diselaraskan ke school_smp (Putra/Putri) dan school_sma (Putri); SMA Putra memang sudah dibatasi. Read-only render akun Cindy pada konteks Bank Mandiri kini hanya menampilkan Instansi / Dinas Putra (KU 35++). Sekolah memakai master jenjang NPSN; perubahan tidak menebak nama, mengubah status verifikasi atau mengirim tim. Full suite725 PHP/4940 assertions dan build/Pint/Blade/diff lulus; login browser UAT belum.
 
 
+## Pembuatan event: venue dan berkas turnamen bersifat opsional — selesai lokal
+
+Penyesuaian halaman pembuatan turnamen organizer (`/panel/organizer/events/create` dan `/edit`):
+- **Venue opsional**: Pemilihan venue dan lapangan pada pembuatan draf awal tidak diwajibkan (`venue_ids` nullable). Draf event dapat disimpan tanpa venue (`venue_id` null), dan dapat dilengkapi kapan saja di workspace Venue & Lapangan sebelum menyusun jadwal laga. `EventVenueService::sync` mendukung sinkronisasi draf kosong tanpa melempar pengecualian validasi.
+- **Penggantian berkas izin**: Menghilangkan input wajib Surat Izin Tempat / Bukti Sewa (`venue_approval_doc`) dari halaman pembuatan/edit awal.
+- **Unggah PDF rekomendasi & THB**: Menyediakan dua input unggah berkas opsional berformat PDF (maks. 10 MB):
+  * **Surat Rekomendasi Induk Cabor** (`recommendation_doc`): disimpan ke polymorphic document vault kategori `federation_recommendation` (privat untuk moderasi admin).
+  * **Technical Handbook (THB) / Buku Panduan Teknis** (`technical_handbook_doc`): disimpan ke polymorphic document vault kategori `technical_handbook` (`is_public = true` untuk unduhan peserta).
+- **Semua upload opsional**: Seluruh berkas (rekomendasi, THB, banner) dan pemilihan venue boleh dikosongkan saat pembuatan draf event.
+- **Verifikasi**: 4 tes fitur baru pada `OrganizerEventCreationOptionalVenueDocsTest` (28 assertions) lulus, mencakup pembuatan event tanpa venue, unggah PDF rekomendasi/THB, penolakan berkas non-PDF, serta ketiadaan input izin tempat lama. Seluruh suite regression organizer (68 tests / 536 assertions) dan 135 tes unit Node lulus 100%.
+
 ## Unggah lisensi pelatih (Coach & Assistant Coach) — selesai lokal
 
 Pendaftaran tim langkah 2 (Pelatih & Tenaga Pendukung) kini menyediakan input unggah berkas lisensi opsional (maks 1 MB, JPG/PNG/WebP) untuk peran Coach dan Assistant Coach:

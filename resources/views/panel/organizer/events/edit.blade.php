@@ -110,7 +110,7 @@
         <div class="col-lg-4">
             <div class="card mb-3">
                 <div class="card-header bg-body-tertiary">
-                    <h6 class="mb-0">2. Lokasi Venue Pertandingan</h6>
+                    <h6 class="mb-0">2. Venue & Dokumen Turnamen</h6>
                 </div>
                 <div class="card-body">
                     <div class="mb-3">
@@ -118,16 +118,48 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fs-10 fw-bold" for="venue_approval_doc">Surat Izin Tempat / Bukti Sewa</label>
-                        <input class="form-control form-control-sm" type="file" id="venue_approval_doc" name="venue_approval_doc" accept=".pdf,image/*">
-                        @if($event->venue_approval_doc)
-                            <small class="text-success d-block mt-1"><span class="fas fa-check-circle me-1"></span>Berkas telah diunggah.</small>
+                        <label class="form-label fs-10 fw-bold" for="recommendation_doc">Surat Rekomendasi Induk Cabor</label>
+                        <input class="form-control form-control-sm @error('recommendation_doc') is-invalid @enderror" type="file" id="recommendation_doc" name="recommendation_doc" accept=".pdf,application/pdf">
+                        @php
+                            $fedDoc = $event->documents->first(fn($d) => in_array($d->category, ['federation_recommendation', 'perbasi_recommendation']));
+                        @endphp
+                        @if($fedDoc)
+                            <small class="text-success d-block mt-1"><span class="fas fa-check-circle me-1"></span>Berkas telah diunggah: <strong>{{ $fedDoc->name }}</strong></small>
+                        @else
+                            <small class="text-muted fs-11 d-block">Opsional, format PDF (maks. 10 MB). Surat rekomendasi induk cabor.</small>
                         @endif
+                        @error('recommendation_doc')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fs-10 fw-bold" for="technical_handbook_doc">Technical Handbook (THB) / Buku Panduan Teknis</label>
+                        <input class="form-control form-control-sm @error('technical_handbook_doc') is-invalid @enderror" type="file" id="technical_handbook_doc" name="technical_handbook_doc" accept=".pdf,application/pdf">
+                        @php
+                            $thbDoc = $event->documents->firstWhere('category', 'technical_handbook');
+                        @endphp
+                        @if($thbDoc)
+                            <small class="text-success d-block mt-1"><span class="fas fa-check-circle me-1"></span>Berkas telah diunggah: <strong>{{ $thbDoc->name }}</strong></small>
+                        @else
+                            <small class="text-muted fs-11 d-block">Opsional, format PDF (maks. 10 MB). Panduan teknis & regulasi pertandingan.</small>
+                        @endif
+                        @error('technical_handbook_doc')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
                     </div>
 
                     <div class="mb-3">
                         <label class="form-label fs-10 fw-bold" for="banner_image">Banner Pamflet Event</label>
-                        <input class="form-control form-control-sm" type="file" id="banner_image" name="banner_image" accept="image/*">
+                        <input class="form-control form-control-sm @error('banner_image') is-invalid @enderror" type="file" id="banner_image" name="banner_image" accept="image/*">
+                        @if($event->banner_image)
+                            <small class="text-success d-block mt-1"><span class="fas fa-check-circle me-1"></span>Banner telah diunggah.</small>
+                        @else
+                            <small class="text-muted fs-11 d-block">Opsional, format gambar (maks. 4 MB).</small>
+                        @endif
+                        @error('banner_image')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
                     </div>
 
                     <div class="form-check form-switch mb-0">

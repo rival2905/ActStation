@@ -109,10 +109,10 @@
         </div>
 
         <div class="col-lg-4">
-            <!-- Binding Venue Terverifikasi (PRD_EXTERNAL §3.4) -->
+            <!-- Binding Venue & Dokumen Turnamen -->
             <div class="card mb-3">
                 <div class="card-header bg-body-tertiary">
-                    <h6 class="mb-0">2. Lokasi Venue Pertandingan</h6>
+                    <h6 class="mb-0">2. Venue & Dokumen Turnamen</h6>
                 </div>
                 <div class="card-body">
                     <div class="mb-3">
@@ -120,14 +120,30 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fs-10 fw-bold" for="venue_approval_doc">Surat Izin Tempat / Bukti Sewa</label>
-                        <input class="form-control form-control-sm" type="file" id="venue_approval_doc" name="venue_approval_doc" accept=".pdf,image/*">
-                        <small class="text-muted fs-11">Wajib diunggah sebelum pengajuan review moderasi admin.</small>
+                        <label class="form-label fs-10 fw-bold" for="recommendation_doc">Surat Rekomendasi Induk Cabor</label>
+                        <input class="form-control form-control-sm @error('recommendation_doc') is-invalid @enderror" type="file" id="recommendation_doc" name="recommendation_doc" accept=".pdf,application/pdf">
+                        <small class="text-muted fs-11">Opsional, format PDF (maks. 10 MB). Surat rekomendasi induk cabang olahraga.</small>
+                        @error('recommendation_doc')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fs-10 fw-bold" for="technical_handbook_doc">Technical Handbook (THB) / Buku Panduan Teknis</label>
+                        <input class="form-control form-control-sm @error('technical_handbook_doc') is-invalid @enderror" type="file" id="technical_handbook_doc" name="technical_handbook_doc" accept=".pdf,application/pdf">
+                        <small class="text-muted fs-11">Opsional, format PDF (maks. 10 MB). Buku panduan teknis & regulasi pertandingan.</small>
+                        @error('technical_handbook_doc')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
                     </div>
 
                     <div class="mb-3">
                         <label class="form-label fs-10 fw-bold" for="banner_image">Banner Pamflet Event</label>
-                        <input class="form-control form-control-sm" type="file" id="banner_image" name="banner_image" accept="image/*">
+                        <input class="form-control form-control-sm @error('banner_image') is-invalid @enderror" type="file" id="banner_image" name="banner_image" accept="image/*">
+                        <small class="text-muted fs-11">Opsional, format gambar (maks. 4 MB).</small>
+                        @error('banner_image')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
                     </div>
 
                     <div class="form-check form-switch mb-0">

@@ -13,7 +13,7 @@
     <div class="d-flex align-items-center">
         <span class="fas fa-info-circle me-2" aria-hidden="true"></span>
         <div>
-            Satu event dapat memakai beberapa venue sekaligus, misalnya 7 lapangan lintas venue. Pilih minimal satu venue; lapangan boleh dilengkapi sebelum menyusun jadwal. Venue yang belum tersedia dapat ditambahkan melalui workspace Venue & Lapangan setelah draf event tersimpan; atau hubungi administrator.
+            Satu event dapat memakai beberapa venue sekaligus, misalnya 7 lapangan lintas venue. Pemilihan venue dan lapangan bersifat opsional saat draf awal, dan dapat dipilih atau dilengkapi nanti di workspace Venue & Lapangan sebelum menyusun jadwal pertandingan. Venue yang belum tersedia dapat ditambahkan melalui workspace Venue & Lapangan setelah draf event tersimpan; atau hubungi administrator.
         </div>
     </div>
 </div>
