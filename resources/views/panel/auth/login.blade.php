@@ -69,7 +69,8 @@
                                     </div>
 
                                     <div class="mb-3">
-                                        <button class="btn btn-primary d-block w-100" type="submit">Masuk</button>
+                                        <button class="btn btn-primary d-block w-100 mb-1" type="submit">Masuk</button>
+                                        <a class="btn btn-secondary d-block w-100" href="{{ route('register') }}" >Daftar Akun</a>
                                     </div>
                                 </form>
                             </div>

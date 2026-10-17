@@ -71,20 +71,22 @@
 @if($docFedVerified)
 <div class="alert alert-success border-success mb-4 shadow-sm" role="alert">
     <div class="d-flex align-items-start">
-        <span class="fas fa-check-circle fa-2x me-3 text-success mt-1"></span>
+        <span class="fas fa-check-circle fs-7 fs-md-5 me-2 me-sm-3 text-success mt-1 flex-shrink-0"></span>
         <div class="fs-10">
-            <h6 class="alert-heading fw-bold mb-1 text-success">Turnamen Resmi &amp; Terverifikasi</h6>
-            Turnamen ini telah mengantongi surat rekomendasi resmi dari induk cabang olahraga ({{ $federationName }}). Segala urusan regulasi, teknis pertandingan, dan perizinan non-platform menjadi tanggung jawab penuh pihak penyelenggara.
+            <h6 class="alert-heading fw-bold mb-1 text-success fs-10 fs-sm-9">Turnamen Resmi & Terverifikasi</h6>
+            <span class="d-none d-sm-inline">Turnamen ini telah mengantongi surat rekomendasi resmi dari induk cabang olahraga ({{ $federationName }}). Segala urusan regulasi, teknis pertandingan, dan perizinan non-platform menjadi tanggung jawab penuh pihak penyelenggara.</span>
+            <span class="d-inline d-sm-none">Telah memiliki rekomendasi resmi {{ $federationName }}. Regulasi & perizinan non-platform menjadi tanggung jawab penyelenggara.</span>
         </div>
     </div>
 </div>
 @else
 <div class="alert alert-warning border-warning mb-4 shadow-sm" role="alert">
     <div class="d-flex align-items-start">
-        <span class="fas fa-exclamation-triangle fa-2x me-3 text-warning mt-1"></span>
+        <span class="fas fa-exclamation-triangle fs-7 fs-md-5 me-2 me-sm-3 text-warning mt-1 flex-shrink-0"></span>
         <div class="fs-10">
-            <h6 class="alert-heading fw-bold mb-1 text-dark">Informasi Penyelenggaraan Turnamen</h6>
-            Peringatan: Turnamen ini diselenggarakan secara mandiri dan belum menyertakan surat rekomendasi resmi induk cabang olahraga ({{ $federationName }}). Segala urusan regulasi, teknis pertandingan, dan perizinan non-platform menjadi tanggung jawab penuh pihak penyelenggara. Seluruh dana registrasi dan tiket dijamin 100% aman dalam rekening bersama (Escrow) platform ActStation.
+            <h6 class="alert-heading fw-bold mb-1 text-dark fs-10 fs-sm-9">Informasi Penyelenggaraan</h6>
+            <span class="d-none d-sm-inline">Turnamen ini diselenggarakan secara mandiri dan belum menyertakan surat rekomendasi resmi induk cabang olahraga ({{ $federationName }}). Segala urusan regulasi, teknis pertandingan, dan perizinan non-platform menjadi tanggung jawab penuh pihak penyelenggara. Seluruh dana registrasi dan tiket dijamin 100% aman dalam rekening bersama (Escrow) platform ActStation.</span>
+            <span class="d-inline d-sm-none">Turnamen mandiri, belum ada rekomendasi {{ $federationName }}. Regulasi & perizinan tanggung jawab penyelenggara. Dana dijamin 100% aman via Escrow ActStation.</span>
         </div>
     </div>
 </div>
@@ -93,51 +95,55 @@
     @if($event->banner_image)
     <img src="{{ asset('storage/' . $event->banner_image) }}" class="card-img-top" alt="{{ $event->title }}" style="max-height: 280px; object-fit: cover;">
     @endif
-    <div class="card-body p-4">
+    <div class="card-body p-3 p-sm-4">
         <div class="row align-items-center">
-            <div class="col-md-8">
+            <div class="col-12 col-md-8">
                 <div class="badge bg-success mb-2"><span class="{{ $event->sportCategory?->icon ?? 'fas fa-trophy' }} me-1"></span>{{ $event->sportCategory?->name ?? 'Multi-Sport' }}</div>
-                <h1 class="h2 fw-bolder mb-2">{{ $event->title }}</h1>
-                <div class="d-flex flex-wrap gap-3 text-muted fs-10 mb-3">
+                <h1 class="fs-6 fs-sm-4 fw-bolder mb-2">{{ $event->title }}</h1>
+                <div class="d-flex flex-column flex-sm-row flex-wrap gap-1 gap-sm-3 text-muted fs-10 mb-3">
                     <span><span class="fas fa-calendar-alt text-primary me-1"></span>{{ $event->starts_at?->format('d M Y') }} s.d. {{ $event->ends_at?->format('d M Y') }}</span>
-                    <span><span class="fas fa-money-bill-wave text-success me-1"></span>Biaya Pendaftaran: {{ $event->registrationPriceLabel() }}</span>
-                    <span><span class="fas fa-user-tie text-info me-1"></span>Organizer: {{ $event->user?->name ?? 'Panitia' }}</span>
+                    <span><span class="fas fa-money-bill-wave text-success me-1"></span>{{ $event->registrationPriceLabel() }}</span>
+                    <span><span class="fas fa-user-tie text-info me-1"></span>{{ $event->user?->name ?? 'Panitia' }}</span>
                 </div>
             </div>
-            <div class="col-md-4 text-md-end mt-3 mt-md-0">
-                <a href="{{ route('events.register', $event->slug) }}" class="btn btn-primary btn-sm me-2">
-                    <span class="fas fa-clipboard-check me-1"></span>Daftar Event
-                </a>
+            <div class="col-12 col-md-4 text-md-end mt-2 mt-md-0">
+                <div class="d-flex d-md-block gap-2">
+                    <a href="{{ route('events.register', $event->slug) }}" class="btn btn-primary btn-sm flex-fill">
+                        <span class="fas fa-clipboard-check me-1"></span>Daftar Event
+                    </a>
 @if($event->ticketSalesAreOpen())
-                <a href="{{ route('events.tickets', $event->slug) }}" class="btn btn-outline-success btn-sm">
-                    <span class="fas fa-ticket-alt me-1"></span>Beli Tiket
-                </a>
+                    <a href="{{ route('events.tickets', $event->slug) }}" class="btn btn-outline-success btn-sm flex-fill">
+                        <span class="fas fa-ticket-alt me-1"></span>Beli Tiket
+                    </a>
 @endif
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 <!-- Navigasi Tab Event -->
-<ul class="nav nav-tabs mb-4">
+<div class="nav-tabs-wrapper position-relative" style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+<ul class="nav nav-tabs mb-4 flex-nowrap" style="min-width: max-content;">
     <li class="nav-item">
-        <a class="nav-link active fw-bold" href="{{ route('events.show', $event->slug) }}">Deskripsi & Kategori</a>
+        <a class="nav-link active fw-bold text-nowrap" href="{{ route('events.show', $event->slug) }}">Deskripsi</a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" href="{{ route('events.tournament', $event->slug) }}">Bagan Turnamen</a>
+        <a class="nav-link text-nowrap" href="{{ route('events.tournament', $event->slug) }}">Bagan</a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" href="{{ route('events.schedule', $event->slug) }}">Jadwal Pertandingan</a>
+        <a class="nav-link text-nowrap" href="{{ route('events.schedule', $event->slug) }}">Jadwal</a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" href="{{ route('events.results', $event->slug) }}">Hasil & Klasemen</a>
+        <a class="nav-link text-nowrap" href="{{ route('events.results', $event->slug) }}">Hasil & Klasemen</a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" href="{{ route('events.tickets', $event->slug) }}">Tiket Penonton</a>
+        <a class="nav-link text-nowrap" href="{{ route('events.tickets', $event->slug) }}">Tiket</a>
     </li>
 </ul>
+</div>
 
-<div class="row g-4">
+<div class="row g-3 g-lg-4">
     <div class="col-lg-8">
         <div class="card mb-4">
             <div class="card-header bg-body-tertiary">
@@ -156,14 +162,15 @@
                 <span class="badge bg-primary">{{ $publicDocs->count() }} Berkas Publik</span>
             </div>
             <div class="card-body p-0">
-                <div class="table-responsive">
+                {{-- Desktop: table --}}
+                <div class="d-none d-md-block table-responsive">
                     <table class="table table-sm table-striped align-middle fs-10 mb-0">
                         <thead class="bg-200">
                             <tr>
                                 <th class="ps-3">Kategori</th>
                                 <th>Nama Dokumen</th>
                                 <th>No. Dokumen</th>
-                                <th class="text-end pe-3">Unduh Berkas</th>
+                                <th class="text-end pe-3">Unduh</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -172,8 +179,8 @@
                                 <td class="ps-3">
                                     <span class="badge bg-info-subtle text-info border">
                                         {{ match($pDoc->category) {
-                                            'technical_handbook' => 'Technical Handbook (THB)',
-                                            'federation_recommendation', 'perbasi_recommendation' => "Rekomendasi Cabor ({$federationName})",
+                                            'technical_handbook' => 'THB',
+                                            'federation_recommendation', 'perbasi_recommendation' => "Rekomendasi {$federationName}",
                                             'police_permit' => 'Izin Kepolisian',
                                             'venue_approval' => 'Izin Venue',
                                             'medical_permit' => 'Izin Medis',
@@ -194,6 +201,33 @@
                         </tbody>
                     </table>
                 </div>
+                {{-- Mobile: stacked cards --}}
+                <div class="d-md-none">
+                    @foreach($publicDocs as $pDoc)
+                    <div class="p-3 {{ !$loop->last ? 'border-bottom' : '' }}">
+                        <div class="d-flex justify-content-between align-items-start mb-1">
+                            <span class="badge bg-info-subtle text-info border fs-11">
+                                {{ match($pDoc->category) {
+                                    'technical_handbook' => 'THB',
+                                    'federation_recommendation', 'perbasi_recommendation' => "Rekomendasi {$federationName}",
+                                    'police_permit' => 'Izin Kepolisian',
+                                    'venue_approval' => 'Izin Venue',
+                                    'medical_permit' => 'Izin Medis',
+                                    'insurance_policy' => 'Asuransi',
+                                    default => 'Dokumen',
+                                } }}
+                            </span>
+                            <a href="{{ route('events.documents.download', [$event->slug, $pDoc->id]) }}" class="btn btn-xs btn-primary flex-shrink-0" target="_blank">
+                                <span class="fas fa-download me-1"></span>Unduh
+                            </a>
+                        </div>
+                        <div class="fw-semi-bold fs-10 text-break">{{ $pDoc->name }}</div>
+                        @if($pDoc->document_number)
+                            <small class="text-muted font-monospace">{{ $pDoc->document_number }}</small>
+                        @endif
+                    </div>
+                    @endforeach
+                </div>
             </div>
         </div>
         @endif
@@ -206,23 +240,23 @@
             <div class="card-body p-0">
                 @foreach($event->categories as $category)
                 <div class="p-3 border-bottom">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div>
-                            <h6 class="fw-bold mb-1 text-primary">{{ $category->name }} ({{ $category->match_type }} - {{ ucfirst($category->gender) }}) · {{ $category->ageRangeLabel() }}</h6>
+                    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start gap-2 mb-2">
+                        <div class="flex-grow-1 min-w-0">
+                            <h6 class="fw-bold mb-1 text-primary text-break">{{ $category->name }} ({{ $category->match_type }} - {{ ucfirst($category->gender) }}) · {{ $category->ageRangeLabel() }}</h6>
                             <div class="d-flex flex-wrap gap-1">
                                 @foreach($category->allowedEntityLabels() as $lbl)
                                     <span class="badge bg-light text-dark border fs-11">{{ $lbl }}</span>
                                 @endforeach
                             </div>
                         </div>
-                        <div class="text-end">
+                        <div class="text-sm-end flex-shrink-0">
                             <span class="badge bg-primary-subtle text-primary border mb-1">{{ $category->registrationPriceLabel() }}</span>
                             <br>
                             <span class="badge bg-100 text-dark border">
                                 @if($category->registration_flow === 'screening_first')
-                                    {{ $category->participants->count() }} Pendaftar / Kuota Lolos: {{ $category->max_teams ?? 'Tanpa Batas' }}
+                                    {{ $category->participants->count() }} Pendaftar / Kuota: {{ $category->max_teams ?? '∞' }}
                                 @else
-                                    {{ $category->participants->count() }} Tim Terdaftar / Kuota: {{ $category->max_teams ?? 'Tanpa Batas' }}
+                                    {{ $category->participants->count() }} Tim / Kuota: {{ $category->max_teams ?? '∞' }}
                                 @endif
                             </span>
                             @if($event->registration_open)
@@ -284,9 +318,9 @@
         </div>
 
         <div class="card bg-100 border">
-            <div class="card-body text-center p-4">
-                <span class="fas fa-user-plus fa-3x text-primary mb-3"></span>
-                <h5>Ingin Ikut Bertanding?</h5>
+            <div class="card-body text-center p-3 p-sm-4">
+                <span class="fas fa-user-plus fa-2x text-primary mb-2"></span>
+                <h5 class="fs-9 fs-sm-8">Ingin Ikut Bertanding?</h5>
                 <p class="fs-10 text-muted mb-3">Daftarkan klub/komunitas Anda atau daftar kategori perorangan.</p>
                 <a href="{{ route('events.register', $event->slug) }}" class="btn btn-primary w-100 btn-sm">Daftar Sekarang</a>
             </div>
