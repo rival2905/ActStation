@@ -68,8 +68,8 @@
                 <h3 class="fs-8 mb-2">{{ ! $categoriesReady ? 'Buat kategori kompetisi pertama' : (! $datesReady ? 'Lengkapi tanggal pelaksanaan' : 'Tinjau persiapan sebelum mengajukan publikasi') }}</h3>
                 <p class="fs-10 text-body-secondary mb-0">Minimal satu kategori dan tanggal mulai sebelum tanggal selesai diperlukan untuk pengajuan. Persetujuan tetap dilakukan admin.</p>
             @elseif($event->status === 'pending_approval')
-                <h3 class="fs-8 mb-2">Pengajuan sedang diperiksa admin</h3>
-                <p class="fs-10 text-body-secondary mb-0">Tidak perlu mengajukan ulang. Periksa dokumen dan pembagian tugas panitia sambil menunggu keputusan.</p>
+                <h3 class="fs-8 mb-2">{{ $isAdmin ? 'Event ini menunggu persetujuan admin' : 'Pengajuan sedang diperiksa admin' }}</h3>
+                <p class="fs-10 text-body-secondary mb-0">{{ $isAdmin ? 'Tinjau kelayakan event, dokumen, dan identitas penyelenggara sebelum menyetujui atau menolak publikasi.' : 'Tidak perlu mengajukan ulang. Periksa dokumen dan pembagian tugas panitia sambil menunggu keputusan.' }}</p>
             @elseif(in_array($event->status, ['completed', 'cancelled']))
                 <h3 class="fs-8 mb-2">Tinjau hasil dan administrasi akhir</h3>
                 <p class="fs-10 text-body-secondary mb-0">Periksa catatan peserta, hasil pertandingan, dan status dana melalui menu terkait.</p>
@@ -85,6 +85,18 @@
                 <a class="btn btn-primary" href="{{ $editEventUrl }}">Lengkapi tanggal</a>
             @elseif(! $isAdmin && $canEditEvent && $event->status === 'draft' && $categoriesReady && $datesReady)
                 <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#submitEventReviewModal">Ajukan publikasi</button>
+            @elseif($isAdmin && $event->status === 'pending_approval' && auth()->user()?->can('event.publish'))
+                <div class="d-flex flex-wrap gap-2">
+                    <form action="{{ route('admin.events.moderation.approve', $event->id) }}" method="POST">
+                        @csrf
+                        <button type="submit" class="btn btn-success" onclick="return confirm('Setujui publikasi event «{{ $event->title }}»? Event akan dipublikasikan dan terbuka untuk pendaftaran.')">
+                            <span class="fas fa-check me-1" aria-hidden="true"></span>Setujui & Publikasikan
+                        </button>
+                    </form>
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#adminRejectEventModal">
+                        <span class="fas fa-times me-1" aria-hidden="true"></span>Tolak / Minta Revisi
+                    </button>
+                </div>
             @elseif($canViewTeams && $publicAvailable)
                 <a class="btn btn-primary" href="{{ route($workspaceRoutePrefix.'teams.index', $event) }}">Lihat tim peserta</a>
             @else
@@ -187,6 +199,26 @@
             <div class="modal-header"><h2 class="modal-title fs-8" id="submitEventReviewTitle">Ajukan publikasi event?</h2><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Tutup"></button></div>
             <div class="modal-body"><p class="fw-semi-bold text-break">{{ $event->title }}</p><p class="fs-10">Admin akan memeriksa pengajuan. Tindakan ini belum langsung memublikasikan event atau membuka pendaftaran.</p><div class="form-check"><input class="form-check-input" id="confirmEventReview" type="checkbox" required><label class="form-check-label fs-10" for="confirmEventReview">Saya telah memeriksa tanggal, kategori, biaya, dan dokumen event.</label></div></div>
             <div class="modal-footer"><button class="btn btn-falcon-default" type="button" data-bs-dismiss="modal">Periksa lagi</button><button class="btn btn-primary" type="submit">Kirim pengajuan</button></div>
+        </form>
+    </div></div>
+</div>
+@endif
+
+@if($isAdmin && $event->status === 'pending_approval' && auth()->user()?->can('event.publish'))
+<div class="modal fade" id="adminRejectEventModal" tabindex="-1" aria-labelledby="adminRejectEventTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+        <form method="POST" action="{{ route('admin.events.moderation.reject', $event->id) }}">
+            @csrf
+            <div class="modal-header"><h2 class="modal-title fs-8" id="adminRejectEventTitle">Tolak / Kembalikan ke Draf</h2><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Tutup"></button></div>
+            <div class="modal-body">
+                <p class="fw-semi-bold text-break">{{ $event->title }}</p>
+                <p class="fs-10 text-body-secondary">Event dikembalikan ke status draf agar penyelenggara memperbaiki kekurangan. Berikan catatan apa yang perlu direvisi.</p>
+                <div class="mb-0">
+                    <label class="form-label fs-10 fw-bold" for="rejectNotes">Catatan revisi <span class="text-danger">*</span></label>
+                    <textarea class="form-control" id="rejectNotes" name="notes" rows="4" required maxlength="1000" placeholder="Jelaskan alasan penolakan atau revisi yang diperlukan..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer"><button class="btn btn-falcon-default" type="button" data-bs-dismiss="modal">Batal</button><button class="btn btn-danger" type="submit">Tolak & Kembalikan ke Draf</button></div>
         </form>
     </div></div>
 </div>
