@@ -74,7 +74,7 @@
         <span class="fas fa-check-circle fa-2x me-3 text-success mt-1"></span>
         <div class="fs-10">
             <h6 class="alert-heading fw-bold mb-1 text-success">Turnamen Resmi &amp; Terverifikasi</h6>
-            Turnamen ini telah mengantongi surat rekomendasi resmi dari induk cabang olahraga ({{ $federationName }}). Seluruh dana registrasi dan tiket dijamin 100% aman dalam rekening bersama (Escrow) platform ActStation.
+            Turnamen ini telah mengantongi surat rekomendasi resmi dari induk cabang olahraga ({{ $federationName }}). Segala urusan regulasi, teknis pertandingan, dan perizinan non-platform menjadi tanggung jawab penuh pihak penyelenggara.
         </div>
     </div>
 </div>

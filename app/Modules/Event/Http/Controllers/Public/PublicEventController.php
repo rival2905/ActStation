@@ -118,7 +118,7 @@ class PublicEventController extends Controller
                 'categories.participants' => fn ($q) => $q->whereIn('status', ['confirmed', 'registered']),
                 'user',
                 'sportCategory',
-                'documents' => fn ($q) => $q->where('is_public', true),
+                'documents',
             ])
             ->firstOrFail();
 
