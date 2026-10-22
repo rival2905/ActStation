@@ -7,6 +7,7 @@ namespace App\Modules\Community\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Modules\Community\Http\Requests\CommunityRequest;
 use App\Modules\Community\Models\Community;
+use App\Modules\Community\Models\SchoolRegistration;
 use App\Modules\Community\Services\CommunityLifecycle;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -85,7 +86,11 @@ class CommunityController extends Controller
             'verifiedBy',
         ]);
 
-        return view('admin.communities.show', compact('community'));
+        $schoolRegistration = $community->subtype === 'school'
+            ? SchoolRegistration::where('community_id', $community->id)->with('user')->latest()->first()
+            : null;
+
+        return view('admin.communities.show', compact('community', 'schoolRegistration'));
     }
 
     public function edit(Community $community): View

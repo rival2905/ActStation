@@ -23,6 +23,7 @@ use App\Modules\Event\Services\RosterValidator;
 use App\Modules\Event\Services\TeamPersonnelRoster;
 use App\Modules\MasterData\Models\DocumentType;
 use App\Modules\Payment\Models\Transaction;
+use App\Services\EventRegistrationReturn;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -85,9 +86,12 @@ class CommunityEventRegistrationController extends Controller
         $community = $this->communityLookup->findForUser((int) Auth::id());
 
         if (! $community) {
+            $context = request()->validate(['event_category_id' => ['nullable', 'integer']]);
+            app(EventRegistrationReturn::class)->remember(request(), (int) $event->id, isset($context['event_category_id']) ? (int) $context['event_category_id'] : null);
+
             return redirect()
-                ->route('panel.community-events.index')
-                ->with('error', 'Anda harus terdaftar sebagai pengurus aktif komunitas untuk mendaftarkan tim turnamen.');
+                ->route('panel.community.create')
+                ->with('info', 'Buat atau pilih komunitas terlebih dahulu, lalu lanjutkan pendaftaran event ini.');
         }
 
         // Ambil atlet yang eligible per kategori untuk form selection

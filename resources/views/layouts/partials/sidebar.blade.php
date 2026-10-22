@@ -179,12 +179,19 @@
                 </li>
                 @endcanany
 
+                @can('community.verify')
+                <li class="nav-item"><a class="nav-link" href="{{ route('admin.school-registrations.index') }}">Kewenangan Sekolah</a></li>
+                @endcan
                 @can('community.view')
+                <li class="nav-item"><a class="nav-link {{ request()->routeIs('admin.community-links.*') ? 'active' : '' }}" href="{{ route('admin.community-links.index') }}">Tautan Komunitas</a></li>
                 <li class="nav-item">
                     <a class="nav-link {{ request()->routeIs('admin.communities.*') ? 'active' : '' }}" href="{{ route('admin.communities.index') }}" role="button">
                         <div class="d-flex align-items-center">
                             <span class="nav-link-icon"><span class="fas fa-users"></span></span>
                             <span class="nav-link-text ps-1">Komunitas</span>
+                            @if($pendingCommunityCount > 0)
+                                <span class="badge rounded-pill bg-warning text-dark ms-2" data-pending-community-nav-count aria-label="{{ $pendingCommunityCount }} komunitas menunggu verifikasi">{{ $pendingCommunityCount }}</span>
+                            @endif
                         </div>
                     </a>
                 </li>

@@ -67,6 +67,7 @@ Route::prefix('events')->name('events.')->group(function (): void {
 Route::middleware('auth')->group(function (): void {
     Route::get('user/profile', [UserProfileController::class, 'edit'])->name('user-profile.edit');
     Route::put('user/profile', [UserProfileController::class, 'update'])->name('user-profile.update');
+    Route::put('user/profile/password', [UserProfileController::class, 'updatePassword'])->name('user-profile.password.update');
     Route::get('user/profile/documents/{document}', [UserProfileController::class, 'download'])->whereNumber('document')->name('user-profile.documents.download');
     Route::get('my-events', [MyEventController::class, 'index'])->name('my-events.index');
     Route::post('my-events/{kind}/{id}/documents/{code}', [MyEventController::class, 'upload'])->whereIn('kind', ['draft', 'participant'])->middleware('throttle:20,1')->name('my-events.documents.store');

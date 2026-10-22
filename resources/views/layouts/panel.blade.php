@@ -57,9 +57,13 @@
                 }
             </script>
 
-            @include('layouts.partials.panel-sidebar')
-            <div class="content">
-                @include('layouts.partials.panel-header')
+            @auth
+                @include('layouts.partials.panel-sidebar')
+            @endauth
+            <div class="content {{ !auth()->check() ? 'w-100 ms-0 ps-0' : '' }}">
+                @auth
+                    @include('layouts.partials.panel-header')
+                @endauth
                 <x-flash-alert />
                 @yield('content')
                 @include('layouts.partials.panel-footer')

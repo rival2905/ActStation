@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Middleware\EnsureInternalRole;
 use App\Http\Middleware\EnsureOrganizerEventOwner;
 use App\Modules\Community\Http\Middleware\EnsurePanelAccess;
+use App\Modules\Community\Models\CommunityLinkPage;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Route;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
 use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -75,6 +77,25 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectUsersTo(fn (Request $request) => $request->user()?->getPanelHomeRoute() ?? route('landing'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(function (HttpException $e, Request $request) {
+            if ($e->getStatusCode() !== 409 || $request->expectsJson() || ! $request->routeIs('panel.community-links.*') || $request->isMethodSafe()) {
+                return null;
+            }
+            $page = $request->route('page');
+            if (! $page instanceof CommunityLinkPage) {
+                return null;
+            }
+            $response = redirect()->route('panel.community-links.edit', $page)->withErrors(['revision' => 'Halaman berubah sejak form dibuka. Isian belum disimpan; tinjau draft terbaru sebelum melanjutkan.']);
+            if ($request->routeIs('panel.community-links.update')) {
+                return $response->withInput(array_merge($request->except(['_token', '_method']), [
+                    'categories' => $request->input('categories', []),
+                    'links' => $request->input('links', []),
+                    'socials' => $request->input('socials', []),
+                ]))->with('link_page_conflict', $page->id);
+            }
+
+            return $response->with('warning', 'Aksi belum dijalankan. Pilih ulang berkas jika sedang mengunggah gambar.');
+        });
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->is('admin/events/*/scheduler/api/*') || $request->is('panel/organizer/events/*/scheduler/api/*') || $request->is('admin/events/*/tournament/*') || $request->expectsJson(),
         );

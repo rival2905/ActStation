@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Community\Http\Controllers\Panel;
 
+use App\Modules\Community\Http\Requests\Panel\PanelAthleteIndexRequest;
 use App\Modules\Community\Http\Requests\Panel\PanelAthleteRequest;
+use App\Modules\Community\Http\Requests\Panel\SchoolAthleteExtracurricularRequest;
 use App\Modules\Community\Models\CommunityAthlete;
 use App\Modules\Community\Services\AthleteMembershipService;
+use App\Modules\Community\Services\SchoolExtracurricularService;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,10 +22,14 @@ class AthleteController extends PanelBaseController
         protected AthleteMembershipService $membershipService
     ) {}
 
-    public function index(Request $request): View
+    public function index(PanelAthleteIndexRequest $request, SchoolExtracurricularService $extracurriculars): View
     {
         $community = $this->currentCommunity($request);
         $this->authorize('view', $community);
+        $filter = $request->validated();
+        $selectedExtracurricularId = isset($filter['extracurricular_id']) ? (int) $filter['extracurricular_id'] : null;
+        $schoolExtracurricularUnits = $extracurriculars->unitsForDirectory($community);
+        abort_if($selectedExtracurricularId !== null && ! $schoolExtracurricularUnits->contains('id', $selectedExtracurricularId), 404);
 
         $athletes = $community->athletes()
             ->with(['user.province', 'user.city', 'community', 'developmentLevel'])
@@ -64,6 +71,14 @@ class AthleteController extends PanelBaseController
         $globalLinks = $rawInvitations->where('is_global', true)->where('status', 'pending')->values();
         $invitations = $rawInvitations->where('is_global', false)->values();
         $developmentLevels = DB::table('development_levels')->get();
+        $schoolExtracurricularsByAthlete = $extracurriculars->membershipsForDirectory($community, $athletes);
+        $allAthletesCount = $athletes->count();
+        foreach ($schoolExtracurricularUnits as $unit) {
+            $unit->member_count = $schoolExtracurricularsByAthlete->filter(fn ($memberships) => $memberships->contains('unit_id', $unit->id))->count();
+        }
+        if ($selectedExtracurricularId !== null) {
+            $athletes = $athletes->filter(fn ($athlete) => $schoolExtracurricularsByAthlete->get($athlete->id, collect())->contains('unit_id', $selectedExtracurricularId))->values();
+        }
 
         return view('panel.athletes.index', compact(
             'community',
@@ -73,8 +88,21 @@ class AthleteController extends PanelBaseController
             'pendingRequests',
             'invitations',
             'globalLinks',
-            'developmentLevels'
+            'developmentLevels',
+            'schoolExtracurricularsByAthlete',
+            'schoolExtracurricularUnits',
+            'selectedExtracurricularId',
+            'allAthletesCount'
         ));
+    }
+
+    public function addExtracurricular(SchoolAthleteExtracurricularRequest $request, int $athlete, SchoolExtracurricularService $extracurriculars): RedirectResponse
+    {
+        $community = $this->currentCommunity($request);
+        $this->authorize('update', $community);
+        $extracurriculars->addMember($community, $athlete, (int) $request->validated('extracurricular_id'), $request->user());
+
+        return redirect()->route('panel.athletes.index')->with('success', 'Keanggotaan ekskul ditambahkan. Roster turnamen tidak berubah.');
     }
 
     public function store(PanelAthleteRequest $request): RedirectResponse

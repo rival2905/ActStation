@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Community\Services;
 
+use App\Events\SchoolAthleteActivated;
 use App\Models\User;
 use App\Modules\Community\Models\Community;
 use App\Modules\Community\Models\CommunityAthlete;
@@ -93,6 +94,8 @@ class AthleteMembershipService
                 'responded_at' => now(),
             ]);
 
+            event(new SchoolAthleteActivated((int) $athlete->community_id, (int) $athlete->user_id));
+
             return $athlete;
         });
     }
@@ -140,6 +143,8 @@ class AthleteMembershipService
                 'region_status' => 'pending',
                 'responded_at' => now(),
             ]);
+
+            event(new SchoolAthleteActivated((int) $athlete->community_id, (int) $athlete->user_id));
 
             return $athlete;
         });

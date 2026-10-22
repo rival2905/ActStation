@@ -6,6 +6,7 @@ namespace App\Modules\Community\Http\Controllers\Panel;
 
 use App\Modules\Community\Http\Requests\Panel\PanelOfficialRequest;
 use App\Modules\Community\Models\CommunityOfficial;
+use App\Modules\Community\Models\SchoolRegistration;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -27,6 +28,10 @@ class OfficialController extends PanelBaseController
         $community = $this->currentCommunity($request);
         $this->authorize('update', $community);
 
+        if (SchoolRegistration::where('community_id', $community->id)->exists()) {
+            abort(403, 'Pengelolaan pengurus sekolah terdaftar tidak dapat dilakukan langsung. Silakan gunakan alur terkonfirmasi admin.');
+        }
+
         $data = $request->validated();
         $data['started_at'] = $data['started_at'] ?? now()->toDateString();
         $data['status'] = $data['status'] ?? 'active';
@@ -43,6 +48,10 @@ class OfficialController extends PanelBaseController
         $community = $this->currentCommunity($request);
         $this->authorize('update', $community);
         $this->assertBelongsToCommunity($community, $official->community_id);
+
+        if (SchoolRegistration::where('community_id', $community->id)->exists()) {
+            abort(403, 'Pengelolaan pengurus sekolah terdaftar tidak dapat dilakukan langsung. Silakan gunakan alur terkonfirmasi admin.');
+        }
 
         $official->delete();
 

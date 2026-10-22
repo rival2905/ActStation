@@ -2,6 +2,18 @@
 
 @section('title', 'Pendaftaran Komunitas Baru — ' . config('app.name', 'ActStation'))
 
+@push('styles')
+<link rel="stylesheet" href="{{ asset('assets/vendors/leaflet/leaflet.css') }}" />
+<style>
+    #communityMap {
+        height: 280px;
+        width: 100%;
+        border-radius: 0.375rem;
+        z-index: 1;
+    }
+</style>
+@endpush
+
 @section('content')
 <div class="row gy-3 mb-3">
     <div class="col-12">
@@ -32,8 +44,8 @@
 
             <div class="row g-4">
                 {{-- 1. INFORMASI KOMUNITAS --}}
-                <div class="col-12 col-xl-7">
-                    <div class="card border h-100 shadow-none">
+                <div class="col-12">
+                    <div class="card border shadow-none">
                         <div class="card-header bg-light py-2">
                             <h6 class="mb-0 fs-11 fw-bold text-700">
                                 <span class="fas fa-building text-primary me-1"></span> 1. Identitas &amp; Jenis Entitas Komunitas
@@ -56,12 +68,15 @@
                                 </div>
 
                                 {{-- Cabor --}}
-                                <div class="col-md-6">
+                                @php
+                                    $isInitialSchool = in_array(old('subtype', 'club'), ['school', 'school_sd', 'school_smp', 'school_sma'], true);
+                                @endphp
+                                <div class="col-md-6" id="sport_category_wrapper" style="{{ $isInitialSchool ? 'display: none;' : '' }}">
                                     <label class="form-label fs-10 fw-bold text-uppercase" for="sport_category_id">Cabang Olahraga</label>
-                                    <select name="sport_category_id" id="sport_category_id" class="form-select form-select-sm @error('sport_category_id') is-invalid @enderror">
+                                    <select name="sport_category_id" id="sport_category_id" class="form-select form-select-sm @error('sport_category_id') is-invalid @enderror" {{ $isInitialSchool ? 'disabled' : '' }}>
                                         <option value="">-- Pilih Cabor (Opsional) --</option>
                                         @foreach($sportCategories as $category)
-                                            <option value="{{ $category->id }}" {{ (string) old('sport_category_id') === (string) $category->id ? 'selected' : '' }}>
+                                            <option value="{{ $category->id }}" {{ (! $isInitialSchool && (string) old('sport_category_id') === (string) $category->id) ? 'selected' : '' }}>
                                                 {{ $category->name }}
                                             </option>
                                         @endforeach
@@ -101,6 +116,10 @@
                                             </label>
                                             <span class="badge bg-primary fs-11" id="school_badge_level">Khusus Sekolah</span>
                                         </div>
+                                        <div class="alert alert-subtle-info fs-11 mb-2 py-2 px-3">
+                                            <span class="fas fa-info-circle me-1"></span>
+                                            Entitas sekolah umum multi-ekskul otomatis saat daftar event. Pendaftaran komunitas sekolah memerlukan verifikasi resmi dan tidak langsung aktif otomatis demi keabsahan perwakilan sekolah.
+                                        </div>
                                         <div class="position-relative">
                                             <input type="text" id="school_input" class="form-control form-control-sm" value="{{ old('name') }}" placeholder="Ketik nama sekolah atau nomor NPSN..." autocomplete="off">
                                             <div id="school_results" class="list-group position-absolute shadow-sm" style="z-index: 1060; top: 100%; left: 0; right: 0; max-height: 220px; overflow-y: auto; display: none;"></div>
@@ -138,16 +157,16 @@
                                 </div>
 
                                 {{-- Deskripsi --}}
-                                <div class="col-12">
+                                <div class="col-md-8">
                                     <label class="form-label fs-10 fw-bold text-uppercase" for="description">Deskripsi Singkat</label>
-                                    <textarea name="description" id="description" class="form-control form-control-sm @error('description') is-invalid @enderror" rows="3" placeholder="Profil singkat tentang klub, visi misi, atau sejarah komunitas...">{{ old('description') }}</textarea>
+                                    <textarea name="description" id="description" class="form-control form-control-sm @error('description') is-invalid @enderror" rows="4" placeholder="Profil singkat tentang klub, visi misi, atau sejarah komunitas...">{{ old('description') }}</textarea>
                                     @error('description')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
                                 </div>
 
                                 {{-- Logo --}}
-                                <div class="col-12">
+                                <div class="col-md-4">
                                     <label class="form-label fs-10 fw-bold text-uppercase" for="logo">Logo Komunitas</label>
                                     <input type="file" name="logo" id="logo" class="form-control form-control-sm @error('logo') is-invalid @enderror" accept="image/jpeg,image/png,image/webp" onchange="previewLogo(this)">
                                     <small class="text-muted fs-11 d-block mt-1">Format: JPG, PNG, WEBP (maksimal 2MB).</small>
@@ -155,7 +174,7 @@
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
                                     <div id="logoPreview" class="mt-2" style="display: none;">
-                                        <img id="logoImg" src="" alt="Preview Logo" class="rounded border p-1" style="max-height: 100px;">
+                                        <img id="logoImg" src="" alt="Preview Logo" class="rounded border p-1" style="max-height: 85px;">
                                     </div>
                                 </div>
                             </div>
@@ -163,65 +182,99 @@
                     </div>
                 </div>
 
-                {{-- 2. WILAYAH OPERASIONAL --}}
-                <div class="col-12 col-xl-5">
-                    <div class="card border h-100 shadow-none">
+                {{-- 2. WILAYAH OPERASIONAL & TITIK LOKASI GEOSPASIAL --}}
+                <div class="col-12">
+                    <div class="card border shadow-none">
                         <div class="card-header bg-light py-2">
                             <h6 class="mb-0 fs-11 fw-bold text-700">
-                                <span class="fas fa-map-marker-alt text-danger me-1"></span> 2. Wilayah Operasional
+                                <span class="fas fa-map-marked-alt text-danger me-1"></span> 2. Wilayah Operasional &amp; Titik Lokasi Sekretariat
                             </h6>
                         </div>
                         <div class="card-body">
-                            <x-region-select
-                                route-prefix="panel.regions"
-                                province-name="province_id"
-                                city-name="city_id"
-                                district-name="subdistrict_id"
-                                village-name="village_id"
-                                postal-code-name="postal_code"
-                                :selected-province="old('province_id')"
-                                :selected-city="old('city_id')"
-                                :selected-district="old('subdistrict_id')"
-                                :selected-village="old('village_id')"
-                                :selected-postal-code="old('postal_code')"
-                                :show-district="true"
-                                :show-village="true"
-                                :show-postal-code="true"
-                                :required="true"
-                                col-class="col-12"
-                            />
+                            <div class="row g-4">
+                                {{-- Kolom Kiri: Wilayah Administratif & Alamat --}}
+                                <div class="col-lg-6">
+                                    <div class="border rounded p-3 bg-body-tertiary h-100">
+                                        <h6 class="fs-11 fw-bold text-700 mb-2">
+                                            <span class="fas fa-map-marker-alt text-danger me-1"></span> Wilayah Administratif
+                                        </h6>
+                                        <x-region-select
+                                            route-prefix="panel.regions"
+                                            province-name="province_id"
+                                            city-name="city_id"
+                                            district-name="subdistrict_id"
+                                            village-name="village_id"
+                                            postal-code-name="postal_code"
+                                            :selected-province="old('province_id')"
+                                            :selected-city="old('city_id')"
+                                            :selected-district="old('subdistrict_id')"
+                                            :selected-village="old('village_id')"
+                                            :selected-postal-code="old('postal_code')"
+                                            :show-district="true"
+                                            :show-village="true"
+                                            :show-postal-code="true"
+                                            :required="true"
+                                            col-class="col-12 col-sm-6"
+                                        />
 
-                            <div class="mt-3">
-                                <label class="form-label fs-10 fw-bold text-uppercase" for="address">Alamat Sekretariat / Basecamp</label>
-                                <textarea name="address" id="address" class="form-control form-control-sm @error('address') is-invalid @enderror" rows="3" placeholder="Jalan, nomor gedung, RT/RW...">{{ old('address') }}</textarea>
-                                @error('address')
-                                    <div class="invalid-feedback">{{ $message }}</div>
-                                @enderror
-                            </div>
-
-                            <div class="mt-3 pt-3 border-top">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <label class="form-label fs-10 fw-bold text-uppercase text-primary mb-0">
-                                        <span class="fas fa-map-marked-alt me-1"></span> Titik Koordinat Lokasi (Opsional)
-                                    </label>
-                                    <button type="button" class="btn btn-xs btn-outline-danger" id="btnClearCoordinatesCreate">
-                                        <span class="fas fa-times me-1"></span> Hapus Titik
-                                    </button>
-                                </div>
-                                <div class="row g-2">
-                                    <div class="col-md-6">
-                                        <label class="form-label fs-11 fw-semi-bold mb-1" for="latitude">Latitude</label>
-                                        <input type="number" step="any" min="-90" max="90" name="latitude" id="latitude" class="form-control form-control-sm @error('latitude') is-invalid @enderror" value="{{ old('latitude') }}" placeholder="-6.9175000" aria-label="Latitude" />
-                                        @error('latitude')
-                                            <div class="invalid-feedback">{{ $message }}</div>
-                                        @enderror
+                                        <div class="mt-3">
+                                            <label class="form-label fs-10 fw-bold text-uppercase" for="address">Alamat Sekretariat / Basecamp</label>
+                                            <textarea name="address" id="address" class="form-control form-control-sm @error('address') is-invalid @enderror" rows="3" placeholder="Jalan, nomor gedung, RT/RW...">{{ old('address') }}</textarea>
+                                            @error('address')
+                                                <div class="invalid-feedback">{{ $message }}</div>
+                                            @enderror
+                                        </div>
                                     </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label fs-11 fw-semi-bold mb-1" for="longitude">Longitude</label>
-                                        <input type="number" step="any" min="-180" max="180" name="longitude" id="longitude" class="form-control form-control-sm @error('longitude') is-invalid @enderror" value="{{ old('longitude') }}" placeholder="107.6191000" aria-label="Longitude" />
-                                        @error('longitude')
-                                            <div class="invalid-feedback">{{ $message }}</div>
-                                        @enderror
+                                </div>
+
+                                {{-- Kolom Kanan: Titik Koordinat & Peta Leaflet --}}
+                                <div class="col-lg-6">
+                                    <div class="border rounded p-3 bg-body-tertiary h-100 d-flex flex-column">
+                                        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                                            <div>
+                                                <h6 class="fs-11 fw-bold text-700 mb-0">
+                                                    <span class="fas fa-map-pin text-primary me-1"></span> Titik Koordinat Geospasial (Opsional)
+                                                </h6>
+                                                <small class="text-600 fs-11">Pilih titik sekretariat di peta atau masukkan koordinat manual.</small>
+                                            </div>
+                                            <div class="d-flex gap-1">
+                                                <button type="button" class="btn btn-xs btn-outline-primary" id="btnGetCurrentLocation">
+                                                    <span class="fas fa-crosshairs me-1"></span> Lokasi Saya
+                                                </button>
+                                                <button type="button" class="btn btn-xs btn-outline-danger" id="btnClearCoordinates">
+                                                    <span class="fas fa-times me-1"></span> Hapus Titik
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div id="geoAlert" class="alert alert-warning alert-dismissible py-1 px-2 fs-11 d-none" role="alert">
+                                            <span id="geoAlertText"></span>
+                                            <button type="button" class="btn-close py-2" data-bs-dismiss="alert" aria-label="Close"></button>
+                                        </div>
+
+                                        <div class="row g-2 mb-2">
+                                            <div class="col-6">
+                                                <label class="form-label fs-11 fw-semi-bold mb-1" for="latitude">Latitude</label>
+                                                <input type="number" step="any" min="-90" max="90" name="latitude" id="latitude" class="form-control form-control-sm @error('latitude') is-invalid @enderror" value="{{ old('latitude') }}" placeholder="-6.9175000" aria-label="Latitude" />
+                                                @error('latitude')
+                                                    <div class="invalid-feedback">{{ $message }}</div>
+                                                @enderror
+                                            </div>
+                                            <div class="col-6">
+                                                <label class="form-label fs-11 fw-semi-bold mb-1" for="longitude">Longitude</label>
+                                                <input type="number" step="any" min="-180" max="180" name="longitude" id="longitude" class="form-control form-control-sm @error('longitude') is-invalid @enderror" value="{{ old('longitude') }}" placeholder="107.6191000" aria-label="Longitude" />
+                                                @error('longitude')
+                                                    <div class="invalid-feedback">{{ $message }}</div>
+                                                @enderror
+                                            </div>
+                                        </div>
+
+                                        <div class="position-relative flex-grow-1" style="min-height: 260px;">
+                                            <div id="communityMap" role="region" aria-label="Peta pemilihan lokasi sekretariat komunitas" tabindex="0"></div>
+                                        </div>
+                                        <small class="text-muted fs-11 d-block mt-2">
+                                            <i class="fas fa-info-circle me-1"></i>Klik pada peta atau geser marker untuk menentukan titik lokasi. Koordinat terisi otomatis.
+                                        </small>
                                     </div>
                                 </div>
                             </div>
@@ -266,8 +319,14 @@
                                     @enderror
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label fs-10 fw-bold text-uppercase" for="contact_email">Email Kontak Resmi <span class="text-danger">*</span></label>
+                                    <label class="form-label fs-10 fw-bold text-uppercase" for="contact_email">
+                                        <span id="contact_email_label">{{ in_array(old('subtype', 'club'), ['school', 'school_sd', 'school_smp', 'school_sma'], true) ? 'Email Resmi Sekolah' : 'Email Kontak Resmi' }}</span>
+                                        <span class="text-danger">*</span>
+                                    </label>
                                     <input type="email" name="contact_email" id="contact_email" class="form-control form-control-sm @error('contact_email') is-invalid @enderror" required value="{{ old('contact_email', auth()->user()?->email) }}" placeholder="email@komunitas.com">
+                                    <div class="form-text fs-11 text-muted" id="contact_email_hint">
+                                        Email Resmi Sekolah: Email sekolah terpisah dari email login akun Anda. Gunakan email resmi instansi sekolah.
+                                    </div>
                                     @error('contact_email')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
@@ -292,9 +351,12 @@
 @endsection
 
 @push('scripts')
+<script src="{{ asset('assets/vendors/leaflet/leaflet.js') }}"></script>
 <script>
 var schoolTimer = null;
 var schoolAbortController = null;
+var communityMap = null;
+var communityMarker = null;
 
 var subtypeSchoolMap = {
     'school_sd': { level: 'sd', label: 'SD/MI' },
@@ -315,6 +377,23 @@ function onSubtypeChange() {
     var isInstitution = (subtype === 'institution');
 
     if (vicWarning) vicWarning.style.display = isSchool ? '' : 'none';
+
+    var sportWrapper = document.getElementById('sport_category_wrapper');
+    var sportSelect = document.getElementById('sport_category_id');
+    if (sportWrapper) {
+        sportWrapper.style.display = isSchool ? 'none' : '';
+    }
+    if (sportSelect) {
+        sportSelect.disabled = isSchool;
+        if (isSchool) {
+            sportSelect.value = '';
+        }
+    }
+
+    var emailLabel = document.getElementById('contact_email_label');
+    if (emailLabel) {
+        emailLabel.textContent = isSchool ? 'Email Resmi Sekolah' : 'Email Kontak Resmi';
+    }
 
     if (wrapper) {
         wrapper.style.display = isSchool ? '' : 'none';
@@ -489,8 +568,11 @@ function selectSchool(s) {
     if (sLat != null && sLng != null) {
         var latIn = document.getElementById('latitude');
         var lngIn = document.getElementById('longitude');
-        if (latIn) latIn.value = sLat;
-        if (lngIn) lngIn.value = sLng;
+        if (latIn) latIn.value = Number(sLat).toFixed(7);
+        if (lngIn) lngIn.value = Number(sLng).toFixed(7);
+        if (typeof updateMapCoordinates === 'function') {
+            updateMapCoordinates(sLat, sLng);
+        }
     }
 
     if (res) {
@@ -526,17 +608,167 @@ function selectSchool(s) {
     }
 }
 
+function isValidCoord(lat, lng) {
+    if (lat === '' || lng === '' || lat === null || lng === null) return false;
+    var nLat = Number(lat);
+    var nLng = Number(lng);
+    return !isNaN(nLat) && !isNaN(nLng) && nLat >= -90 && nLat <= 90 && nLng >= -180 && nLng <= 180;
+}
+
+function updateMapCoordinates(lat, lng) {
+    if (!isValidCoord(lat, lng) || !communityMap) return;
+    var target = [Number(lat), Number(lng)];
+    if (communityMarker) {
+        communityMarker.setLatLng(target);
+    } else {
+        communityMarker = L.marker(target, { draggable: true }).addTo(communityMap);
+        communityMarker.on('dragend', function(evt) {
+            var pos = evt.target.getLatLng();
+            var latIn = document.getElementById('latitude');
+            var lngIn = document.getElementById('longitude');
+            if (latIn) latIn.value = Number(pos.lat).toFixed(7);
+            if (lngIn) lngIn.value = Number(pos.lng).toFixed(7);
+        });
+    }
+    communityMap.setView(target, 15);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     onSubtypeChange();
 
+    // Inisialisasi Peta Leaflet untuk Titik Koordinat Komunitas
+    var mapEl = document.getElementById('communityMap');
+    var latInput = document.getElementById('latitude');
+    var lngInput = document.getElementById('longitude');
+
+    if (mapEl && typeof L !== 'undefined') {
+        L.Icon.Default.imagePath = "{{ asset('assets/img/icons/leaflet') }}/";
+
+        function updateInputs(lat, lng) {
+            if (latInput) latInput.value = Number(lat).toFixed(7);
+            if (lngInput) lngInput.value = Number(lng).toFixed(7);
+        }
+
+        var initLat = latInput ? latInput.value.trim() : '';
+        var initLng = lngInput ? lngInput.value.trim() : '';
+        var hasCoords = isValidCoord(initLat, initLng);
+
+        var defaultCenter = [-6.9175, 107.6191];
+        var mapCenter = hasCoords ? [Number(initLat), Number(initLng)] : defaultCenter;
+        var mapZoom = hasCoords ? 15 : 11;
+
+        communityMap = L.map('communityMap').setView(mapCenter, mapZoom);
+        setTimeout(function() { communityMap.invalidateSize(); }, 250);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 18
+        }).addTo(communityMap);
+
+        if (hasCoords) {
+            communityMarker = L.marker(mapCenter, { draggable: true }).addTo(communityMap);
+            communityMarker.on('dragend', function(e) {
+                var pos = e.target.getLatLng();
+                updateInputs(pos.lat, pos.lng);
+            });
+        }
+
+        communityMap.on('click', function(e) {
+            updateInputs(e.latlng.lat, e.latlng.lng);
+            if (communityMarker) {
+                communityMarker.setLatLng(e.latlng);
+            } else {
+                communityMarker = L.marker(e.latlng, { draggable: true }).addTo(communityMap);
+                communityMarker.on('dragend', function(evt) {
+                    var pos = evt.target.getLatLng();
+                    updateInputs(pos.lat, pos.lng);
+                });
+            }
+        });
+
+        function syncFromInputs() {
+            var lat = latInput ? latInput.value.trim() : '';
+            var lng = lngInput ? lngInput.value.trim() : '';
+            if (isValidCoord(lat, lng)) {
+                var target = [Number(lat), Number(lng)];
+                if (communityMarker) {
+                    communityMarker.setLatLng(target);
+                } else {
+                    communityMarker = L.marker(target, { draggable: true }).addTo(communityMap);
+                    communityMarker.on('dragend', function(evt) {
+                        var pos = evt.target.getLatLng();
+                        updateInputs(pos.lat, pos.lng);
+                    });
+                }
+                communityMap.setView(target, 15);
+            }
+        }
+
+        if (latInput) latInput.addEventListener('input', syncFromInputs);
+        if (lngInput) lngInput.addEventListener('input', syncFromInputs);
+
+        var geoBtn = document.getElementById('btnGetCurrentLocation');
+        if (geoBtn) {
+            geoBtn.addEventListener('click', function() {
+                var alertEl = document.getElementById('geoAlert');
+                var alertText = document.getElementById('geoAlertText');
+                if (!navigator.geolocation) {
+                    if (alertEl && alertText) {
+                        alertText.textContent = 'Fitur geolokasi tidak didukung browser Anda.';
+                        alertEl.classList.remove('d-none');
+                    }
+                    return;
+                }
+                geoBtn.disabled = true;
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        geoBtn.disabled = false;
+                        var lat = position.coords.latitude;
+                        var lng = position.coords.longitude;
+                        updateInputs(lat, lng);
+                        var target = [lat, lng];
+                        if (communityMarker) {
+                            communityMarker.setLatLng(target);
+                        } else {
+                            communityMarker = L.marker(target, { draggable: true }).addTo(communityMap);
+                            communityMarker.on('dragend', function(evt) {
+                                var pos = evt.target.getLatLng();
+                                updateInputs(pos.lat, pos.lng);
+                            });
+                        }
+                        communityMap.setView(target, 15);
+                    },
+                    function(error) {
+                        geoBtn.disabled = false;
+                        if (alertEl && alertText) {
+                            alertText.textContent = 'Gagal mengambil lokasi: ' + (error.message || 'Izin lokasi ditolak.');
+                            alertEl.classList.remove('d-none');
+                        }
+                    },
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+                );
+            });
+        }
+    }
+
+    function clearAllCoordinates() {
+        var latIn = document.getElementById('latitude');
+        var lngIn = document.getElementById('longitude');
+        if (latIn) latIn.value = '';
+        if (lngIn) lngIn.value = '';
+        if (communityMarker && communityMap) {
+            communityMap.removeLayer(communityMarker);
+            communityMarker = null;
+        }
+    }
+
+    var clearBtn = document.getElementById('btnClearCoordinates');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', clearAllCoordinates);
+    }
     var clearCreateBtn = document.getElementById('btnClearCoordinatesCreate');
     if (clearCreateBtn) {
-        clearCreateBtn.addEventListener('click', function() {
-            var latIn = document.getElementById('latitude');
-            var lngIn = document.getElementById('longitude');
-            if (latIn) latIn.value = '';
-            if (lngIn) lngIn.value = '';
-        });
+        clearCreateBtn.addEventListener('click', clearAllCoordinates);
     }
 
     var schoolInput = document.getElementById('school_input');

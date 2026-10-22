@@ -35,13 +35,33 @@ class StoreCommunityRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $subtype = (string) $this->input('subtype');
-        if (! in_array($subtype, ['school', 'school_sd', 'school_smp', 'school_sma'], true)) {
+        $subtype = $this->input('subtype');
+        if (! is_string($subtype)) {
+            return;
+        }
+        if (in_array($subtype, ['school', 'school_sd', 'school_smp', 'school_sma'], true)) {
+            $this->merge(['sport_category_id' => null]);
+        } else {
             $this->merge(['npsn' => null]);
         }
         if ($subtype !== 'institution') {
             $this->merge(['institution_type' => null]);
         }
+    }
+
+    public function validated($key = null, $default = null)
+    {
+        $validated = parent::validated($key, $default);
+        $subtype = (string) $this->input('subtype');
+        if (in_array($subtype, ['school', 'school_sd', 'school_smp', 'school_sma'], true)) {
+            if (is_array($validated)) {
+                $validated['sport_category_id'] = null;
+            } elseif ($key === 'sport_category_id') {
+                return null;
+            }
+        }
+
+        return $validated;
     }
 
     /**
@@ -88,6 +108,9 @@ class StoreCommunityRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $v): void {
+            if ($v->errors()->isNotEmpty()) {
+                return;
+            }
             $provinceId = (string) $this->input('province_id');
             $cityId = (string) $this->input('city_id');
             $subdistrictId = (string) $this->input('subdistrict_id');

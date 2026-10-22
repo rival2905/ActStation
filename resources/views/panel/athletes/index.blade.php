@@ -206,12 +206,27 @@
         <div class="tab-content" id="athleteTabsContent">
             <!-- Tab 1: Roster Aktif & Riwayat -->
             <div class="tab-pane fade {{ session('invite_url') ? '' : 'show active' }}" id="roster-pane" role="tabpanel" aria-labelledby="roster-tab">
+                @if($community->subtype === 'school')
+                    <nav class="p-3 border-bottom" aria-label="Filter Ekskul">
+                        <h6 class="mb-2">Filter Ekskul</h6>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="{{ route('panel.athletes.index') }}" class="btn btn-sm {{ $selectedExtracurricularId === null ? 'btn-primary' : 'btn-outline-primary' }}" @if($selectedExtracurricularId === null) aria-current="page" @endif>Semua Murid <span class="badge badge-subtle-secondary ms-1">{{ $allAthletesCount }}</span></a>
+                            @foreach($schoolExtracurricularUnits as $unit)
+                                <a href="{{ route('panel.athletes.index', ['extracurricular_id' => $unit->id]) }}" class="btn btn-sm {{ $selectedExtracurricularId === (int) $unit->id ? 'btn-primary' : 'btn-outline-primary' }}" @if($selectedExtracurricularId === (int) $unit->id) aria-current="page" @endif>{{ $unit->sport_name }} <span class="badge badge-subtle-secondary ms-1">{{ $unit->member_count }}</span></a>
+                            @endforeach
+                        </div>
+                        <p class="small text-muted mt-2 mb-0">Pilih ekskul untuk melihat murid anggotanya. Satu murid dapat mengikuti beberapa ekskul. Daftar ini bukan daftar peserta turnamen.</p>
+                    </nav>
+                @endif
                 <div class="table-responsive">
                     <table class="table table-sm table-striped fs-10 mb-0 align-middle">
                         <thead class="bg-200 text-900">
                             <tr>
                                 <th class="ps-3" style="width: 50px;">No</th>
                                 <th>Nama Atlet</th>
+                                @if(($community->subtype ?? null) === 'school')
+                                <th>Ekskul</th>
+                                @endif
                                 <th>No. Jersey</th>
                                 <th>Posisi</th>
                                 <th>Jenjang</th>
@@ -236,6 +251,15 @@
                                         </div>
                                     </div>
                                 </td>
+                                @if(($community->subtype ?? null) === 'school')
+                                <td>
+                                    @forelse($schoolExtracurricularsByAthlete->get($ath->id, collect()) as $ekskul)
+                                        <span class="badge badge-subtle-primary" data-athlete-extracurricular>{{ $ekskul->sport_name }}</span>
+                                    @empty
+                                        <span class="text-400">Belum ada ekskul</span>
+                                    @endforelse
+                                </td>
+                                @endif
                                 <td>
                                     @if($ath->jersey_number !== null)
                                         <span class="badge badge-subtle-secondary fs-11">#{{ $ath->jersey_number }}</span>
@@ -271,6 +295,31 @@
                                 </td>
                                 <td class="text-700">{{ $ath->joined_at ? \Carbon\Carbon::parse($ath->joined_at)->format('d/m/Y') : '-' }}</td>
                                 <td class="text-end pe-3">
+                                    @if(($community->subtype ?? null) === 'school' && $ath->status === 'active' && $ath->left_at === null && ($ath->user?->is_active ?? false))
+                                        @can('update', $community)
+                                            @php
+                                                $enrolledIds = $schoolExtracurricularsByAthlete->get($ath->id, collect())->pluck('unit_id');
+                                                $availableUnits = $schoolExtracurricularUnits->reject(fn ($unit) => $enrolledIds->contains($unit->id));
+                                            @endphp
+                                            @if($availableUnits->isNotEmpty())
+                                                <details class="d-inline-block text-start me-1">
+                                                    <summary class="btn btn-sm btn-outline-primary py-0 px-2 fs-11">Tambah Ekskul</summary>
+                                                    <form method="POST" action="{{ route('panel.athletes.extracurriculars.store', $ath) }}" class="p-2 border rounded bg-body-tertiary mt-1">
+                                                        @csrf
+                                                        <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
+                                                        <select name="extracurricular_id" class="form-select form-select-sm fs-11 mb-1" required aria-label="Ekskul tambahan untuk {{ $ath->user?->name }}">
+                                                            <option value="" disabled selected>Pilih ekskul</option>
+                                                            @foreach($availableUnits as $unit)
+                                                                <option value="{{ $unit->id }}">{{ $unit->sport_name }}</option>
+                                                            @endforeach
+                                                        </select>
+                                                        <button class="btn btn-sm btn-primary py-0 px-2 fs-11 w-100 mb-1" type="submit">Tambahkan</button>
+                                                        <div class="form-text fs-11 text-muted">Menambah keanggotaan ekskul; tidak mengubah roster turnamen.</div>
+                                                    </form>
+                                                </details>
+                                            @endif
+                                        @endcan
+                                    @endif
                                     @if($ath->status === 'active')
                                     <form method="POST" action="{{ route('panel.athletes.release', $ath) }}" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin melepas atlet ini dari klub? Riwayat keanggotaan akan diarsipkan.');">
                                         @csrf
@@ -286,7 +335,7 @@
                             </tr>
                             @empty
                             <tr>
-                                <td colspan="9" class="text-center py-4 text-600">
+                                <td colspan="{{ ($community->subtype ?? null) === 'school' ? 10 : 9 }}" class="text-center py-4 text-600">
                                     <span class="fas fa-running fs-4 d-block mb-2 text-400"></span>
                                     Belum ada atlet yang terdaftar di roster.
                                 </td>

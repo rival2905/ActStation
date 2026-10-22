@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\UpdateUserProfileRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -51,6 +52,26 @@ class UserProfileController extends Controller
         }
 
         return redirect()->route('user-profile.edit')->with('success', 'Profil pribadi berhasil diperbarui.');
+    }
+
+    public function updatePassword(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->is_active, 403);
+
+        $validated = $request->validateWithBag('updatePassword', [
+            'current_password' => ['required', 'string', 'current_password'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ], [
+            'current_password.current_password' => 'Password saat ini tidak sesuai.',
+            'password.confirmed' => 'Konfirmasi password baru tidak cocok.',
+            'password.min' => 'Password baru minimal 8 karakter.',
+        ]);
+
+        $request->user()->update([
+            'password' => Hash::make($validated['password']),
+        ]);
+
+        return redirect()->route('user-profile.edit')->with('success_password', 'Password berhasil diperbarui.');
     }
 
     public function download(Request $request, int $document): StreamedResponse

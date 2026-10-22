@@ -122,6 +122,7 @@ class RolePermissionSeeder extends Seeder
             'gallery.update',
             'gallery.delete',
             // Community Management (Modul G - 24)
+            'community-links.moderate',
             'community.view',
             'community.create',
             'community.update',

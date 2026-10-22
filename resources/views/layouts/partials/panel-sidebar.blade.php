@@ -42,6 +42,9 @@
                 </div>
             @endif
             <ul class="navbar-nav flex-column mb-3" id="navbarVerticalNav">
+                @foreach($managedSchoolUnits as $schoolUnit)
+                <li class="nav-item"><a class="nav-link text-break" href="{{ route('panel.schools.extracurriculars.personnel.index', [$schoolUnit->community_id, $schoolUnit->id]) }}">{{ $schoolUnit->name }} — {{ $schoolUnit->sport_name }}</a></li>
+                @endforeach
                 <li class="nav-item">
                     <div class="row navbar-vertical-label-wrapper mt-3 mb-2">
                         <div class="col-auto navbar-vertical-label">Turnamen</div>
@@ -90,6 +93,13 @@
                     </div>
                 </li>
 
+                @if(!empty($schoolRegistrationId))
+                <li class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('panel.school-registrations.*') ? 'active' : '' }}" href="{{ route('panel.school-registrations.show', $schoolRegistrationId) }}" @if(request()->routeIs('panel.school-registrations.*')) aria-current="page" @endif>
+                        <div class="d-flex align-items-center"><span class="nav-link-icon"><span class="fas fa-school"></span></span><span class="nav-link-text ps-1">Kewenangan Sekolah</span></div>
+                    </a>
+                </li>
+                @endif
                 @if($activeCommunity)
                 <!-- Profil Komunitas -->
                 <li class="nav-item">
@@ -101,6 +111,16 @@
                     </a>
                 </li>
 
+                @can('update', $activeCommunity)
+                <li class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('panel.community-links.*') ? 'active' : '' }}" href="{{ route('panel.community-links.index') }}">
+                        <div class="d-flex align-items-center">
+                            <span class="nav-link-icon"><span class="fas fa-link"></span></span>
+                            <span class="nav-link-text ps-1">Tautan Komunitas</span>
+                        </div>
+                    </a>
+                </li>
+                @endcan
                 <!-- Pengurus -->
                 <li class="nav-item">
                     <a class="nav-link {{ request()->routeIs('panel.officials.*') ? 'active' : '' }}" href="{{ Route::has('panel.officials.index') ? route('panel.officials.index') : '#' }}" role="button">
@@ -151,6 +171,9 @@
                     </a>
                 </li>
                 @else
+                @if(!empty($schoolRegistrationId))
+                <!-- Pending school — sidebar CTA hidden -->
+                @else
                 <!-- Buat Komunitas CTA -->
                 <li class="nav-item">
                     <a class="nav-link {{ request()->routeIs('panel.community.create') ? 'active' : '' }}" href="{{ Route::has('panel.community.create') ? route('panel.community.create') : url('/panel/community/create') }}" role="button">
@@ -160,6 +183,7 @@
                         </div>
                     </a>
                 </li>
+                @endif
                 @endif
                 <li class="nav-item">
                     <div class="row navbar-vertical-label-wrapper mt-3 mb-2">

@@ -16,13 +16,34 @@
         </div>
     </div>
     <div class="card-body p-0">
+        @if($community->subtype === 'school')
+            <nav class="p-3 border-bottom" aria-label="Filter Ekskul">
+                <h6 class="mb-2">Filter Ekskul</h6>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{{ route('panel.coaches.index') }}" class="btn btn-sm {{ $selectedExtracurricularId === null ? 'btn-primary' : 'btn-outline-primary' }}" @if($selectedExtracurricularId === null) aria-current="page" @endif>Semua Tenaga Pendukung <span class="badge badge-subtle-secondary ms-1">{{ $allCoachesCount }}</span></a>
+                    @foreach($schoolExtracurricularUnits as $unit)
+                        <a href="{{ route('panel.coaches.index', ['extracurricular_id' => $unit->id]) }}" class="btn btn-sm {{ $selectedExtracurricularId === (int) $unit->id ? 'btn-primary' : 'btn-outline-primary' }}" @if($selectedExtracurricularId === (int) $unit->id) aria-current="page" @endif>{{ $unit->sport_name }} <span class="badge badge-subtle-secondary ms-1">{{ $unit->member_count }}</span></a>
+                    @endforeach
+                </div>
+                <p class="small text-muted mt-2 mb-0">Label mengikuti penugasan ekskul aktif sesuai peran. Satu orang dapat bertugas di beberapa ekskul. Pemilihan roster turnamen tidak otomatis membuat penugasan.</p>
+                @can('update', $community)
+                    <div class="d-flex flex-wrap gap-3 mt-2">
+                        @foreach($schoolExtracurricularUnits as $unit)
+                            <a class="small" href="{{ route('panel.schools.extracurriculars.personnel.index', [$community->id, $unit->id]) }}">Kelola personel {{ $unit->sport_name }}</a>
+                        @endforeach
+                    </div>
+                @endcan
+            </nav>
+        @endif
         <div class="table-responsive">
             <table class="table table-sm table-striped fs-10 mb-0 align-middle">
                 <thead class="bg-200 text-900">
                     <tr>
                         <th class="ps-3" style="width: 50px;">No</th>
                         <th>Nama</th>
-                        <th>Peran</th><th>Lisensi</th>
+                        <th>Peran</th>
+                        @if($community->subtype === 'school')<th>Ekskul</th>@endif
+                        <th>Lisensi</th>
                         <th>Jenjang Pembinaan</th>
                         <th>Kategori Gender</th>
                         <th>Status</th>
@@ -46,6 +67,15 @@
                             </div>
                         </td>
                         <td>{{ $coach->personnelRole?->name ?? 'Coach' }}</td>
+                        @if($community->subtype === 'school')
+                            <td>
+                                @forelse($schoolExtracurricularsByCoach->get($coach->id, collect()) as $assignment)
+                                    <span class="badge badge-subtle-info" data-coach-extracurricular>{{ $assignment->sport_name }}</span>
+                                @empty
+                                    <span class="text-500">Belum ada penugasan ekskul</span>
+                                @endforelse
+                            </td>
+                        @endif
                         <td>
                             @if($coach->license)
                                 <span class="badge badge-subtle-info">{{ $coach->license }}</span>
@@ -96,7 +126,7 @@
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="8" class="text-center py-4 text-600">
+                        <td colspan="{{ $community->subtype === 'school' ? 10 : 9 }}" class="text-center py-4 text-600">
                             <span class="fas fa-chalkboard-teacher fs-4 d-block mb-2 text-400"></span>
                             Belum ada tenaga pendukung yang ditambahkan.
                         </td>

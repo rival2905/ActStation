@@ -608,6 +608,104 @@
             </div>
         </div>
 
+        {{-- 5b. VERIFIKASI KEWENANGAN SEKOLAH (school only) --}}
+        @if($community->subtype === 'school' && isset($schoolRegistration) && $schoolRegistration)
+        <div class="card mt-3">
+            <div class="card-header bg-body-tertiary"><h6 class="mb-0">Verifikasi Kewenangan Sekolah</h6></div>
+            <div class="card-body fs-10">
+                <div class="row mb-2">
+                    <div class="col-sm-3 fw-bold">NPSN</div>
+                    <div class="col-sm-9">{{ $schoolRegistration->npsn }}</div>
+                </div>
+                <div class="row mb-2">
+                    <div class="col-sm-3 fw-bold">Email Resmi Sekolah</div>
+                    <div class="col-sm-9">{{ $schoolRegistration->contact_email }}</div>
+                </div>
+                <div class="row mb-2">
+                    <div class="col-sm-3 fw-bold">Verifikasi Email</div>
+                    <div class="col-sm-9">
+                        @if($schoolRegistration->email_verified_at)
+                            <span class="badge badge-subtle-success">Terkonfirmasi {{ $schoolRegistration->email_verified_at->format('d M Y H:i') }}</span>
+                        @else
+                            <span class="badge badge-subtle-warning">Belum terkonfirmasi</span>
+                        @endif
+                    </div>
+                </div>
+                <div class="row mb-2">
+                    <div class="col-sm-3 fw-bold">{{ $schoolRegistration->status === 'approved' ? 'Penanggung Jawab Utama' : 'Pemohon' }}</div>
+                    <div class="col-sm-9">{{ $schoolRegistration->user?->name ?? '-' }} ({{ $schoolRegistration->user?->email ?? '-' }})</div>
+                </div>
+                <div class="row mb-2">
+                    <div class="col-sm-3 fw-bold">Bukti Kewenangan</div>
+                    <div class="col-sm-9">
+                        @if($schoolRegistration->evidence_path)
+                            <a href="{{ route('admin.school-registrations.evidence', $schoolRegistration->id) }}" class="btn btn-xs btn-falcon-default" target="_blank">
+                                <span class="fas fa-file-download me-1"></span> Unduh Bukti
+                            </a>
+                        @else
+                            <span class="text-muted">Belum diunggah</span>
+                        @endif
+                    </div>
+                </div>
+                <div class="row mb-2">
+                    <div class="col-sm-3 fw-bold">Status Review Admin</div>
+                    <div class="col-sm-9">
+                        @if($schoolRegistration->admin_review_status === 'approved')
+                            <span class="badge badge-subtle-success">Disetujui</span>
+                        @elseif($schoolRegistration->admin_review_status === 'rejected')
+                            <span class="badge badge-subtle-danger">Ditolak</span>
+                        @else
+                            <span class="badge badge-subtle-warning">Menunggu</span>
+                        @endif
+                        @if($schoolRegistration->reviewed_at)
+                            <small class="text-muted ms-1">{{ $schoolRegistration->reviewed_at->format('d M Y H:i') }}</small>
+                        @endif
+                    </div>
+                </div>
+                @if($schoolRegistration->rejection_reason)
+                <div class="row mb-2">
+                    <div class="col-sm-3 fw-bold">Alasan Penolakan</div>
+                    <div class="col-sm-9"><div class="alert alert-warning py-1 px-2 mb-0 fs-11">{{ $schoolRegistration->rejection_reason }}</div></div>
+                </div>
+                @endif
+
+                @can('community.verify')
+                @if($schoolRegistration->status === 'approved' && $community->is_active && auth()->user()->is_active && auth()->user()->roles->contains(fn ($role) => in_array($role->panel_access, ['internal', 'both'], true)))
+                <hr>
+                <h6>Serahkan Tanggung Jawab</h6>
+                <div class="alert alert-warning">Penyerahan langsung berlaku tanpa persetujuan penerima. Pengurus lama kehilangan kewenangan utama pada sekolah ini. Email resmi dan status legalitas tidak berubah.</div>
+                <form method="POST" action="{{ route('admin.communities.authority', $community) }}">
+                    @csrf
+                    <div class="mb-3"><label class="form-label" for="admin-authority-email">Email Akun Pengganti</label><input class="form-control" id="admin-authority-email" name="target_email" type="email" required maxlength="255" value="{{ old('target_email') }}"><div class="form-text">Akun pengganti harus sudah terdaftar dan aktif.</div></div>
+                    <div class="mb-3"><label class="form-label" for="admin-authority-reason">Alasan Penyerahan</label><textarea class="form-control" id="admin-authority-reason" name="reason" required minlength="10" maxlength="2000" rows="3">{{ old('reason') }}</textarea></div>
+                    <button type="submit" class="btn btn-warning btn-sm">Serahkan Tanggung Jawab</button>
+                </form>
+                @endif
+                @if($schoolRegistration->admin_review_status === 'pending')
+                <hr class="my-2">
+                <div class="d-flex gap-2 flex-wrap">
+                    <form method="POST" action="{{ route('admin.school-registrations.review', $schoolRegistration->id) }}" onsubmit="return confirm('Setujui kewenangan sekolah ini?');">
+                        @csrf
+                        <input type="hidden" name="action" value="approve">
+                        <button type="submit" class="btn btn-sm btn-success" @if(!$schoolRegistration->email_verified_at || !$schoolRegistration->evidence_path) disabled title="Email harus terkonfirmasi dan bukti harus diunggah" @endif>
+                            <span class="fas fa-check me-1"></span> Setujui
+                        </button>
+                    </form>
+                    <form method="POST" action="{{ route('admin.school-registrations.review', $schoolRegistration->id) }}" onsubmit="return confirm('Tolak kewenangan sekolah ini?');">
+                        @csrf
+                        <input type="hidden" name="action" value="reject">
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="reason" class="form-control" placeholder="Alasan penolakan" required>
+                            <button type="submit" class="btn btn-danger"><span class="fas fa-times me-1"></span> Tolak</button>
+                        </div>
+                    </form>
+                </div>
+                @endif
+                @endcan
+            </div>
+        </div>
+        @endif
+
         {{-- 6. TAB RIWAYAT AKTIVITAS --}}
         <div class="tab-pane fade" id="tab-activities" role="tabpanel" aria-labelledby="tab-activities-tab">
             <h6 class="fs-10 text-900 fw-bold mb-2">Riwayat & Jadwal Aktivitas</h6>

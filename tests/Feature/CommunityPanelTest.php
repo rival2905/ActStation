@@ -589,8 +589,8 @@ test('akun tanpa komunitas melihat tombol buat komunitas untuk mendaftar dan tid
     $regResponse = $this->actingAs($rival)
         ->get(route('panel.community-events.create', $event->slug));
 
-    $regResponse->assertRedirect(route('panel.community-events.index'));
-    $regResponse->assertSessionHas('error');
+    $regResponse->assertRedirect(route('panel.community.create'));
+    $regResponse->assertSessionHas('info');
 });
 
 test('manager komunitas yang sah mempertahankan seluruh menu dan dapat mendaftar event', function (): void {

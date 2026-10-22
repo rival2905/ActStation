@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Community\Http\Controllers\Panel;
 
 use App\Modules\Community\Http\Requests\Panel\CoachDecisionRequest;
+use App\Modules\Community\Http\Requests\Panel\PanelCoachIndexRequest;
 use App\Modules\Community\Http\Requests\Panel\PanelCoachRequest;
 use App\Modules\Community\Models\CommunityCoach;
 use App\Modules\Community\Models\SportsPersonnelRole;
+use App\Modules\Community\Services\SchoolExtracurricularService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,16 +18,27 @@ use Illuminate\View\View;
 
 class CoachController extends PanelBaseController
 {
-    public function index(Request $request): View
+    public function index(PanelCoachIndexRequest $request, SchoolExtracurricularService $extracurriculars): View
     {
         $community = $this->currentCommunity($request);
         $this->authorize('view', $community);
+        $selectedExtracurricularId = $request->validated('extracurricular_id') !== null ? (int) $request->validated('extracurricular_id') : null;
+        $schoolExtracurricularUnits = $extracurriculars->unitsForDirectory($community);
+        abort_if($selectedExtracurricularId !== null && ! $schoolExtracurricularUnits->contains('id', $selectedExtracurricularId), 404);
 
         $coaches = $community->coaches()->with(['user', 'personnelRole'])->latest()->get();
+        $schoolExtracurricularsByCoach = $extracurriculars->appointmentsForDirectory($community, $coaches);
+        $allCoachesCount = $coaches->count();
+        foreach ($schoolExtracurricularUnits as $unit) {
+            $unit->member_count = $schoolExtracurricularsByCoach->filter(fn ($assignments) => $assignments->contains('unit_id', $unit->id))->count();
+        }
+        if ($selectedExtracurricularId !== null) {
+            $coaches = $coaches->filter(fn ($coach) => $schoolExtracurricularsByCoach->get($coach->id, collect())->contains('unit_id', $selectedExtracurricularId))->values();
+        }
         $personnelRoles = SportsPersonnelRole::where('is_active', true)->orderBy('sort_order')->get();
         $developmentLevels = DB::table('development_levels')->get();
 
-        return view('panel.coaches.index', compact('community', 'coaches', 'developmentLevels', 'personnelRoles'));
+        return view('panel.coaches.index', compact('community', 'coaches', 'developmentLevels', 'personnelRoles', 'schoolExtracurricularUnits', 'schoolExtracurricularsByCoach', 'allCoachesCount', 'selectedExtracurricularId'));
     }
 
     public function store(PanelCoachRequest $request): RedirectResponse

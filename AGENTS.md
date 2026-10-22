@@ -24,7 +24,7 @@ Spatie `laravel-permission:6.25.0` migrate ke `db_actstation`. Tidak ada koneksi
 
 Tabel domain lifestyle (`payments`, `tickets_*`, `orders`, dsb.) juga di `db_actstation`.
 
-Detail Auth Internal: lihat `PRD.md`.
+Detail Arsitektur Internal: lihat `PRD.md`. Detail Fitur Eksternal: lihat `PRD_EXTERNAL.md`. Rincian spesifikasi teknis per modul: lihat `docs/prd/` (`01_core_auth.md` s.d. `12_settings.md`).
 
 ## Auth & Smart Auto-Redirect
 
@@ -62,14 +62,46 @@ Login (`/admin/login` & `/panel/login`) menerapkan Smart Auto-Redirect via `User
 Fitur hidup di `app/Modules/<Domain>/` — micro-services ready, siap dicabut:
 
 ```
-app/Modules/Sports/      {Http/Controllers, Http/Resources, Services, Models, Routes/api.php}
-app/Modules/Payment/
-app/Modules/Ticketing/
-app/Modules/Community/
-app/Modules/Marketplace/
+app/Modules/Communication/  {Services, Models, Http/Controllers, Routes}
+app/Modules/Community/      {Services, Models, Http/Controllers, Routes}
+app/Modules/Content/        {Services, Models, Http/Controllers, Routes}
+app/Modules/Event/          {Services, Models, Http/Controllers, Routes}
+app/Modules/Marketplace/    {Services, Models, Http/Controllers, Routes}
+app/Modules/MasterData/     {Services, Models, Http/Controllers, Routes}
+app/Modules/Payment/        {Services, Models, Http/Controllers, Routes}
+app/Modules/Report/         {Services, Models, Http/Controllers, Routes}
+app/Modules/Settings/       {Services, Models, Http/Controllers, Routes}
+app/Modules/Ticketing/      {Services, Models, Http/Controllers, Routes}
 ```
 
 Aturan: modul **tidak** boleh `use` class modul lain. Lintas-modul lewat kontrak di `app/Contracts/` atau event. Satu modul = satu `Routes/api.php` yang diregistrasi di `bootstrap/app.php`.
+
+## Pendaftaran Multi-Tim & Wizard Falcon
+
+- URL: `/panel/events/{slug}/register`. Mendukung beberapa tim per komunitas hingga batas `event_categories.max_teams_per_entity` (default 1).
+- Wizard 3 langkah Falcon (`Progress Tab with Validation`): Langkah 1 (Kategori & Tim), Langkah 2 (Roster & Dokumen), Langkah 3 (Tinjau & Kirim).
+- Lazy Loading Accordion In-Place (`lazySwitchDraft`): Header accordion menggunakan class terisolasi `.team-header-name` dan `.team-header-category`. Perpindahan draft memindahkan form `#team-form-body-content`, `#roster-form-body-content`, dan `#review-form-body-content` tanpa reload atau scroll jump, menyinkronkan URL via `history.replaceState`.
+- Tombol "+ Tambah Atlet" hanya muncul jika anggota aktif komunitas yang tersedia > 6. Tautan Roster Tim terikat draft tim target (*draft-scoped auto-enroll*).
+- Validasi Otoritatif Server: Gender atlet divalidasi dari profil `User`. Pengenal akademik (kategori sekolah wajib NISN 10 digit, kampus wajib NIM, umum wajib NIK 16 digit). Usia dihitung pada tanggal mulai event.
+
+## Multi-Venue & Tournament Scheduling
+
+- Multi-venue per event menggunakan pivot `event_venues` (`event_id`, `venue_id`) dan pemetaan lapangan `event_courts`.
+- Pembuatan master venue/lapangan dari workspace organizer memerlukan konfirmasi wajib `confirm_master_data`.
+- Admin mengontrol izin pembuatan via sakelar `allow_panel_venue_creation` dan `allow_panel_court_creation` di tabel `settings` (group `venues`), dibaca fresh tanpa cache (penolakan instan HTTP 403).
+- Scheduler SPA memeriksa bentrok lapangan (durasi laga + jeda `break_duration_minutes`) dan menolak pemindahan laga live/finished/cancelled/bye.
+
+## Universal Ticketing & Scanner
+
+- Kategori tiket mendukung `location_scope`: `all`, `venue`, `court`, `per_game`.
+- Pembukaan penjualan tiket sekali per event (`ticket_sales_starts_at`); tombol beli publik aktif jika waktu tercapai dan ada jadwal laga berwaktu mendatang.
+- Gate scanner workspace (`/panel/organizer/events/{event}/scanner`) memeriksa `allowsLocation()`; salah/tanpa lokasi ditolak mutlak (*not consumed*). Row-locking mencegah double-scan.
+
+## Dual-Channel Payment & 4-Lapis Legal Shield
+
+- Saluran 1: Payment Gateway otomatis bergaransi Escrow 100%.
+- Saluran 2: Transfer Manual ke rekening panitia (`events.allow_manual_payment = true`) di luar escrow.
+- 4 Lapis Perlindungan Hukum UU ITE: 1) Hard warning banner merah, 2) Mandatory legal waiver checkbox (rekening terkunci sampai dicentang), 3) Forensic audit trail (`is_escrow_waived`, `waiver_signed_at`, `waiver_ip`, `waiver_user_agent`), 4) Watermark non-escrow pada faktur dan kartu peserta.
 
 ## API-First
 
@@ -100,6 +132,12 @@ Shape response error konsisten:
 - Gunakan template email inline bertema Falcon; escape konten dan jangan memasukkan NIK, dokumen atlet, token, atau data roster pribadi ke notifikasi event. Pengirim resmi: `ActStation <no-reply@actstation.net>`, sesuai izin SMTP.
 - Notifikasi event memakai `EventParticipantObserver` dan `EventRegistrationEmailService`, dengan snapshot perubahan lalu trigger setelah commit untuk perubahan bisnis penting: pendaftaran, revisi, kurasi/tagihan, konfirmasi pembayaran, konfirmasi peserta, dan pembatalan. Jangan mengirim untuk setiap render/klik/save tanpa perubahan. Detail implementasi dan acceptance dicatat di PRD.
 - Tes menggunakan `Http::fake()`/mock kontrak dan mencegah request liar. Jangan menguji email nyata atau mengirim ulang pesan historis tanpa izin pengguna.
+
+## Gateway Internal Karyawan AI (`/api/v1/internal/agent-office/*`)
+
+- Endpoint M2M terisolasi khusus komunikasi sistem ActStationOffice.
+- Keamanan 5 lapis: 1) IP Allowlist (`127.0.0.1`, server kantor), 2) Anti-replay `X-Agent-Timestamp` (±60 detik), 3) HMAC-SHA256 `X-Agent-Signature`, 4) Token Sanctum scoped abilities (`agent:metrics`, `agent:verify`, `agent:articles`, `agent:ux-report`, `agent:health`), 5) PII masking (NIK/rekening/password ter-mask) & rate limit 60 req/menit.
+- Dilarang membuka akses SQL langsung, operasi delete database, atau manipulasi role via API ini. Detail di `docs/prd/13_agent_office_api.md`.
 
 ## Flutter
 

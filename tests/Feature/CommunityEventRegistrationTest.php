@@ -419,6 +419,6 @@ test('user tanpa komunitas dialihkan ke katalog pendaftaran tanpa error route', 
 
     $response = $this->actingAs($organizer)->get(route('panel.community-events.create', $this->event->slug));
 
-    $response->assertRedirect(route('panel.community-events.index'));
-    $response->assertSessionHas('error');
+    $response->assertRedirect(route('panel.community.create'));
+    $response->assertSessionHas('info');
 });

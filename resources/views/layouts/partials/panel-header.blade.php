@@ -59,17 +59,24 @@
                     <span class="text-truncate fw-semibold" style="max-width: 180px;">{{ $singleEntity->name }}</span>
                 </span>
             @else
+                @if(!empty($schoolRegistrationId))
+                <a class="btn btn-outline-info btn-sm py-1 px-2 fs-11 d-flex align-items-center gap-1" href="{{ route('panel.school-registrations.show', $schoolRegistrationId) }}">
+                    <span class="fas fa-school"></span>
+                    <span>Kewenangan Sekolah</span>
+                </a>
+                @else
                 <a class="btn btn-outline-primary btn-sm py-1 px-2 fs-11 d-flex align-items-center gap-1" href="{{ Route::has('panel.community.create') ? route('panel.community.create') : url('/panel/community/create') }}">
                     <span class="fas fa-plus"></span>
                     <span>Buat Komunitas</span>
                 </a>
+                @endif
             @endif
         </li>
 
         @auth
         <li class="nav-item pe-2">
             <a href="{{ route('verification.notice') }}" class="badge {{ auth()->user()->hasVerifiedEmail() ? 'badge-subtle-success' : 'badge-subtle-warning' }} text-decoration-none">
-                {{ auth()->user()->hasVerifiedEmail() ? 'Email terverifikasi' : 'Verifikasi email' }}
+                {{ auth()->user()->hasVerifiedEmail() ? 'Email akun terverifikasi' : 'Verifikasi email akun' }}
             </a>
         </li>
 
@@ -113,9 +120,15 @@
                         <span class="fas fa-building me-2 text-primary"></span>Profil Komunitas
                     </a>
                     @elseif(! $activeCommunity)
+                    @if(!empty($schoolRegistrationId))
+                    <a class="dropdown-item mt-1" href="{{ route('panel.school-registrations.show', $schoolRegistrationId) }}">
+                        <span class="fas fa-school me-2 text-info"></span>Verifikasi Sekolah
+                    </a>
+                    @else
                     <a class="dropdown-item mt-1" href="{{ Route::has('panel.community.create') ? route('panel.community.create') : url('/panel/community/create') }}">
                         <span class="fas fa-plus-circle me-2 text-primary"></span>Buat Komunitas
                     </a>
+                    @endif
                     @endif
                     @if(auth()->user()?->roles->contains(fn ($role) => in_array($role->panel_access, ['internal', 'both'], true)) && auth()->user()->can('dashboard.view'))
                     <a class="dropdown-item" href="{{ route('admin.dashboard') }}">

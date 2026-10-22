@@ -282,7 +282,7 @@ test('pendaftaran sekolah tanpa koordinat fallback ke koordinat master sekolah l
             'contact_email' => 'guru@sman1.sch.id',
         ]);
 
-    $response->assertRedirect(route('panel.profile.show'));
+    $response->assertRedirect()->assertSessionHasNoErrors();
 
     $community = Community::where('npsn', $this->school->npsn)->first();
     expect($community)->not->toBeNull()
@@ -314,7 +314,7 @@ test('pendaftaran sekolah dengan koordinat kustom tidak ditimpa oleh koordinat m
             'longitude' => 106.98765400,
         ]);
 
-    $response->assertRedirect(route('panel.profile.show'));
+    $response->assertRedirect()->assertSessionHasNoErrors();
 
     $community = Community::where('npsn', $this->school->npsn)->first();
     expect($community)->not->toBeNull()

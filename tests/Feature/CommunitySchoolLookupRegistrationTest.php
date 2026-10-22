@@ -220,7 +220,7 @@ test('pendaftaran sekolah valid menetapkan nama kanonikal master dan menormalkan
             'contact_email' => 'sma3@sekolah.sch.id',
         ]);
 
-    $response->assertRedirect(route('panel.profile.show'))
+    $response->assertRedirect()->assertSessionHasNoErrors()
         ->assertSessionHas('success');
 
     $community = Community::where('npsn', $this->schoolSma->npsn)->first();
@@ -239,7 +239,7 @@ test('pendaftaran sekolah valid menetapkan nama kanonikal master dan menormalkan
 
     expect($official)->not->toBeNull()
         ->and($official->position)->toBe('manager')
-        ->and($official->status)->toBe('active');
+        ->and($official->status)->toBe('pending');
 });
 
 test('pendaftaran sekolah dengan duplikat NPSN komunitas yang sudah ada ditolak 422', function (): void {

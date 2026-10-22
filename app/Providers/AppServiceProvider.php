@@ -14,20 +14,26 @@ use App\Contracts\Events\PaymentSucceeded;
 use App\Contracts\OfficialDirectory;
 use App\Contracts\RegistrationDraftProvider;
 use App\Contracts\RosterProvider;
+use App\Contracts\SchoolExtracurriculars;
 use App\Contracts\SchoolLookup;
+use App\Contracts\SchoolOnboardingService;
 use App\Contracts\TeamDocumentInspection;
 use App\Contracts\TeamPersonnelProvider;
 use App\Contracts\VenueCatalog;
+use App\Events\SchoolAthleteActivated;
 use App\Listeners\AuthActivitySubscriber;
 use App\Models\User;
 use App\Modules\Communication\Services\CommunicationEmailDelivery;
 use App\Modules\Community\Models\Community;
 use App\Modules\Community\Models\CommunityOfficial;
+use App\Modules\Community\Models\SchoolExtracurricularAppointment;
+use App\Modules\Community\Models\SchoolRegistration;
 use App\Modules\Community\Policies\CommunityPolicy;
 use App\Modules\Community\Services\AthleteDocumentVaultService;
 use App\Modules\Community\Services\CommunityLookupService;
 use App\Modules\Community\Services\InvitationService;
 use App\Modules\Community\Services\RosterProviderService;
+use App\Modules\Community\Services\SchoolExtracurricularService;
 use App\Modules\Community\Services\TeamDocumentInspectionService;
 use App\Modules\Community\Services\TeamPersonnelProviderService;
 use App\Modules\Event\Listeners\HandleRegistrationPaymentRefunded as EventPaymentRefunded;
@@ -61,6 +67,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(AthleteDocumentVault::class, AthleteDocumentVaultService::class);
         $this->app->bind(EventLookup::class, EventLookupService::class);
         $this->app->bind(CommunityLookup::class, CommunityLookupService::class);
+        $this->app->bind(SchoolExtracurriculars::class, SchoolExtracurricularService::class);
+        $this->app->bind(SchoolOnboardingService::class, \App\Modules\Community\Services\SchoolOnboardingService::class);
         $this->app->bind(ContextualAthleteInvitation::class, InvitationService::class);
         $this->app->bind(RosterProvider::class, RosterProviderService::class);
         $this->app->bind(RegistrationDraftProvider::class, RegistrationDraftService::class);
@@ -80,7 +88,25 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        View::composer(['layouts.partials.panel-sidebar', 'layouts.partials.panel-header'], function ($view): void {
+            $activeId = auth()->check() ? CommunityLookupService::resolveActiveCommunityId((int) auth()->id()) : null;
+            $registration = auth()->check() ? SchoolRegistration::where('user_id', auth()->id())
+                ->when($activeId, fn ($query) => $query->where('community_id', $activeId),
+                    fn ($query) => $query->whereIn('status', ['pending', 'rejected']))
+                ->whereHas('community', fn ($query) => $query->where('is_active', true)->where('subtype', 'school'))
+                ->latest('id')->first(['id']) : null;
+            $view->with('schoolRegistrationId', $registration?->id);
+            $assignments = auth()->check() ? SchoolExtracurricularAppointment::query()
+                ->join('school_extracurriculars', 'school_extracurriculars.id', '=', 'school_extracurricular_appointments.school_extracurricular_id')
+                ->join('communities', 'communities.id', '=', 'school_extracurriculars.community_id')
+                ->join('sport_categories', 'sport_categories.id', '=', 'school_extracurriculars.sport_category_id')
+                ->where('school_extracurricular_appointments.user_id', auth()->id())->where('school_extracurricular_appointments.status', 'active')
+                ->where('can_manage_personnel', true)->whereNull('ended_at')->whereNull('communities.deleted_at')->where('communities.is_active', true)
+                ->select('school_extracurriculars.id', 'school_extracurriculars.community_id', 'communities.name', 'sport_categories.name as sport_name')->distinct()->get() : collect();
+            $view->with('managedSchoolUnits', $assignments);
+        });
         Event::subscribe(AuthActivitySubscriber::class);
+        Event::listen(SchoolAthleteActivated::class, [RegistrationDraftService::class, 'enrollActivatedSchoolAthlete']);
         Event::listen(PaymentSucceeded::class, HandlePaymentSucceeded::class);
         Event::listen(PaymentRefunded::class, HandlePaymentRefunded::class);
         Event::listen(PaymentSucceeded::class, MarketplacePaymentSucceeded::class);
@@ -90,6 +116,12 @@ class AppServiceProvider extends ServiceProvider
         Gate::before(fn ($user) => $user->hasRole('superadmin') ? true : null);
 
         Gate::policy(Community::class, CommunityPolicy::class);
+
+        View::composer(['layouts.partials.sidebar', 'admin.communities.index'], function (\Illuminate\View\View $view): void {
+            $view->with('pendingCommunityCount', auth()->user()?->can('community.view')
+                ? Community::where('status', 'pending')->count()
+                : 0);
+        });
 
         View::composer('layouts.partials.sidebar', function (\Illuminate\View\View $view): void {
             $view->with('pendingOrganizerCount', auth()->user()?->can('user.view')

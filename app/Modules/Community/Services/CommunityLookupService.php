@@ -9,6 +9,7 @@ use App\Contracts\DTOs\CommunitySummary;
 use App\Contracts\EntityRequirements;
 use App\Modules\Community\Models\Community;
 use App\Modules\Community\Models\CommunityOfficial;
+use App\Modules\Community\Models\SchoolRegistration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -94,7 +95,19 @@ class CommunityLookupService implements CommunityLookup
             ->orderBy('id')
             ->first();
 
-        return $firstOfficial ? (int) $firstOfficial->community_id : null;
+        if ($firstOfficial) {
+            return (int) $firstOfficial->community_id;
+        }
+
+        // ponytail: fallback for school communities with pending official
+        $schoolReg = SchoolRegistration::query()
+            ->where('user_id', $userId)
+            ->whereIn('status', ['pending', 'approved'])
+            ->whereHas('community', fn ($q) => $q->whereNull('deleted_at')->where('is_active', true)->where('subtype', 'school'))
+            ->latest('id')
+            ->first();
+
+        return $schoolReg?->community_id ? (int) $schoolReg->community_id : null;
     }
 
     public function findForUser(int $userId): ?CommunitySummary
@@ -121,7 +134,21 @@ class CommunityLookupService implements CommunityLookup
             ->first();
 
         if (! $official) {
-            return null;
+            // ponytail: fallback for school communities with pending official
+            $schoolReg = SchoolRegistration::query()
+                ->where('user_id', $userId)
+                ->whereIn('status', ['pending', 'approved'])
+                ->whereHas('community', fn ($q) => $q->whereNull('deleted_at')->where('is_active', true)->where('subtype', 'school'))
+                ->latest('id')
+                ->first();
+
+            if (! $schoolReg?->community_id) {
+                return null;
+            }
+
+            $summary = $this->find((int) $schoolReg->community_id);
+
+            return $summary?->is_active ? $summary : null;
         }
 
         $summary = $this->find((int) $official->community_id);

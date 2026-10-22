@@ -9,7 +9,9 @@ use App\Contracts\DTOs\CommunitySummary;
 use App\Contracts\DTOs\RegistrationDraftContextDto;
 use App\Contracts\RegistrationDraftProvider;
 use App\Contracts\RosterProvider;
+use App\Contracts\SchoolExtracurriculars;
 use App\Contracts\TeamPersonnelProvider;
+use App\Events\SchoolAthleteActivated;
 use App\Models\User;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventCategory;
@@ -29,7 +31,29 @@ class RegistrationDraftService implements RegistrationDraftProvider
         private readonly RosterProvider $rosterProvider,
         private readonly CommunityLookup $communityLookup,
         private readonly RegistrationGuard $registrationGuard,
+        private readonly SchoolExtracurriculars $schoolExtracurriculars,
     ) {}
+
+    private function syncExtracurriculars(int $communityId, ?int $categoryId, ?int $sportId, array $payload): void
+    {
+        if ($categoryId === null || $sportId === null) {
+            return;
+        }
+        $this->schoolExtracurriculars->sync($communityId, $sportId, array_map(
+            static fn (array $member): int => (int) $member['user_id'],
+            (array) ($payload['members'] ?? []),
+        ));
+    }
+
+    public function enrollActivatedSchoolAthlete(SchoolAthleteActivated $activation): void
+    {
+        foreach (RegistrationDraft::query()->where('community_id', $activation->communityId)
+            ->whereNull('participant_id')->where('expires_at', '>', now())->with('event')->get() as $draft) {
+            if (! $draft->isSubmitted() && collect($draft->payload['members'] ?? [])->contains(fn (array $member): bool => (int) ($member['user_id'] ?? 0) === $activation->userId)) {
+                $this->schoolExtracurriculars->sync($activation->communityId, (int) $draft->event->sport_category_id, [$activation->userId]);
+            }
+        }
+    }
 
     public function validInvitationContext(
         string $draftId,
@@ -96,30 +120,35 @@ class RegistrationDraftService implements RegistrationDraftProvider
 
     public function addCandidate(string $draftId, int $userId, int $invitationId, array $rosterData = []): bool
     {
-        if (! $this->hasCandidateCapacity($draftId, $userId)) {
-            throw ValidationException::withMessages([
-                'invitation' => 'Kuota calon roster untuk draft ini sudah penuh.',
-            ]);
-        }
+        return DB::transaction(function () use ($draftId, $userId, $invitationId, $rosterData): bool {
+            if (! $this->hasCandidateCapacity($draftId, $userId)) {
+                throw ValidationException::withMessages([
+                    'invitation' => 'Kuota calon roster untuk draft ini sudah penuh.',
+                ]);
+            }
 
-        $inserted = RegistrationDraftCandidate::query()->insertOrIgnore([
-            'registration_draft_id' => $draftId,
-            'user_id' => $userId,
-            'community_invitation_id' => $invitationId,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]) === 1;
+            $inserted = RegistrationDraftCandidate::query()->insertOrIgnore([
+                'registration_draft_id' => $draftId,
+                'user_id' => $userId,
+                'community_invitation_id' => $invitationId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]) === 1;
 
-        $draft = RegistrationDraft::query()->whereKey($draftId)->lockForUpdate()->firstOrFail();
-        $payload = $draft->payload;
-        $members = (array) ($payload['members'] ?? []);
-        if (! collect($members)->contains(fn (array $member): bool => (int) ($member['user_id'] ?? 0) === $userId)) {
-            $members[] = ['user_id' => $userId, 'team_role' => 'player', 'jersey_number' => $rosterData['jersey_number'] ?? null, 'position' => $rosterData['position'] ?? '', 'is_captain' => false];
-            $payload['members'] = $members;
-            $draft->update(['payload' => $payload, 'revision' => $draft->revision + 1]);
-        }
+            $draft = RegistrationDraft::query()->whereKey($draftId)->lockForUpdate()->firstOrFail();
+            $payload = (array) ($draft->payload ?? []);
+            $members = (array) ($payload['members'] ?? []);
+            if (! collect($members)->contains(fn (array $member): bool => (int) ($member['user_id'] ?? 0) === $userId)) {
+                $members[] = ['user_id' => $userId, 'team_role' => 'player', 'jersey_number' => $rosterData['jersey_number'] ?? null, 'position' => $rosterData['position'] ?? '', 'is_captain' => false];
+                $payload['members'] = $members;
+                $draft->update(['payload' => $payload, 'revision' => $draft->revision + 1]);
+            }
 
-        return $inserted;
+            $event = $draft->event ?? Event::query()->find($draft->event_id);
+            $this->syncExtracurriculars((int) $draft->community_id, $draft->event_category_id, $event?->sport_category_id, $payload);
+
+            return $inserted;
+        });
     }
 
     public function containsAthlete(string $draftId, int $userId): bool
@@ -199,40 +228,58 @@ class RegistrationDraftService implements RegistrationDraftProvider
     {
         $draftId = (string) Str::uuid();
         $categoryId = isset($data['event_category_id']) ? (int) $data['event_category_id'] : (isset($data['category']) ? (int) $data['category'] : null);
-        if ($categoryId !== null) {
-            $category = EventCategory::query()->where('id', $categoryId)->where('event_id', $event->id)->firstOrFail();
-            $this->assertCategoryEntityCapacityNotExceeded($category, $communityId, $draftId);
-        }
-
-        $payload = $this->extractAllowlistedPayload($data, $categoryId);
-        $payload['personnel'] ??= app(TeamPersonnelRoster::class)->initial($event, $communityId, (int) $user->id);
-        app(TeamPersonnelRoster::class)->validate($event, $communityId, $payload['personnel'], false);
-        $this->assertDraftMembersAllowed($draftId, $communityId, $payload);
-        $files = ['team_documents' => [], 'athlete_documents' => []];
 
         $newlyUploadedPaths = [];
         try {
-            [$files, $newlyUploadedPaths, $supersededUploads] = $this->handleUploads(
-                $draftId,
+            return DB::transaction(function () use (
+                $user,
                 $communityId,
-                (int) $event->id,
+                $event,
+                $data,
+                $request,
+                $draftId,
                 $categoryId,
-                $payload,
-                $files,
-                $request
-            );
+                &$newlyUploadedPaths
+            ): RegistrationDraft {
+                if ($categoryId !== null) {
+                    $category = EventCategory::query()->where('id', $categoryId)->where('event_id', $event->id)->firstOrFail();
+                    $this->assertCategoryEntityCapacityNotExceeded($category, $communityId, $draftId);
+                }
 
-            return RegistrationDraft::create([
-                'id' => $draftId,
-                'user_id' => $user->id,
-                'community_id' => $communityId,
-                'event_id' => $event->id,
-                'event_category_id' => $categoryId,
-                'payload' => $payload,
-                'files' => $files,
-                'revision' => 1,
-                'expires_at' => now()->addDays(7),
-            ]);
+                $payload = $this->extractAllowlistedPayload($data, $categoryId);
+                $payload['personnel'] ??= app(TeamPersonnelRoster::class)->initial($event, $communityId, (int) $user->id);
+                app(TeamPersonnelRoster::class)->validate($event, $communityId, $payload['personnel'], false);
+                $this->assertDraftMembersAllowed($draftId, $communityId, $payload);
+                $files = ['team_documents' => [], 'athlete_documents' => []];
+
+                [$files, $stagedUploads, $supersededUploads] = $this->handleUploads(
+                    $draftId,
+                    $communityId,
+                    (int) $event->id,
+                    $categoryId,
+                    $payload,
+                    $files,
+                    $request
+                );
+                $newlyUploadedPaths = array_merge($newlyUploadedPaths, $stagedUploads);
+
+                /** @var RegistrationDraft $draft */
+                $draft = RegistrationDraft::create([
+                    'id' => $draftId,
+                    'user_id' => $user->id,
+                    'community_id' => $communityId,
+                    'event_id' => $event->id,
+                    'event_category_id' => $categoryId,
+                    'payload' => $payload,
+                    'files' => $files,
+                    'revision' => 1,
+                    'expires_at' => now()->addDays(7),
+                ]);
+
+                $this->syncExtracurriculars($communityId, $categoryId, $event->sport_category_id, $payload);
+
+                return $draft;
+            });
         } catch (\Throwable $e) {
             foreach ($newlyUploadedPaths as $path) {
                 Storage::disk('local')->delete($path);
@@ -389,6 +436,9 @@ class RegistrationDraftService implements RegistrationDraftProvider
                 if ($affected === 0) {
                     abort(409, 'Konflik revisi: draft telah diperbarui oleh sesi lain.');
                 }
+
+                $event = $lockedDraft->event ?? Event::query()->find($lockedDraft->event_id);
+                $this->syncExtracurriculars((int) $lockedDraft->community_id, $categoryId, $event?->sport_category_id, $newPayload);
 
                 return $lockedDraft->fresh();
             });

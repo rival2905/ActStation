@@ -15,7 +15,7 @@
                     <div class="mb-3"><label class="form-label" for="name">Nama Lengkap</label><input class="form-control" id="name" name="name" value="{{ old('name', $user->name) }}" maxlength="255" required></div>
                     <div class="mb-3"><label class="form-label" for="email">Email</label><input class="form-control" type="email" id="email" name="email" value="{{ old('email', $user->email) }}" maxlength="255" required><small class="text-muted">Perubahan email membatalkan verifikasi email sebelumnya.</small></div>
                     <div class="mb-3"><label class="form-label" for="phone_number">Nomor WhatsApp</label><input class="form-control" id="phone_number" name="phone_number" value="{{ old('phone_number', $user->phone_number) }}" maxlength="20"></div>
-                    @if($errors->any())<div class="alert alert-danger" role="alert"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
+                    @if($errors->default->any())<div class="alert alert-danger" role="alert"><ul class="mb-0">@foreach($errors->default->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
                     <button class="btn btn-primary" type="submit">Simpan Profil</button>
                 </form>
                 <dl class="row mt-4 mb-0">
@@ -24,6 +24,40 @@
                     <dt class="col-sm-5">Jenis Kelamin</dt><dd class="col-sm-7">{{ ['male' => 'Laki-laki', 'female' => 'Perempuan'][$user->gender] ?? 'Belum diisi' }}</dd>
                 </dl>
                 <small class="text-muted">Koreksi identitas peserta mengikuti proses pemeriksaan, bukan perubahan melalui undangan.</small>
+            </div>
+        </div>
+        <div class="card mb-3">
+            <div class="card-header bg-body-tertiary"><h5 class="mb-0">Ganti Password</h5></div>
+            <div class="card-body">
+                @if(session('success_password'))
+                    <div class="alert alert-success py-2 fs-10" role="status">{{ session('success_password') }}</div>
+                @endif
+                @if($errors->updatePassword->any())
+                    <div class="alert alert-danger py-2 fs-10" role="alert">
+                        <ul class="mb-0 ps-3">
+                            @foreach($errors->updatePassword->all() as $error)
+                                <li>{{ $error }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
+                <form method="POST" action="{{ route('user-profile.password.update') }}">
+                    @csrf @method('PUT')
+                    <div class="mb-3">
+                        <label class="form-label" for="current_password">Password Saat Ini</label>
+                        <input class="form-control" type="password" id="current_password" name="current_password" required autocomplete="current-password">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="password">Password Baru</label>
+                        <input class="form-control" type="password" id="password" name="password" required autocomplete="new-password">
+                        <small class="text-muted">Minimal 8 karakter.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="password_confirmation">Konfirmasi Password Baru</label>
+                        <input class="form-control" type="password" id="password_confirmation" name="password_confirmation" required autocomplete="new-password">
+                    </div>
+                    <button class="btn btn-primary" type="submit">Perbarui Password</button>
+                </form>
             </div>
         </div>
     </div>

@@ -15,6 +15,17 @@
 @endpush
 
 @section('content')
+@can('update', $community)
+<div class="card mb-3"><div class="card-body"><h5>Tautan Komunitas</h5><p>Kelola beberapa halaman publik dengan tema dan kategori sendiri, serta pantau kunjungan dan klik.</p><a class="btn btn-outline-primary" href="{{ route('panel.community-links.index') }}">Kelola Tautan Komunitas</a></div></div>
+@endcan
+@if($community->subtype === 'school')
+<div class="card mb-3"><div class="card-body"><h5>Ekskul Sekolah</h5>
+<p>Ekskul terbentuk otomatis saat menyimpan draft pendaftaran event sesuai cabang olahraga.</p>
+@forelse($schoolExtracurriculars as $unit)
+<a class="btn btn-outline-primary btn-sm me-2 mb-2" href="{{ route('panel.schools.extracurriculars.personnel.index', [$community->id, $unit->id]) }}">{{ $unit->sport_name }} — Personel</a>
+@empty<p class="text-muted mb-0">Belum ada ekskul dari pendaftaran event.</p>@endforelse
+</div></div>
+@endif
 <div class="card mb-3">
     <div class="card-header position-relative min-vh-25 mb-7">
         <div class="bg-holder rounded-3 rounded-bottom-0" style="background-image:url({{ asset('assets/img/generic/4.jpg') }});"></div>
@@ -168,8 +179,12 @@
                         </div>
 
                         <div class="col-md-6">
-                            <label class="form-label" for="contact_email">Email Kontak</label>
-                            <input class="form-control @error('contact_email') is-invalid @enderror" id="contact_email" name="contact_email" type="email" value="{{ old('contact_email', $community->contact_email) }}" />
+                            <label class="form-label" for="contact_email">{{ $schoolRegistration ? 'Email Resmi Sekolah' : 'Email Kontak' }}</label>
+                            <input class="form-control @error('contact_email') is-invalid @enderror" id="contact_email" name="contact_email" type="email" value="{{ $schoolRegistration ? $community->contact_email : old('contact_email', $community->contact_email) }}" @if($schoolRegistration) readonly @endif />
+                            @if($schoolRegistration)
+                                <div class="form-text">{{ $schoolRegistration->email_verified_at ? 'Email resmi terkonfirmasi.' : 'Email resmi belum terkonfirmasi.' }} Email login akun tetap terpisah.
+                                @if($canChangeSchoolEmail)<a href="#school-official-email">Ubah email resmi</a>@endif</div>
+                            @endif
                             @error('contact_email')
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
@@ -526,6 +541,26 @@
         </div>
     </div>
 </div>
+@if($canChangeSchoolEmail)
+<div class="card mb-3" id="school-official-email">
+    <div class="card-header"><h5 class="mb-0">Email Resmi Sekolah</h5></div>
+    <div class="card-body">
+        <p>Email resmi lama tetap berlaku sampai inbox baru terverifikasi. Perubahan ini tidak menyerahkan tanggung jawab kepada akun lain.</p>
+        @if($pendingEmailChange)
+        <div class="alert alert-info text-break">Menunggu verifikasi {{ $pendingEmailChange->target_email }} sampai {{ $pendingEmailChange->expires_at->format('d M Y H:i') }}. Permintaan baru membatalkan tautan sebelumnya.</div>
+        @endif
+        <details @if($errors->has('new_email')) open @endif>
+            <summary class="text-primary mb-3">Ubah Email Resmi</summary>
+            <form method="POST" action="{{ route('panel.school-registrations.official-email', $schoolRegistration->id) }}">
+                @csrf
+                <div class="mb-3"><label for="school-new-email" class="form-label">Email Resmi Baru</label><input id="school-new-email" name="new_email" type="email" required maxlength="255" class="form-control" value="{{ old('new_email') }}"></div>
+                <div class="mb-3"><label for="school-email-password" class="form-label">Kata Sandi Akun Anda</label><input id="school-email-password" name="current_password" type="password" autocomplete="current-password" required class="form-control"></div>
+                <button type="submit" class="btn btn-primary btn-sm">Kirim Verifikasi Email Baru</button>
+            </form>
+        </details>
+    </div>
+</div>
+@endif
 @endsection
 
 @push('scripts')

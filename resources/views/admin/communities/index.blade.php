@@ -7,6 +7,11 @@
     <div class="col-12 d-flex justify-content-between align-items-center">
         <div>
             <h4 class="mb-1 text-900 fw-bold">Komunitas Olahraga</h4>
+            @if($pendingCommunityCount > 0)
+                <a href="{{ route('admin.communities.index', ['status' => 'pending']) }}" class="badge badge-subtle-warning text-decoration-none mb-1 d-inline-block" aria-label="{{ $pendingCommunityCount }} komunitas menunggu verifikasi">
+                    Menunggu Verifikasi <span class="badge rounded-pill bg-warning text-dark ms-1" data-pending-community-count aria-label="{{ $pendingCommunityCount }} komunitas menunggu verifikasi">{{ $pendingCommunityCount }}</span>
+                </a>
+            @endif
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-0 fs-11">
                     <li class="breadcrumb-item"><a href="{{ route('admin.dashboard') }}">Dashboard</a></li>
