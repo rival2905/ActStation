@@ -1,4 +1,19 @@
 /* Perinatologi Care: visual theme only, not clinical service status. */
+.perinatologi-care[data-custom-theme~="emblem_size"] .perina-emblem{width:var(--emblem-size);height:var(--emblem-size)}
+.perinatologi-care[data-custom-theme~="emblem_size"] .perina-emblem canvas{width:100%;height:100%}
+.perinatologi-care[data-custom-theme~="emblem_size"] .perina-static{width:81.818182%;height:81.818182%}
+.perinatologi-care[data-custom-theme~="emblem_size"] .perina-static img{width:100%;height:100%}
+.perinatologi-care[data-custom-theme~="emblem_size"] .perina-static svg{width:52.777778%;height:52.777778%}
+.perinatologi-care .profile:has(.avatar) .perina-hero[data-uploaded-model]{display:flex}
+.perinatologi-care[data-custom-theme~="background"]{background:var(--custom-bg)}
+.perinatologi-care[data-custom-theme~="background"]::before,.perinatologi-care[data-custom-theme~="background"]::after{display:none}
+.perinatologi-care[data-custom-theme~="text"]{color:var(--custom-text)}
+.perinatologi-care[data-custom-theme~="text"] .profile h1,.perinatologi-care[data-custom-theme~="text"] .profile>p,.perinatologi-care[data-custom-theme~="text"] .foot,.perinatologi-care[data-custom-theme~="text"] .perina-discovery summary,.perinatologi-care[data-custom-theme~="text"] label[for=search],.perinatologi-care[data-custom-theme~="text"] .notice{color:var(--custom-text)}
+.perinatologi-care[data-custom-theme~="button"] .link{background:var(--custom-button)}
+.perinatologi-care[data-custom-theme~="button_text"] .link,.perinatologi-care[data-custom-theme~="button_text"] .link small,.perinatologi-care[data-custom-theme~="button_text"] .link::after{color:var(--custom-button-text)}
+.perinatologi-care[data-custom-theme~="radius"] .link{border-radius:var(--custom-radius)}
+.perinatologi-care[data-custom-theme~="emblem_color"] .perina-emblem::before{background:var(--custom-emblem);opacity:.2}
+
 .perinatologi-care{background:linear-gradient(160deg,#f3faf7 0%,#fcfbf8 65%,#fff4f2 100%);color:#253e38;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;isolation:isolate}
 .perinatologi-care::before,.perinatologi-care::after{content:"";position:fixed;width:370px;height:370px;border-radius:50%;filter:blur(65px);pointer-events:none;z-index:-1;opacity:.35}
 .perinatologi-care::before{background:#5eead4;top:-130px;left:-180px}.perinatologi-care::after{background:#fda4af;bottom:-140px;right:-170px}

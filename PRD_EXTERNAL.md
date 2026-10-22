@@ -60,6 +60,14 @@ Logo halaman dapat dihapus dari draft melalui Hapus Logo. Logo publik tetap samp
 
 Kartu tautan lebih ringkas; tampil/sembunyikan memakai sakelar on/off, bukan dropdown. Nama/URL berdampingan pada layar lebar; opsi tambahan dilipat, urut/hapus tetap terlihat. Perubahan sakelar tersimpan otomatis ke draft; publik tetap membutuhkan Terbitkan.
 
+Ukuran emblem dapat diatur64–240px lewat Kustomisasi Tema > Ukuran emblem; bawaan88px, disarankan160–200px untuk logo lebih besar. Berlaku gambar timbul,emblem bawaan danGLB; draft/publikasi tetap terpisah.23 tes/491 assertions dan build lulus.
+
+Emblem juga dapat dibuat dari logo PNG/WebP transparan tanpa GLB: upload lewat Logo Halaman, pilih Kustomisasi Tema > Kustom > Dari logo unggahan (siluet 3D). Ketebalan dan kecepatan putar dapat diatur; detail asli di depan, sisi memakai warna emblem. Latar gambar tidak dihapus otomatis; bentuk terlalu rumit tetap gambar statis. Autosave draft dan publikasi eksplisit tetap. 22 tes/465 assertions,5 check JS dan build lulus.
+
+Logo 3D kini mendukung upload model GLB 2.0 mandiri maksimal 5 MB bagi komunitas premium, tanpa aset eksternal/ekstensi kompresi. Buka Logo 3D (GLB), unggah, periksa Preview lalu Terbitkan. Hapus model hanya mengubah draft; versi publik tetap sampai diterbitkan ulang. Animasi menampilkan rotasi model, bukan klip animasi internal. Tampilan Kustom dengan nilai bawaan mempertahankan outline/gradasi/warna hati asli. Verifikasi 21 tes/443 assertions dan browser fixture; belum deploy production.
+
+Komunitas premium dapat mengatur tampilan Perinatologi Care per halaman lewat Kustomisasi Tema: warna, sudut tombol, bentuk/warna/tampilan emblem 3D dan animasi default. Autosave ke draft; Preview untuk meninjau, Terbitkan untuk publik. Tersedia reset tampilan bawaan; logo unggahan tetap gambar, bukan konversi model 3D. Regresi 18 tes/345 assertions dan build lulus.
+
 Setiap tautan publik/preview kini memiliki tombol Bagikan tersendiri: salin,WhatsApp,Facebook,X,LinkedIn,Email serta menu perangkat bila didukung. Yang dibagikan URL tujuan dan judul tautan, bukan seluruh profil. Menu tidak memicu kunjungan tujuan/klik analitik atau posting otomatis. 16 tes/299 assertions,check JS dan build lulus.
 
 ---

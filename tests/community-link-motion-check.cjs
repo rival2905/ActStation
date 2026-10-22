@@ -22,6 +22,23 @@ for (const mode of ['missing-three', 'failed-webgl']) {
 }
 for (const [reduced, saveData, expected] of [[false, false, true], [true, false, false], [false, true, false]]) {
     const initializer = source.match(/let motionEnabled = ([^;]+);/)[1];
-    assert.equal(vm.runInNewContext(initializer, {isSaveData: saveData, reducedMotionQuery: {matches: reduced}}), expected);
+    assert.equal(vm.runInNewContext(initializer, {document: {body: {dataset: {}}}, isSaveData: saveData, reducedMotionQuery: {matches: reduced}}), expected);
+}
+// Configured motion false (normal true) before JS change
+{
+    const initializer = source.match(/let motionEnabled = ([^;]+);/)[1];
+    const docWithMotionFalse = { body: { dataset: { motionDefault: '0' } } };
+    const result = vm.runInNewContext(initializer, {
+        isSaveData: false,
+        reducedMotionQuery: { matches: false },
+        document: docWithMotionFalse
+    });
+    assert.equal(result, false, 'motionDefault "0" must disable initial animation');
+}
+const materialCode = source.slice(source.indexOf('const customColor ='), source.indexOf('heartMesh = new THREE.Mesh'));
+for (const [color, expected] of [['#f43f5e', '#be123c'], ['#F43F5E', '#be123c'], ['#cc3366', '#cc3366']]) {
+    let emissive = '#be123c';
+    vm.runInNewContext(materialCode, {document: {body: {dataset: {emblemColor: color}}}, heartMat: {color: {set() {}}, emissive: {set(value) { emissive = value; }}}});
+    assert.equal(emissive, expected, 'default heart must retain its original emissive shading');
 }
 console.log('PASS: missing THREE and failed WebGL retain static fallback without throwing or claiming active motion.');

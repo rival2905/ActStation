@@ -25,7 +25,12 @@ function boot(data, fetcher = async () => ({ok: true, json: async () => ({data: 
     ids['editor-submit'].disabled = true;
     ids['link-editor-data'].textContent = typeof data === 'string' ? data : JSON.stringify(data);
     ids.editor.append(ids.categories, ids['link-items'], ids['social-items'], ids['editor-submit']);
-    Object.defineProperty(ids.editor, 'elements', {get: () => Object.fromEntries(all(ids.editor).filter(n => n.name).map(n => [n.name, n]))});
+    Object.defineProperty(ids.editor, 'elements', {get: () => Object.assign(all(ids.editor).filter(n => n.name), Object.fromEntries(all(ids.editor).filter(n => n.name).map(n => [n.name, n])))});
+    if (data.customFixture) {
+        for (const [name, value] of Object.entries({'theme_custom_enabled': '1', 'theme_options[background]': '#112233', 'theme_options[motion_enabled]': '0'})) {
+            const input = new Element('input'); input.name = name; input.value = value; ids.editor.append(input);
+        }
+    }
     ids.editor.checkValidity = () => true;
     const document = {
         readyState: 'complete', createElement: tag => new Element(tag),
@@ -70,6 +75,19 @@ assert.match(broken['save-status'].textContent, /gagal|muat ulang/i, 'failed ini
 console.log('Editor checks passed: save readiness, visible actions, capture, reorder, delete, safe failure.');
 
 (async () => {
+    const customPayloads = [];
+    const custom = boot({categories: [], socials: [], links: [], customFixture: true}, async (url, options) => {
+        customPayloads.push(JSON.parse(options.body));
+        return {ok: true, json: async () => ({data: {revision: customPayloads.length + 1}})};
+    });
+    custom.editor.events.input.forEach(fn => fn({target: custom.editor}));
+    await custom.tick();
+    assert.equal(customPayloads[0].theme_options.background, '#112233');
+    assert.equal(customPayloads[0].theme_options.motion_enabled, '0');
+    custom.editor.elements.theme_custom_enabled.value = '0';
+    custom.editor.events.change.forEach(fn => fn({target: custom.editor}));
+    await custom.tick();
+    assert.deepEqual(customPayloads[1].theme_options, []);
     let calls = []; let resolveFirst;
     const auto = boot({categories: [], socials: [], links: []}, (url, options) => {
         calls.push(JSON.parse(options.body));

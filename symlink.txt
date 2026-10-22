@@ -4,3 +4,6 @@ ln -s /home/rivaldoi/actstation.net/public/.htaccess /home/rivaldoi/actstation.n
 
 ln -s /home/rivaldoi/actstation.net/storage/app/public/event_banners /home/rivaldoi/actstation.net/storage
 ln -s /home/rivaldoi/actstation.net/storage/app/public/event_documents /home/rivaldoi/actstation.net/storage
+ln -s /home/rivaldoi/actstation.net/storage/app/public/community_logos /home/rivaldoi/actstation.net/storage
+
+community_logos

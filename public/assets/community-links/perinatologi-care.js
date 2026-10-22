@@ -27,16 +27,21 @@
     const isSaveData = Boolean(typeof navigator !== 'undefined' && navigator.connection && navigator.connection.saveData);
 
 
+    const imageEmblemUrl = heroCanvas?.dataset?.imageEmblemUrl;
+    const modelUrl = heroCanvas?.dataset?.modelUrl;
+    const emblemSpeed = Math.max(0, Math.min(100, Number(document.body.dataset.emblemSpeed ?? 50))) / 50;
+    let modelReady = !modelUrl && !imageEmblemUrl;
+    let modelLoading = false;
     let webGlReady = false;
     let webGlFailed = false;
-    let motionEnabled = !isSaveData && !reducedMotionQuery?.matches;
+    let motionEnabled = document.body.dataset.motionDefault !== '0' && !isSaveData && !reducedMotionQuery?.matches;
     let isRunning = false;
     let rafId = null;
 
     function updateMotionUI() {
         const showCanvas = motionEnabled && webGlReady && !webGlFailed;
-        if (heroCanvas) heroCanvas.hidden = !showCanvas;
-        if (heroFallback) heroFallback.hidden = showCanvas;
+        if (heroCanvas) heroCanvas.hidden = !(showCanvas && modelReady);
+        if (heroFallback) heroFallback.hidden = showCanvas && modelReady;
         if (bgCanvas) bgCanvas.hidden = !showCanvas;
         if (webGlFailed) {
             document.body.dataset.motion = 'static';
@@ -65,6 +70,7 @@
         updateMotionUI();
         if (motionEnabled) {
             if (webGlReady && !document.hidden && !webGlFailed) {
+                loadModel();
                 startLoop();
             }
         } else {
@@ -147,7 +153,7 @@
     // Initial state before THREE check
     updateMotionUI();
 
-    if (!window.THREE || !heroCanvas) {
+    if (!window.THREE || (!heroCanvas && !bgCanvas)) {
         webGlFailed = true;
         motionEnabled = false;
         updateMotionUI();
@@ -184,31 +190,33 @@
 
         const elapsed = clock.getElapsedTime();
 
-        // Hero Emblem animation
-        if (!isDraggingHero) {
-            targetRotation.y += 0.006;
-            targetRotation.x = Math.sin(elapsed * 0.8) * 0.15;
+        // Hero scene is optional when page configuration hides emblem.
+        if (heroRenderer && modelReady) {
+            if (!isDraggingHero) {
+                targetRotation.y += 0.006 * emblemSpeed;
+                targetRotation.x = Math.sin(elapsed * 0.8 * emblemSpeed) * 0.15;
+            }
+            emblemGroup.rotation.y += (targetRotation.y - emblemGroup.rotation.y) * 0.08;
+            emblemGroup.rotation.x += (targetRotation.x - emblemGroup.rotation.x) * 0.08;
+
+            const pulse = 0.78 + Math.sin(elapsed * 2.6) * 0.045;
+            heartMesh.scale.set(pulse, pulse, pulse);
+
+            ring1.rotation.z = elapsed * 0.45;
+            ring2.rotation.x = elapsed * 0.35;
+            shieldMesh.rotation.y = -elapsed * 0.2;
+
+            for (let i = 0; i < careOrbs.length; i++) {
+                const orb = careOrbs[i];
+                const u = orb.userData;
+                const a = u.angle + elapsed * u.speed;
+                orb.position.x = Math.cos(a) * u.radius;
+                orb.position.z = Math.sin(a) * u.radius;
+                orb.position.y = Math.sin(elapsed * 1.5 + i) * 0.45;
+            }
+
+            heroRenderer.render(heroScene, heroCamera);
         }
-        emblemGroup.rotation.y += (targetRotation.y - emblemGroup.rotation.y) * 0.08;
-        emblemGroup.rotation.x += (targetRotation.x - emblemGroup.rotation.x) * 0.08;
-
-        const pulse = 0.78 + Math.sin(elapsed * 2.6) * 0.045;
-        heartMesh.scale.set(pulse, pulse, pulse);
-
-        ring1.rotation.z = elapsed * 0.45;
-        ring2.rotation.x = elapsed * 0.35;
-        shieldMesh.rotation.y = -elapsed * 0.2;
-
-        for (let i = 0; i < careOrbs.length; i++) {
-            const orb = careOrbs[i];
-            const u = orb.userData;
-            const a = u.angle + elapsed * u.speed;
-            orb.position.x = Math.cos(a) * u.radius;
-            orb.position.z = Math.sin(a) * u.radius;
-            orb.position.y = Math.sin(elapsed * 1.5 + i) * 0.45;
-        }
-
-        heroRenderer.render(heroScene, heroCamera);
 
         // Ambient Background animation
         if (bgRenderer && bgScene && bgCamera) {
@@ -227,9 +235,113 @@
         }
     }
 
+    async function loadImageEmblem() {
+        const url = new URL(imageEmblemUrl, location.href);
+        if (url.origin !== location.origin || !window.CommunityImageEmblem) throw new Error('Logo tidak tersedia.');
+        const response = await fetch(url.href, {credentials: 'same-origin', redirect: 'error', signal: AbortSignal.timeout(15000)});
+        if (!response.ok) throw new Error('Logo tidak dapat dimuat.');
+        const blob = await response.blob();
+        if (blob.size > 2097152 || !['image/webp', 'image/png', 'image/jpeg'].includes(blob.type)) throw new Error('Gambar tidak valid.');
+        const image = await createImageBitmap(blob);
+        try {
+            if (image.width > 2048 || image.height > 2048) throw new Error('Gambar terlalu besar.');
+            const ratio = Math.min(1, 126 / Math.max(image.width, image.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(image.width * ratio)) + 2;
+            canvas.height = Math.max(1, Math.round(image.height * ratio)) + 2;
+            const ctx = canvas.getContext('2d', {willReadFrequently: true});
+            ctx.drawImage(image, 1, 1, canvas.width - 2, canvas.height - 2);
+            const rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            const alpha = new Uint8Array(canvas.width * canvas.height);
+            let transparent = false;
+            for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) {
+                const index = y * canvas.width + x;
+                alpha[index] = rgba[index * 4 + 3];
+                if (x > 0 && y > 0 && x < canvas.width - 1 && y < canvas.height - 1 && alpha[index] < 128) transparent = true;
+            }
+            if (!transparent) throw new Error('Gunakan PNG/WebP dengan latar transparan.');
+            const contours = window.CommunityImageEmblem.trace(alpha, canvas.width, canvas.height);
+            const shapes = contours.map(contour => {
+                const shape = new THREE.Shape(contour.outer.map(([x, y]) => new THREE.Vector2(x, y)));
+                contour.holes.forEach(hole => shape.holes.push(new THREE.Path(hole.map(([x, y]) => new THREE.Vector2(x, y)))));
+                return shape;
+            });
+            const depth = Math.max(5, Math.min(60, Number(document.body.dataset.emblemDepth ?? 20))) / 100;
+            const geometry = new THREE.ExtrudeGeometry(shapes, {depth, bevelEnabled: false, steps: 1, curveSegments: 1});
+            const positions = geometry.attributes.position;
+            const uv = geometry.attributes.uv;
+            for (let i = 0; i < positions.count; i++) uv.setXY(i, (positions.getX(i) + 1) / 2, (positions.getY(i) + 1) / 2);
+            const textureCanvas = document.createElement('canvas');
+            const detailScale = Math.min(8, Math.max(1, Math.max(image.width, image.height) / 126));
+            textureCanvas.width = Math.round(canvas.width * detailScale);
+            textureCanvas.height = Math.round(canvas.height * detailScale);
+            textureCanvas.getContext('2d').drawImage(image, detailScale, detailScale, textureCanvas.width - 2 * detailScale, textureCanvas.height - 2 * detailScale);
+            const texture = new THREE.CanvasTexture(textureCanvas);
+            texture.encoding = THREE.sRGBEncoding;
+            const front = new THREE.MeshBasicMaterial({map: texture, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide});
+            const side = new THREE.MeshStandardMaterial({color: document.body.dataset.emblemColor || '#f43f5e', roughness: 0.45});
+            const mesh = new THREE.Mesh(geometry, [front, side]);
+            mesh.position.z = -depth / 2;
+            const max = Math.max(canvas.width, canvas.height);
+            mesh.scale.set(canvas.width / max * 1.15, canvas.height / max * 1.15, 1);
+            replaceEmblem(mesh);
+        } finally {
+            image.close();
+        }
+    }
+
+    function replaceEmblem(model) {
+        while (emblemGroup.children.length) {
+            const child = emblemGroup.children[0];
+            emblemGroup.remove(child);
+            child.traverse(node => {
+                node.geometry?.dispose();
+                const materials = Array.isArray(node.material) ? node.material : [node.material];
+                materials.forEach(material => material?.dispose());
+            });
+        }
+        emblemGroup.add(model);
+        modelReady = true;
+        updateMotionUI();
+    }
+
+    async function loadModel() {
+        if ((!modelUrl && !imageEmblemUrl) || modelLoading || modelReady || !motionEnabled || !webGlReady) return;
+        modelLoading = true;
+        try {
+            if (imageEmblemUrl) { await loadImageEmblem(); return; }
+            const url = new URL(modelUrl, location.href);
+            if (url.origin !== location.origin || typeof THREE.GLTFLoader !== 'function') throw new Error('Model unavailable');
+            const response = await fetch(url.href, {credentials: 'same-origin', redirect: 'error', signal: AbortSignal.timeout(15000)});
+            if (!response.ok) throw new Error('Model unavailable');
+            const bytes = await response.arrayBuffer();
+            if (bytes.byteLength > 5242880) throw new Error('Model too large');
+            const manager = new THREE.LoadingManager();
+            manager.setURLModifier(resource => {
+                if (!resource.startsWith('blob:')) throw new Error('External model resources forbidden');
+                return resource;
+            });
+            const gltf = await new Promise((resolve, reject) => new THREE.GLTFLoader(manager).parse(bytes, '', resolve, reject));
+            const box = new THREE.Box3().setFromObject(gltf.scene);
+            const size = box.getSize(new THREE.Vector3());
+            const extent = Math.max(size.x, size.y, size.z);
+            if (!Number.isFinite(extent) || extent <= 0) throw new Error('Empty model');
+            const center = box.getCenter(new THREE.Vector3());
+            const model = new THREE.Group();
+            gltf.scene.position.sub(center);
+            model.add(gltf.scene);
+            model.scale.setScalar(2.4 / extent);
+            replaceEmblem(model);
+        } catch (_) {
+            // ponytail: static fallback on failed GLB; retry after page reload.
+            if (motionLabel) motionLabel.textContent = imageEmblemUrl ? 'Siluet tidak dapat dibuat. Gunakan logo transparan sederhana; gambar statis tetap tampil.' : 'Model 3D gagal dimuat; logo statis tetap tersedia.';
+        }
+    }
+
     function startLoop() {
         if (isRunning || !motionEnabled || !webGlReady || document.hidden) return;
         isRunning = true;
+        loadModel();
         if (clock) clock.start();
         rafId = requestAnimationFrame(renderLoop);
     }
@@ -254,152 +366,167 @@
         clock = new THREE.Clock();
 
         // 1. Setup Hero 3D Canvas
-        heroCanvas.style.touchAction = 'pan-y';
-        heroRenderer = new THREE.WebGLRenderer({
-            canvas: heroCanvas,
-            alpha: true,
-            antialias: true,
-            powerPreference: 'low-power'
-        });
-        heroRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-        heroRenderer.setSize(152, 152, false);
+        if (heroCanvas) {
+            heroCanvas.style.touchAction = 'pan-y';
 
-        heroCanvas.addEventListener('webglcontextlost', (e) => {
-            e.preventDefault();
-            handleContextLost();
-        });
+            heroRenderer = new THREE.WebGLRenderer({
+                canvas: heroCanvas,
+                alpha: true,
+                antialias: true,
+                powerPreference: 'low-power'
+            });
+            heroRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            const renderSize = Math.max(152, Math.min(240, Number(document.body.dataset.emblemSize) || 88));
+            heroRenderer.setSize(renderSize, renderSize, false);
 
-        heroScene = new THREE.Scene();
-        heroCamera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-        heroCamera.position.set(0, 0, 6.2);
+            heroCanvas.addEventListener('webglcontextlost', (e) => {
+                e.preventDefault();
+                handleContextLost();
+            });
 
-        const heroAmbient = new THREE.AmbientLight(0xffffff, 0.85);
-        heroScene.add(heroAmbient);
+            heroScene = new THREE.Scene();
+            heroCamera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+            heroCamera.position.set(0, 0, 6.2);
 
-        const dirLight = new THREE.DirectionalLight(0xfff1f2, 1.25);
-        dirLight.position.set(4, 5, 6);
-        heroScene.add(dirLight);
+            const heroAmbient = new THREE.AmbientLight(0xffffff, 0.85);
+            heroScene.add(heroAmbient);
 
-        const pointLightTeal = new THREE.PointLight(0x14b8a6, 1.6, 12);
-        pointLightTeal.position.set(-4, -3, 3);
-        heroScene.add(pointLightTeal);
+            const dirLight = new THREE.DirectionalLight(0xfff1f2, 1.25);
+            dirLight.position.set(4, 5, 6);
+            heroScene.add(dirLight);
 
-        emblemGroup = new THREE.Group();
-        heroScene.add(emblemGroup);
+            const pointLightTeal = new THREE.PointLight(0x14b8a6, 1.6, 12);
+            pointLightTeal.position.set(-4, -3, 3);
+            heroScene.add(pointLightTeal);
 
-        // Procedural 3D Heart Shape
-        const heartShape = new THREE.Shape();
-        const hx = 0;
-        const hy = 0;
-        heartShape.moveTo(hx, hy + 0.35);
-        heartShape.bezierCurveTo(hx, hy + 0.35, hx - 0.1, hy, hx - 0.5, hy);
-        heartShape.bezierCurveTo(hx - 1.05, hy, hx - 1.05, hy + 0.7, hx - 1.05, hy + 0.7);
-        heartShape.bezierCurveTo(hx - 1.05, hy + 1.1, hx - 0.65, hy + 1.54, hx, hy + 1.9);
-        heartShape.bezierCurveTo(hx + 0.65, hy + 1.54, hx + 1.05, hy + 1.1, hx + 1.05, hy + 0.7);
-        heartShape.bezierCurveTo(hx + 1.05, hy + 0.7, hx + 1.05, hy, hx + 0.5, hy);
-        heartShape.bezierCurveTo(hx + 0.2, hy, hx, hy + 0.35, hx, hy + 0.35);
+            emblemGroup = new THREE.Group();
+            heroScene.add(emblemGroup);
 
-        const heartGeo = new THREE.ExtrudeGeometry(heartShape, {
-            depth: 0.35,
-            bevelEnabled: true,
-            bevelSegments: 5,
-            steps: 1,
-            bevelSize: 0.18,
-            bevelThickness: 0.18
-        });
-        heartGeo.center();
-        heartGeo.rotateZ(Math.PI);
+            // Procedural 3D Heart Shape
+            const heartShape = new THREE.Shape();
+            const hx = 0;
+            const hy = 0;
+            heartShape.moveTo(hx, hy + 0.35);
+            heartShape.bezierCurveTo(hx, hy + 0.35, hx - 0.1, hy, hx - 0.5, hy);
+            heartShape.bezierCurveTo(hx - 1.05, hy, hx - 1.05, hy + 0.7, hx - 1.05, hy + 0.7);
+            heartShape.bezierCurveTo(hx - 1.05, hy + 1.1, hx - 0.65, hy + 1.54, hx, hy + 1.9);
+            heartShape.bezierCurveTo(hx + 0.65, hy + 1.54, hx + 1.05, hy + 1.1, hx + 1.05, hy + 0.7);
+            heartShape.bezierCurveTo(hx + 1.05, hy + 0.7, hx + 1.05, hy, hx + 0.5, hy);
+            heartShape.bezierCurveTo(hx + 0.2, hy, hx, hy + 0.35, hx, hy + 0.35);
 
-        const heartMat = new THREE.MeshPhysicalMaterial({
-            color: 0xf43f5e,
-            emissive: 0xbe123c,
-            emissiveIntensity: 0.22,
-            roughness: 0.25,
-            metalness: 0.08,
-            clearcoat: 0.85,
-            clearcoatRoughness: 0.15
-        });
-        heartMesh = new THREE.Mesh(heartGeo, heartMat);
-        heartMesh.scale.set(0.78, 0.78, 0.78);
-        emblemGroup.add(heartMesh);
+            const heartGeo = new THREE.ExtrudeGeometry(heartShape, {
+                depth: 0.35,
+                bevelEnabled: true,
+                bevelSegments: 5,
+                steps: 1,
+                bevelSize: 0.18,
+                bevelThickness: 0.18
+            });
+            heartGeo.center();
+            heartGeo.rotateZ(Math.PI);
 
-        // Translucent Teal Protective Rings
-        const ringMatTeal = new THREE.MeshPhysicalMaterial({
-            color: 0x14b8a6,
-            emissive: 0x0d9488,
-            emissiveIntensity: 0.18,
-            roughness: 0.2,
-            metalness: 0.1,
-            transparent: true,
-            opacity: 0.82,
-            clearcoat: 1.0
-        });
+            const heartMat = new THREE.MeshPhysicalMaterial({
+                color: 0xf43f5e,
+                emissive: 0xbe123c,
+                emissiveIntensity: 0.22,
+                roughness: 0.25,
+                metalness: 0.08,
+                clearcoat: 0.85,
+                clearcoatRoughness: 0.15
+            });
+            const shape = document.body.dataset.emblemShape;
+            let geometry = heartGeo;
+            if (shape === 'sphere' || shape === 'diamond') {
+                heartGeo.dispose();
+                geometry = shape === 'sphere' ? new THREE.SphereGeometry(1, 32, 24) : new THREE.OctahedronGeometry(1.3);
+            }
+            const customColor = document.body.dataset.emblemColor;
+            if (/^#[0-9a-fA-F]{6}$/.test(customColor ?? '') && customColor.toLowerCase() !== '#f43f5e') {
+                heartMat.color.set(customColor);
+                heartMat.emissive.set(customColor);
+            }
+            heartMesh = new THREE.Mesh(geometry, heartMat);
+            heartMesh.scale.set(0.78, 0.78, 0.78);
+            emblemGroup.add(heartMesh);
 
-        ring1 = new THREE.Mesh(new THREE.TorusGeometry(1.58, 0.075, 20, 64), ringMatTeal);
-        ring1.rotation.x = Math.PI / 3;
-        emblemGroup.add(ring1);
-
-        const ring2Mat = ringMatTeal.clone();
-        ring2Mat.color.setHex(0x2dd4bf);
-        ring2Mat.opacity = 0.55;
-        ring2 = new THREE.Mesh(new THREE.TorusGeometry(1.88, 0.055, 16, 64), ring2Mat);
-        ring2.rotation.y = Math.PI / 3;
-        emblemGroup.add(ring2);
-
-        // Glassy Wireframe Shield
-        shieldMesh = new THREE.Mesh(
-            new THREE.IcosahedronGeometry(2.12, 1),
-            new THREE.MeshBasicMaterial({
-                color: 0x0d9488,
-                wireframe: true,
+            // Translucent Teal Protective Rings
+            const ringMatTeal = new THREE.MeshPhysicalMaterial({
+                color: 0x14b8a6,
+                emissive: 0x0d9488,
+                emissiveIntensity: 0.18,
+                roughness: 0.2,
+                metalness: 0.1,
                 transparent: true,
-                opacity: 0.16
-            })
-        );
-        emblemGroup.add(shieldMesh);
-
-        // Orbiting Care Pearls
-        const orbsGroup = new THREE.Group();
-        emblemGroup.add(orbsGroup);
-        const orbGeo = new THREE.SphereGeometry(0.13, 16, 16);
-        const orbColors = [0xfbbf24, 0xfda4af, 0x5eead4];
-
-        for (let i = 0; i < 3; i++) {
-            const orbMat = new THREE.MeshPhysicalMaterial({
-                color: orbColors[i],
-                roughness: 0.15,
+                opacity: 0.82,
                 clearcoat: 1.0
             });
-            const orb = new THREE.Mesh(orbGeo, orbMat);
-            orb.userData = {
-                angle: (i / 3) * Math.PI * 2,
-                radius: 1.72,
-                speed: 0.9 + i * 0.2
+
+            ring1 = new THREE.Mesh(new THREE.TorusGeometry(1.58, 0.075, 20, 64), ringMatTeal);
+            ring1.rotation.x = Math.PI / 3;
+            emblemGroup.add(ring1);
+
+            const ring2Mat = ringMatTeal.clone();
+            ring2Mat.color.setHex(0x2dd4bf);
+            ring2Mat.opacity = 0.55;
+            ring2 = new THREE.Mesh(new THREE.TorusGeometry(1.88, 0.055, 16, 64), ring2Mat);
+            ring2.rotation.y = Math.PI / 3;
+            emblemGroup.add(ring2);
+
+            // Glassy Wireframe Shield
+            shieldMesh = new THREE.Mesh(
+                new THREE.IcosahedronGeometry(2.12, 1),
+                new THREE.MeshBasicMaterial({
+                    color: 0x0d9488,
+                    wireframe: true,
+                    transparent: true,
+                    opacity: 0.16
+                })
+            );
+            emblemGroup.add(shieldMesh);
+
+            // Orbiting Care Pearls
+            const orbsGroup = new THREE.Group();
+            emblemGroup.add(orbsGroup);
+            const orbGeo = new THREE.SphereGeometry(0.13, 16, 16);
+            const orbColors = [0xfbbf24, 0xfda4af, 0x5eead4];
+
+            for (let i = 0; i < 3; i++) {
+                const orbMat = new THREE.MeshPhysicalMaterial({
+                    color: orbColors[i],
+                    roughness: 0.15,
+                    clearcoat: 1.0
+                });
+                const orb = new THREE.Mesh(orbGeo, orbMat);
+                orb.userData = {
+                    angle: (i / 3) * Math.PI * 2,
+                    radius: 1.72,
+                    speed: 0.9 + i * 0.2
+                };
+                orbsGroup.add(orb);
+                careOrbs.push(orb);
+            }
+
+            // Pointer drag interaction (preserves vertical touch-action pan-y scroll)
+            heroCanvas.addEventListener('pointerdown', (e) => {
+                isDraggingHero = true;
+                prevPointer = { x: e.clientX, y: e.clientY };
+            });
+
+            window.addEventListener('pointermove', (e) => {
+                if (!isDraggingHero) return;
+                const dx = e.clientX - prevPointer.x;
+                const dy = e.clientY - prevPointer.y;
+                targetRotation.y += dx * 0.02;
+                targetRotation.x = Math.max(-1.2, Math.min(1.2, targetRotation.x + dy * 0.02));
+                prevPointer = { x: e.clientX, y: e.clientY };
+            });
+
+            const stopDrag = () => {
+                isDraggingHero = false;
             };
-            orbsGroup.add(orb);
-            careOrbs.push(orb);
+            window.addEventListener('pointerup', stopDrag);
+            window.addEventListener('pointercancel', stopDrag);
         }
-
-        // Pointer drag interaction (preserves vertical touch-action pan-y scroll)
-        heroCanvas.addEventListener('pointerdown', (e) => {
-            isDraggingHero = true;
-            prevPointer = { x: e.clientX, y: e.clientY };
-        });
-
-        window.addEventListener('pointermove', (e) => {
-            if (!isDraggingHero) return;
-            const dx = e.clientX - prevPointer.x;
-            const dy = e.clientY - prevPointer.y;
-            targetRotation.y += dx * 0.02;
-            targetRotation.x = Math.max(-1.2, Math.min(1.2, targetRotation.x + dy * 0.02));
-            prevPointer = { x: e.clientX, y: e.clientY };
-        });
-
-        const stopDrag = () => {
-            isDraggingHero = false;
-        };
-        window.addEventListener('pointerup', stopDrag);
-        window.addEventListener('pointercancel', stopDrag);
 
         // 2. Setup Ambient Background Canvas
         if (bgCanvas) {
@@ -489,11 +616,12 @@
 
         // Init successful: reveal canvas, hide static fallback
         webGlReady = true;
-        heroCanvas.hidden = false;
+        if (heroCanvas) heroCanvas.hidden = false;
         if (heroFallback) heroFallback.hidden = true;
         updateMotionUI();
 
         if (motionEnabled && !document.hidden) {
+            loadModel();
             startLoop();
         }
     } catch (_err) {

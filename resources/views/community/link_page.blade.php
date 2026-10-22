@@ -14,6 +14,21 @@
 @php
 $themeId = isset($themes[$content['theme_id'] ?? '']) ? $content['theme_id'] : 'clean-light';
 $theme = $themes[$themeId];
+$custom = $themeId === 'perinatologi-care' && !empty($content['theme_options']) ? $content['theme_options'] : [];
+$custom = $custom ? $custom + \App\Modules\Community\Services\CommunityLinkPageService::THEME_OPTIONS : [];
+$customStyle = '';
+foreach (['background' => 'bg', 'text' => 'text', 'button' => 'button', 'button_text' => 'button-text', 'emblem_color' => 'emblem'] as $key => $variable) {
+    if (isset($custom[$key]) && is_string($custom[$key]) && preg_match('/^#[0-9a-fA-F]{6}$/', $custom[$key]) && strcasecmp($custom[$key], \App\Modules\Community\Services\CommunityLinkPageService::THEME_OPTIONS[$key]) !== 0) {
+        $customStyle .= '--custom-'.$variable.':'.$custom[$key].';';
+    }
+}
+if ($custom && (int) $custom['radius'] !== \App\Modules\Community\Services\CommunityLinkPageService::THEME_OPTIONS['radius']) $customStyle .= '--custom-radius:'.max(0, min(32, (int) $custom['radius'])).'px;' ;
+if ($custom && (int) $custom['emblem_size'] !== 88) $customStyle .= '--emblem-size:'.max(64, min(240, (int) $custom['emblem_size'])).'px;';
+$customKeys = implode(' ', array_keys(array_filter($custom, fn ($value, $key) => strtolower((string) $value) !== strtolower((string) \App\Modules\Community\Services\CommunityLinkPageService::THEME_OPTIONS[$key]), ARRAY_FILTER_USE_BOTH)));
+$imageEmblem = $themeId === 'perinatologi-care' && ($custom['emblem_shape'] ?? '') === 'image';
+$imageAsset = $imageEmblem ? ($content['avatar'] ?? null) : null;
+$imageUrl = $imageAsset ? ($preview ? route('panel.community-links.avatar-preview', [$page->id, $imageAsset]) : route('community-links.avatar', [$page->handle, $imageAsset])) : null;
+$modelAsset = $themeId === 'perinatologi-care' && !$imageEmblem ? ($content['model'] ?? null) : null;
 $lightButton = in_array($themeId, ['midnight']);
 $visibleCategories = collect($content['categories'] ?? [])->filter(fn($c) => $c['visible'] ?? true);
 $links = collect($content['links'] ?? [])->filter(fn($link) => !empty($link['visible']) && (empty($link['category_id']) || $visibleCategories->contains('id', $link['category_id'])));
@@ -21,10 +36,12 @@ $links = collect($content['links'] ?? [])->filter(fn($link) => !empty($link['vis
 @if($themeId === 'perinatologi-care')
 <link rel="stylesheet" href="{{ asset('assets/community-links/perinatologi-care.css') }}?v={{ filemtime(public_path('assets/community-links/perinatologi-care.css')) }}">
 <script defer src="{{ asset('assets/community-links/three-r128.min.js') }}"></script>
+@if($imageUrl)<script defer src="{{ asset('assets/community-links/image-emblem.js') }}?v={{ filemtime(public_path('assets/community-links/image-emblem.js')) }}"></script>@endif
+@if($modelAsset)<script defer src="{{ asset('assets/community-links/GLTFLoader-r128.js') }}?v={{ filemtime(public_path('assets/community-links/GLTFLoader-r128.js')) }}"></script>@endif
 <script defer src="{{ asset('assets/community-links/perinatologi-care.js') }}?v={{ filemtime(public_path('assets/community-links/perinatologi-care.js')) }}"></script>
 @endif
 </head>
-<body class="{{ $themeId }}" style="--bg:{{ $theme['background'] }};--fg:{{ $theme['color'] }};--accent:{{ $theme['accent'] }};--button-text:{{ $lightButton ? '#0f172a' : '#ffffff' }}">
+<body class="{{ $themeId }}" @if($custom) data-custom-theme="{{ $customKeys }}" data-motion-default="{{ $custom['motion_enabled'] ? '1' : '0' }}" data-emblem-shape="{{ $custom['emblem_shape'] }}" data-emblem-color="{{ $custom['emblem_color'] }}" data-emblem-size="{{ $custom['emblem_size'] }}" data-emblem-depth="{{ $custom['emblem_depth'] }}" data-emblem-speed="{{ $custom['emblem_speed'] }}" @endif style="--bg:{{ $theme['background'] }};--fg:{{ $theme['color'] }};--accent:{{ $theme['accent'] }};--button-text:{{ $lightButton ? '#0f172a' : '#ffffff' }};{{ $customStyle }}">
 @if($themeId === 'perinatologi-care')<canvas id="bg-3d-canvas" aria-hidden="true"></canvas>@endif
 @if($themeId === 'photo' && !empty($content['background']))
 <img src="{{ $preview ? route('panel.community-links.avatar-preview', [$page->id, $content['background']]) : route('community-links.avatar', [$page->handle, $content['background']]) }}" alt="" style="position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none">
@@ -32,15 +49,15 @@ $links = collect($content['links'] ?? [])->filter(fn($link) => !empty($link['vis
 <main style="position:relative;z-index:1">
 @if($preview)<p class="notice">{{ $themeId === 'perinatologi-care' ? 'Preview draft · hanya untuk Anda.' : 'Preview privat draft — belum tentu sama dengan halaman publik. Kunjungan dan klik preview tidak dihitung.' }}</p>@endif
 <header class="profile">
-@if($themeId === 'perinatologi-care')
-<div class="perina-hero">
+@if($themeId === 'perinatologi-care' && ($custom['emblem_enabled'] ?? true))
+<div class="perina-hero" @if($modelAsset || $imageUrl) data-uploaded-model @endif>
 <div class="perina-emblem">
-<div id="hero-fallback" class="perina-static" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none"><path d="M32 55 9 32C-7 12 18-1 32 15 46-1 71 12 55 32Z" fill="#f43f5e"/></svg></div>
-<canvas id="hero-3d-canvas" width="152" height="152" aria-hidden="true" hidden></canvas>
+<div id="hero-fallback" class="perina-static" aria-hidden="true">@if($imageUrl)<img src="{{ $imageUrl }}" alt="" width="72" height="72" style="object-fit:contain">@else<svg viewBox="0 0 64 64" fill="{{ $custom['emblem_color'] ?? '#f43f5e' }}">@if(($custom['emblem_shape'] ?? '') === 'sphere')<circle cx="32" cy="32" r="25"/>@elseif(($custom['emblem_shape'] ?? '') === 'diamond')<path d="M32 4 59 32 32 60 5 32Z"/>@else<path d="M32 55 9 32C-7 12 18-1 32 15 46-1 71 12 55 32Z"/>@endif</svg>@endif</div>
+<canvas id="hero-3d-canvas" @if($imageUrl) data-image-emblem-url="{{ $imageUrl }}" @endif @if($modelAsset) data-model-url="{{ $preview ? route('panel.community-links.model-preview', [$page->id, $modelAsset]) : route('community-links.model', [$page->handle, $modelAsset]) }}" @endif width="152" height="152" aria-hidden="true" hidden></canvas>
 </div>
 </div>
 @endif
-@if(!empty($content['avatar']))<img class="avatar" alt="Logo {{ $content['title'] }}" src="{{ $preview ? route('panel.community-links.avatar-preview', [$page->id, $content['avatar']]) : route('community-links.avatar', [$page->handle, $content['avatar']]) }}">@endif
+@if(!empty($content['avatar']) && (!$imageUrl || !($custom['emblem_enabled'] ?? true)))<img class="avatar" alt="Logo {{ $content['title'] }}" src="{{ $preview ? route('panel.community-links.avatar-preview', [$page->id, $content['avatar']]) : route('community-links.avatar', [$page->handle, $content['avatar']]) }}">@endif
 <h1>{{ $content['title'] }}</h1>
 @if($themeId !== 'perinatologi-care')<p>{{ $community->name }}</p>
 <span class="badge">{{ $community->status === 'verified' ? 'Komunitas terverifikasi' : 'Legalitas belum terverifikasi' }}</span>

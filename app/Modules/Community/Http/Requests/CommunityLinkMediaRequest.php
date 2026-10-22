@@ -26,9 +26,11 @@ class CommunityLinkMediaRequest extends FormRequest
     {
         return [
             'revision' => ['required', 'integer', 'min:1'],
-            'asset_kind' => ['sometimes', 'in:avatar,background'],
+            'asset_kind' => ['sometimes', 'in:avatar,background,model'],
             'panel_community_id' => ['sometimes', 'integer', 'min:1'],
-            'avatar' => ['required', 'file', 'mimetypes:image/jpeg,image/png,image/webp', 'max:2048', 'dimensions:max_width=2048,max_height=2048'],
+            'avatar' => $this->input('asset_kind') === 'model'
+                ? ['required', 'file', 'max:5120']
+                : ['required', 'file', 'mimetypes:image/jpeg,image/png,image/webp', 'max:2048', 'dimensions:max_width=2048,max_height=2048'],
         ];
     }
 }

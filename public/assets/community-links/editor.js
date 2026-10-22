@@ -12,6 +12,17 @@
         const links = Array.isArray(data.links) ? data.links : [];
         const socials = Array.isArray(data.socials) ? data.socials : [];
 
+        const customMode = form.elements.theme_custom_enabled;
+        const customFields = document.querySelector('#theme-custom-fields');
+        function syncCustomFields() {
+            if (!customFields || !customMode) return;
+            const enabled = customMode.value === '1';
+            customFields.hidden = !enabled;
+            customFields.querySelectorAll('input, select').forEach(input => { input.disabled = !enabled; });
+        }
+        customMode?.addEventListener('change', syncCustomFields);
+        syncCustomFields();
+
         const uid = () => crypto.randomUUID();
         categories.forEach(c => { if (!c.id) c.id = uid(); });
         links.forEach(l => { if (!l.id) l.id = uid(); });
@@ -56,6 +67,16 @@
             const version = generation;
             const payload = {categories, links, socials};
             for (const name of ['revision', 'title', 'bio', 'theme_id', 'panel_community_id']) payload[name] = form.elements[name].value;
+            if (form.elements.theme_custom_enabled) {
+                payload.theme_options = [];
+                if (form.elements.theme_custom_enabled.value === '1') {
+                    payload.theme_options = {};
+                    for (const input of form.elements) {
+                        const key = input.name?.match(/^theme_options\[([a-z_]+)\]$/)?.[1];
+                        if (key) payload.theme_options[key] = input.type === 'checkbox' ? (input.checked ? '1' : '0') : input.value;
+                    }
+                }
+            }
             payload.revision = Number(payload.revision);
             if (review?.checked) payload.conflict_reviewed = 1;
             saving = true;

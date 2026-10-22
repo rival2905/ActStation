@@ -46,12 +46,13 @@ Route::middleware(['auth', 'EnsurePanelAccess', EnsureValidCommunityContext::cla
     Route::prefix('community-links')->name('community-links.')->middleware('throttle:30,1')->group(function (): void {
         Route::post('{page}/avatar', [CommunityLinkMediaController::class, 'upload'])->whereNumber('page')->name('avatar');
         Route::get('{page}/avatar/{asset}', [CommunityLinkMediaController::class, 'preview'])->whereNumber('page')->whereUuid('asset')->name('avatar-preview');
+        Route::get('{page}/model/{asset}', [CommunityLinkMediaController::class, 'modelPreview'])->whereNumber('page')->whereUuid('asset')->name('model-preview');
         Route::get('/', [CommunityLinkPageController::class, 'index'])->name('index');
         Route::post('/', [CommunityLinkPageController::class, 'store'])->name('store');
         Route::get('{page}/edit', [CommunityLinkPageController::class, 'edit'])->whereNumber('page')->name('edit');
         Route::put('{page}', [CommunityLinkPageController::class, 'update'])->whereNumber('page')->name('update');
         Route::get('{page}/preview', [CommunityLinkPageController::class, 'preview'])->whereNumber('page')->name('preview');
-        foreach (['publish', 'unpublish', 'primary', 'remove-avatar'] as $action) {
+        foreach (['publish', 'unpublish', 'primary', 'remove-avatar', 'remove-model'] as $action) {
             Route::post('{page}/'.$action, [CommunityLinkPageController::class, 'action'])->whereNumber('page')->name($action);
         }
     });

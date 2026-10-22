@@ -15,9 +15,11 @@
 @endpush
 
 @section('content')
+@if(Route::has('panel.community-links.index'))
 @can('update', $community)
 <div class="card mb-3"><div class="card-body"><h5>Tautan Komunitas</h5><p>Kelola beberapa halaman publik dengan tema dan kategori sendiri, serta pantau kunjungan dan klik.</p><a class="btn btn-outline-primary" href="{{ route('panel.community-links.index') }}">Kelola Tautan Komunitas</a></div></div>
 @endcan
+@endif
 @if($community->subtype === 'school')
 <div class="card mb-3"><div class="card-body"><h5>Ekskul Sekolah</h5>
 <p>Ekskul terbentuk otomatis saat menyimpan draft pendaftaran event sesuai cabang olahraga.</p>

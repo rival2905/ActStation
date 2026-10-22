@@ -111,6 +111,7 @@
                     </a>
                 </li>
 
+                @if(Route::has('panel.community-links.index'))
                 @can('update', $activeCommunity)
                 <li class="nav-item">
                     <a class="nav-link {{ request()->routeIs('panel.community-links.*') ? 'active' : '' }}" href="{{ route('panel.community-links.index') }}">
@@ -121,6 +122,7 @@
                     </a>
                 </li>
                 @endcan
+                @endif
                 <!-- Pengurus -->
                 <li class="nav-item">
                     <a class="nav-link {{ request()->routeIs('panel.officials.*') ? 'active' : '' }}" href="{{ Route::has('panel.officials.index') ? route('panel.officials.index') : '#' }}" role="button">

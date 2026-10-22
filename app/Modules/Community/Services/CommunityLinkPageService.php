@@ -15,6 +15,11 @@ use Illuminate\Validation\ValidationException;
 
 class CommunityLinkPageService
 {
+    public const THEME_OPTIONS = [
+        'background' => '#f3faf7', 'text' => '#253e38', 'button' => '#ffffff', 'button_text' => '#253e38',
+        'radius' => 18, 'emblem_enabled' => true, 'motion_enabled' => true, 'emblem_shape' => 'heart', 'emblem_color' => '#f43f5e', 'emblem_depth' => 20, 'emblem_speed' => 50, 'emblem_size' => 88,
+    ];
+
     public function themes(Community $community): array
     {
         $themes = [
@@ -93,13 +98,33 @@ class CommunityLinkPageService
             abort_unless((int) $data['revision'] === (int) $page->revision, 409, 'Halaman telah berubah. Muat ulang sebelum menyimpan.');
             if ($action === 'save') {
                 $this->checkTheme($community, $data['theme_id']);
+                if (! empty($data['theme_options']) && ! $this->hasPremiumAccess($community)) {
+                    throw ValidationException::withMessages(['theme_options' => 'Kustomisasi tema memerlukan akses premium.']);
+                }
+                $options = $data['theme_options'] ?? ($page->draft_content['theme_options'] ?? []);
+                if (! empty($data['theme_options'])) {
+                    $options += $page->draft_content['theme_options'] ?? [];
+                }
+                foreach (['emblem_enabled', 'motion_enabled'] as $key) {
+                    if (array_key_exists($key, $options)) {
+                        $options[$key] = (bool) $options[$key];
+                    }
+                }
+                if (isset($options['radius'])) {
+                    $options['radius'] = (int) $options['radius'];
+                }
                 $content = array_intersect_key($data, array_flip(['title', 'bio', 'theme_id', 'categories', 'links', 'socials']));
+                if ($options !== []) {
+                    $content['theme_options'] = $options;
+                }
                 $content += ['bio' => '', 'categories' => [], 'links' => [], 'socials' => []];
                 if (isset($page->draft_content['avatar'])) {
                     $content['avatar'] = $page->draft_content['avatar'];
                 }
-                if (isset($page->draft_content['background'])) {
-                    $content['background'] = $page->draft_content['background'];
+                foreach (['background', 'model'] as $assetKind) {
+                    if (isset($page->draft_content[$assetKind])) {
+                        $content[$assetKind] = $page->draft_content[$assetKind];
+                    }
                 }
                 $page->draft_content = $content;
             } elseif ($action === 'publish') {
@@ -120,9 +145,9 @@ class CommunityLinkPageService
                 $page->published_content = $content;
                 $page->status = 'published';
                 $page->published_at = now();
-            } elseif ($action === 'remove-avatar') {
+            } elseif (in_array($action, ['remove-avatar', 'remove-model'], true)) {
                 $content = $page->draft_content;
-                unset($content['avatar']);
+                unset($content[$action === 'remove-model' ? 'model' : 'avatar']);
                 $page->draft_content = $content;
             } elseif ($action === 'unpublish') {
                 $page->status = 'unpublished';

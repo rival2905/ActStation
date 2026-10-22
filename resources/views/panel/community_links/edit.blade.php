@@ -202,6 +202,60 @@
                         </details>
                     </div>
 
+                    @if(isset($themes['perinatologi-care']))
+                    @php
+                        $customOptions = old('theme_options', $content['theme_options'] ?? []);
+                        $customOptions = is_array($customOptions) ? $customOptions : [];
+                        foreach (\App\Modules\Community\Services\CommunityLinkPageService::THEME_OPTIONS as $key => $default) {
+                            if (!isset($customOptions[$key]) || !is_scalar($customOptions[$key])) $customOptions[$key] = $default;
+                        }
+                    @endphp
+                    <div class="card shadow-none border">
+                        <details class="editor-section">
+                            <summary class="card-header bg-body-tertiary p-3 fw-bold">Kustomisasi Tema</summary>
+                            <div class="card-body p-3">
+                                <p class="small text-muted">Khusus Perinatologi Care. Tersimpan ke draft; lihat Preview sebelum Terbitkan.</p>
+                                <label class="form-label" for="custom-enabled">Gunakan tampilan kustom</label>
+                                <select class="form-select mb-3" id="custom-enabled" name="theme_custom_enabled">
+                                    <option value="0">Tampilan bawaan</option>
+                                    <option value="1" @selected(!empty(old('theme_options', $content['theme_options'] ?? [])))>Kustom</option>
+                                </select>
+                                <div id="theme-custom-fields">
+                                    @foreach(['background' => 'Warna latar', 'text' => 'Warna teks', 'button' => 'Warna tombol', 'button_text' => 'Teks tombol', 'emblem_color' => 'Warna emblem 3D'] as $key => $label)
+                                    <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+                                        <label class="form-label mb-0" for="custom-{{ $key }}">{{ $label }}</label>
+                                        <input class="form-control form-control-color" type="color" id="custom-{{ $key }}" name="theme_options[{{ $key }}]" value="{{ $customOptions[$key] }}">
+                                    </div>
+                                    @endforeach
+                                    <label class="form-label" for="custom-radius">Sudut tombol (0–32 px)</label>
+                                    <input class="form-control mb-3" type="number" id="custom-radius" name="theme_options[radius]" min="0" max="32" value="{{ $customOptions['radius'] }}" required>
+                                    <label class="form-label" for="custom-shape">Bentuk emblem 3D</label>
+                                    <select class="form-select mb-3" id="custom-shape" name="theme_options[emblem_shape]">
+                                        @foreach(['heart' => 'Hati', 'sphere' => 'Bola', 'diamond' => 'Berlian', 'image' => 'Dari logo unggahan (siluet 3D)'] as $value => $label)
+                                        <option value="{{ $value }}" @selected($customOptions['emblem_shape'] === $value)>{{ $label }}</option>
+                                        @endforeach
+                                    </select>
+                                    @foreach(['emblem_enabled' => 'Tampilkan emblem 3D', 'motion_enabled' => 'Animasi aktif saat dibuka'] as $key => $label)
+                                    <div class="form-check form-switch mb-3">
+                                        <input type="hidden" name="theme_options[{{ $key }}]" value="0">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="custom-{{ $key }}" name="theme_options[{{ $key }}]" value="1" @checked($customOptions[$key])>
+                                        <label class="form-check-label" for="custom-{{ $key }}">{{ $label }}</label>
+                                    </div>
+                                    @endforeach
+                                    <label for="custom-size" class="form-label">Ukuran emblem (64–240 px)</label>
+                                    <input id="custom-size" class="form-control mb-3" type="number" name="theme_options[emblem_size]" min="64" max="240" value="{{ $customOptions['emblem_size'] }}" required>
+                                    <p class="small text-muted">Bawaan 88 px. Coba 160–200 px agar logo lebih besar.</p>
+                                    <label for="custom-depth" class="form-label">Ketebalan siluet gambar (5–60)</label>
+                                    <input id="custom-depth" class="form-control mb-3" type="number" name="theme_options[emblem_depth]" min="5" max="60" value="{{ $customOptions['emblem_depth'] }}" required>
+                                    <label for="custom-speed" class="form-label">Kecepatan putar (0–100)</label>
+                                    <input id="custom-speed" class="form-control mb-3" type="number" name="theme_options[emblem_speed]" min="0" max="100" value="{{ $customOptions['emblem_speed'] }}" required>
+                                    <p class="small text-muted mb-0">Untuk siluet 3D, unggah PNG/WebP transparan lewat Logo Halaman di bawah. Detail asli tampil di depan; warna emblem untuk sisi timbul. JPG/latar penuh tidak dipotong otomatis. Siluet terlalu rumit tetap menjadi gambar statis. Pilih warna kontras; pengunjung tetap dapat mematikan animasi.</p>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                    @endif
+
                     <div class="card shadow-none border">
                         <details class="editor-section">
                             <summary class="card-header bg-body-tertiary py-3 px-3 d-flex align-items-center justify-content-between fw-bold">
@@ -258,7 +312,7 @@
                                         <button class="btn btn-outline-danger btn-sm" type="submit">Hapus Logo</button>
                                     </form>
                                 @endif
-                                <p class="small text-muted mb-3">PNG/JPEG/WebP maksimal 2 MB, dimensi maksimal 2048 × 2048. Upload hanya mengubah draft.</p>
+                                <p class="small text-muted mb-3">PNG/JPEG/WebP maksimal 2 MB, dimensi maksimal 2048 × 2048. Untuk siluet 3D, gunakan PNG/WebP transparan, lalu pilih Kustomisasi Tema > Dari logo unggahan. Upload hanya mengubah draft.</p>
                                 <form method="POST" enctype="multipart/form-data" action="{{ route('panel.community-links.avatar', $page) }}">
                                     @csrf
                                     <input type="hidden" name="revision" value="{{ $page->revision }}">
@@ -288,6 +342,36 @@
                 </div>
             </details>
         </div>
+    @endif
+
+    @if(isset($themes['perinatologi-care']))
+    <div class="card shadow-none border mb-3">
+        <details>
+            <summary class="card-header bg-body-tertiary p-3 fw-bold">Logo 3D (GLB)</summary>
+            <div class="card-body p-3">
+                <p class="small text-muted">Model GLB 2.0 mandiri maksimal 5 MB. Tanpa URL/file eksternal atau ekstensi kompresi. Maksimal 100.000 vertex, 8 tekstur PNG/JPEG hingga 2048 × 2048. Dipakai pada tema Perinatologi Care menggantikan emblem bawaan.</p>
+                @if(!empty($content['model']))
+                <p class="small">Model draft sudah diunggah. Lihat melalui Preview.</p>
+                <form method="POST" action="{{ route('panel.community-links.remove-model', $page) }}" data-draft-action class="mb-3">
+                    @csrf
+                    <input type="hidden" name="revision" value="{{ $page->revision }}">
+                    <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Hapus Model 3D</button>
+                </form>
+                @endif
+                <form method="POST" enctype="multipart/form-data" action="{{ route('panel.community-links.avatar', $page) }}">
+                    @csrf
+                    <input type="hidden" name="revision" value="{{ $page->revision }}">
+                    <input type="hidden" name="panel_community_id" value="{{ $community->id }}">
+                    <input type="hidden" name="asset_kind" value="model">
+                    <label for="model-file" class="form-label">Pilih model yang boleh dipublikasikan</label>
+                    <input id="model-file" class="form-control" type="file" name="avatar" accept=".glb,model/gltf-binary" required>
+                    <button type="submit" class="btn btn-outline-primary btn-sm mt-3">Upload Model 3D</button>
+                </form>
+                <p class="small text-muted mt-3 mb-0">Upload/hapus hanya mengubah draft. Terbitkan untuk memperbarui publik. Saat animasi mati atau model gagal dimuat, logo gambar/emblem statis tetap tampil.</p>
+            </div>
+        </details>
+    </div>
     @endif
 
     {{-- Analytics (Below #editor) --}}

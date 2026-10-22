@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 use App\Models\User;
 use App\Modules\Community\Models\Community;
+use App\Modules\Community\Models\CommunityLinkPage;
 use App\Modules\Community\Models\CommunityOfficial;
+use App\Modules\Community\Services\CommunityLinkPageService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Routing\RouteCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -24,7 +27,20 @@ beforeEach(function (): void {
     $this->createPage = fn ($handle) => $this->post('/panel/community-links', ['panel_community_id' => $this->community->id, 'title' => 'Portal Komunitas', 'handle' => $handle, 'theme_id' => 'clean-light']);
 });
 
+test('community profile stays available when community links route is absent', function (): void {
+    $routes = new RouteCollection;
+    foreach (app('router')->getRoutes() as $route) {
+        if ($route->getName() !== 'panel.community-links.index') {
+            $routes->add($route);
+        }
+    }
+    app('router')->setRoutes($routes);
+    app('url')->setRoutes($routes);
+    $this->get('/panel/profile')->assertOk()->assertDontSee('Kelola Tautan Komunitas');
+});
+
 test('community activates multiple independent pages with one primary and explicit publication', function (): void {
+    $this->get('/panel/profile')->assertOk()->assertSee('Kelola Tautan Komunitas');
     $this->get('/panel/community-links')->assertOk()->assertSee('Pilih Tema');
     $a = 'portal-'.Str::lower(Str::random(10));
     $b = 'edukasi-'.Str::lower(Str::random(10));
@@ -170,6 +186,132 @@ test('hidden categories never enter the public snapshot and theme revocation kee
     config(['community_links.exclusive_communities' => []]);
     $this->get('/c/'.$handle)->assertOk()->assertSee('Public Guide')->assertSee('class="clean-light"', false)->assertDontSee('perinatologi-care.js')->assertDontSee('id="hero-3d-canvas"', false);
     $this->postJson('/panel/community-links/'.$page->id.'/publish', ['revision' => 3])->assertUnprocessable();
+});
+
+test('saving preserves uploaded model and removal only changes draft reference', function (): void {
+    $handle = 'model-save-'.Str::lower(Str::random(10));
+    ($this->createPage)($handle)->assertRedirect();
+    $page = CommunityLinkPage::where('handle', $handle)->firstOrFail();
+    $content = $page->draft_content;
+    $asset = (string) Str::uuid();
+    $content['model'] = $asset;
+    $page->update(['draft_content' => $content, 'published_content' => $content]);
+    $this->putJson('/panel/community-links/'.$page->id, ['revision' => 1, 'title' => 'Keep model', 'theme_id' => 'clean-light'])->assertOk();
+    expect($page->fresh()->draft_content['model'])->toBe($asset);
+    $this->postJson('/panel/community-links/'.$page->id.'/remove-model', ['revision' => 1])->assertConflict();
+    $this->post('/panel/community-links/'.$page->id.'/remove-model', ['revision' => 2])->assertRedirect()->assertSessionHasNoErrors();
+    expect($page->fresh()->draft_content)->not->toHaveKey('model');
+    expect($page->fresh()->published_content['model'])->toBe($asset);
+});
+
+test('uploaded image emblem options persist in draft and use snapshot avatar', function (): void {
+    config(['community_links.exclusive_communities' => [$this->community->id]]);
+    $handle = 'image-emblem-'.Str::lower(Str::random(10));
+    ($this->createPage)($handle)->assertRedirect();
+    $page = CommunityLinkPage::where('handle', $handle)->firstOrFail();
+    $asset = (string) Str::uuid();
+    $content = $page->draft_content;
+    $content['avatar'] = $asset;
+    $content['model'] = (string) Str::uuid();
+    $page->update(['draft_content' => $content]);
+    $data = ['revision' => 1, 'title' => 'Image emblem', 'theme_id' => 'perinatologi-care', 'theme_options' => ['emblem_shape' => 'image', 'emblem_depth' => 35, 'emblem_speed' => 60], 'links' => [['id' => (string) Str::uuid(), 'label' => 'Info', 'url' => 'https://example.com', 'visible' => true]]];
+    $this->putJson('/panel/community-links/'.$page->id, $data)->assertOk();
+    $this->get('/panel/community-links/'.$page->id.'/preview')->assertOk()->assertSee('data-image-emblem-url=', false)->assertSee('image-emblem.js')->assertSee('data-emblem-depth="35"', false)->assertDontSee('data-model-url=', false);
+    $this->post('/panel/community-links/'.$page->id.'/publish', ['revision' => 2])->assertRedirect()->assertSessionHasNoErrors();
+    $this->get('/c/'.$handle)->assertOk()->assertSee('/c/'.$handle.'/avatar/'.$asset, false)->assertSee('data-image-emblem-url=', false);
+    foreach (['emblem_depth' => 500, 'emblem_speed' => -1] as $key => $value) {
+        $data['theme_options'][$key] = $value;
+        $data['revision'] = 3;
+        $this->putJson('/panel/community-links/'.$page->id, $data)->assertUnprocessable()->assertJsonValidationErrors('theme_options.'.$key);
+    }
+    config(['community_links.exclusive_communities' => []]);
+    $this->get('/c/'.$handle)->assertOk()->assertDontSee('data-image-emblem-url=', false)->assertDontSee('image-emblem.js');
+});
+
+test('emblem size is bounded draft scoped and published explicitly', function (): void {
+    config(['community_links.exclusive_communities' => [$this->community->id]]);
+    $handle = 'emblem-size-'.Str::lower(Str::random(10));
+    ($this->createPage)($handle)->assertRedirect();
+    $page = CommunityLinkPage::where('handle', $handle)->firstOrFail();
+    $data = ['revision' => 1, 'title' => 'Size', 'theme_id' => 'perinatologi-care', 'theme_options' => ['emblem_size' => 180], 'links' => [['id' => (string) Str::uuid(), 'label' => 'Info', 'url' => 'https://example.com', 'visible' => true]]];
+    $this->putJson('/panel/community-links/'.$page->id, $data)->assertOk();
+    $this->get('/panel/community-links/'.$page->id.'/edit')->assertOk()->assertSee('name="theme_options[emblem_size]"', false);
+    $this->get('/panel/community-links/'.$page->id.'/preview')->assertOk()->assertSee('--emblem-size:180px;', false)->assertSee('data-emblem-size="180"', false);
+    $this->get('/c/'.$handle)->assertNotFound();
+    $this->post('/panel/community-links/'.$page->id.'/publish', ['revision' => 2])->assertRedirect()->assertSessionHasNoErrors();
+    $this->get('/c/'.$handle)->assertOk()->assertSee('--emblem-size:180px;', false);
+    foreach ([63, 241, 'large', []] as $invalid) {
+        $data['revision'] = 3;
+        $data['theme_options']['emblem_size'] = $invalid;
+        $this->putJson('/panel/community-links/'.$page->id, $data)->assertUnprocessable()->assertJsonValidationErrors('theme_options.emblem_size');
+    }
+    config(['community_links.exclusive_communities' => []]);
+    $this->get('/c/'.$handle)->assertOk()->assertDontSee('--emblem-size:', false);
+});
+
+test('unchanged custom theme preserves native default appearance', function (): void {
+    config(['community_links.exclusive_communities' => [$this->community->id]]);
+    $handle = 'defaults-'.Str::lower(Str::random(10));
+    ($this->createPage)($handle)->assertRedirect();
+    $page = DB::table('community_link_pages')->where('handle', $handle)->firstOrFail();
+    $this->putJson('/panel/community-links/'.$page->id, ['revision' => 1, 'title' => 'Defaults', 'theme_id' => 'perinatologi-care', 'theme_options' => CommunityLinkPageService::THEME_OPTIONS])->assertOk();
+    $this->get('/panel/community-links/'.$page->id.'/preview')->assertOk()->assertSee('data-custom-theme', false)
+        ->assertDontSee('--custom-bg:', false)->assertDontSee('--custom-text:', false)->assertDontSee('--custom-button:', false)->assertDontSee('--custom-button-text:', false)->assertDontSee('--custom-radius:', false)->assertDontSee('--custom-emblem:', false);
+});
+
+test('premium customization is draft scoped validated and entitlement gated', function (): void {
+    config(['community_links.exclusive_communities' => [$this->community->id]]);
+    $handle = 'custom-'.Str::lower(Str::random(10));
+    ($this->createPage)($handle)->assertRedirect();
+    $page = DB::table('community_link_pages')->where('handle', $handle)->firstOrFail();
+    $options = ['background' => '#112233', 'text' => '#ffffff', 'button' => '#445566', 'button_text' => '#ffffff', 'radius' => 24, 'emblem_enabled' => true, 'motion_enabled' => false, 'emblem_shape' => 'diamond', 'emblem_color' => '#cc3366'];
+    $data = ['revision' => 1, 'title' => 'Custom', 'theme_id' => 'perinatologi-care', 'theme_options' => $options, 'links' => [['id' => (string) Str::uuid(), 'label' => 'Guide', 'url' => 'https://example.com/', 'visible' => true]]];
+    $this->putJson('/panel/community-links/'.$page->id, $data)->assertOk();
+    expect(json_decode(DB::table('community_link_pages')->where('id', $page->id)->value('draft_content'), true)['theme_options'] ?? null)->toEqual($options);
+    $this->get('/panel/community-links/'.$page->id.'/edit')->assertOk()->assertSee('Kustomisasi Tema')->assertSee('name="theme_options[background]"', false);
+    $this->get('/panel/community-links/'.$page->id.'/preview')->assertOk()->assertSee('--custom-bg:#112233', false)->assertSee('data-motion-default="0"', false)->assertSee('data-emblem-shape="diamond"', false);
+    $this->get('/c/'.$handle)->assertNotFound();
+    $this->post('/panel/community-links/'.$page->id.'/publish', ['revision' => 2])->assertRedirect();
+    $this->get('/c/'.$handle)->assertOk()->assertSee('--custom-bg:#112233', false);
+    $data['revision'] = 3;
+    $data['theme_options']['emblem_enabled'] = false;
+    $data['theme_options']['background'] = '#223344';
+    $this->putJson('/panel/community-links/'.$page->id, $data)->assertOk();
+    $this->get('/panel/community-links/'.$page->id.'/preview')->assertOk()->assertDontSee('id="hero-3d-canvas"', false);
+    $this->get('/c/'.$handle)->assertOk()->assertSee('--custom-bg:#112233', false);
+    foreach (['background' => 'red;position:fixed', 'radius' => 500, 'emblem_shape' => 'custom-script', 'motion_enabled' => 'yes', 'unknown' => 'value'] as $key => $invalid) {
+        $bad = $data;
+        $bad['revision'] = 4;
+        $bad['theme_options'][$key] = $invalid;
+        $this->putJson('/panel/community-links/'.$page->id, $bad)->assertUnprocessable();
+    }
+    $malformed = $data;
+    $malformed['revision'] = 4;
+    $malformed['theme_options']['background'] = ['invalid'];
+    $this->from('/panel/community-links/'.$page->id.'/edit')->put('/panel/community-links/'.$page->id, $malformed)->assertRedirect()->assertSessionHasErrors('theme_options.background');
+    $this->get('/panel/community-links/'.$page->id.'/edit')->assertOk();
+    session()->forget('_old_input');
+    $legacy = $data;
+    $legacy['revision'] = 4;
+    unset($legacy['theme_options']);
+    $this->putJson('/panel/community-links/'.$page->id, $legacy)->assertOk();
+    expect(json_decode(DB::table('community_link_pages')->where('id', $page->id)->value('draft_content'), true)['theme_options']['background'])->toBe('#223344');
+    $partial = $legacy;
+    $partial['revision'] = 5;
+    $partial['theme_options'] = ['radius' => 12];
+    $this->putJson('/panel/community-links/'.$page->id, $partial)->assertOk();
+    $savedOptions = json_decode(DB::table('community_link_pages')->where('id', $page->id)->value('draft_content'), true)['theme_options'];
+    expect($savedOptions['background'] ?? null)->toBe('#223344')->and($savedOptions['radius'])->toBe(12);
+    $reset = $legacy;
+    $reset['revision'] = 6;
+    $reset['theme_options'] = [];
+    $this->putJson('/panel/community-links/'.$page->id, $reset)->assertOk();
+    $this->get('/panel/community-links/'.$page->id.'/preview')->assertOk()->assertDontSee('data-custom-theme', false);
+    config(['community_links.exclusive_communities' => []]);
+    $this->get('/c/'.$handle)->assertOk()->assertDontSee('data-custom-theme', false)->assertDontSee('--custom-bg:', false);
+    $data['revision'] = 7;
+    $data['theme_id'] = 'clean-light';
+    $this->putJson('/panel/community-links/'.$page->id, $data)->assertUnprocessable()->assertJsonValidationErrors('theme_options');
 });
 
 test('invalid sparse editor input returns editable lists without losing entries', function (): void {

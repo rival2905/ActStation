@@ -28,7 +28,7 @@ class CommunityLinkMediaCleanup extends Command
                     if (! $page) {
                         return;
                     }
-                    $references = array_filter([$page->draft_content['avatar'] ?? null, $page->draft_content['background'] ?? null, $page->published_content['avatar'] ?? null, $page->published_content['background'] ?? null]);
+                    $references = array_filter([$page->draft_content['avatar'] ?? null, $page->draft_content['background'] ?? null, $page->published_content['avatar'] ?? null, $page->published_content['background'] ?? null, $page->draft_content['model'] ?? null, $page->published_content['model'] ?? null]);
                     $disk = Storage::disk('local');
                     foreach ($disk->files('community-links/'.$page->id) as $file) {
                         if (! in_array(pathinfo($file, PATHINFO_FILENAME), $references, true) && $disk->lastModified($file) < now()->subDay()->timestamp && $disk->delete($file)) {
