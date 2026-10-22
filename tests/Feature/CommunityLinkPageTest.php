@@ -170,6 +170,35 @@ test('exclusive theme requires a community grant and page creation leaves the ot
     expect(DB::table('community_link_pages')->where('community_id', $this->community->id)->count())->toBe(1);
 });
 
+test('category filters only appear when visible links use a visible category', function (string $scenario, string $theme): void {
+    config(['community_links.exclusive_communities' => [$this->community->id]]);
+    $handle = 'filters-'.Str::lower(Str::random(10));
+    ($this->createPage)($handle)->assertRedirect()->assertSessionHasNoErrors();
+    $page = CommunityLinkPage::where('handle', $handle)->firstOrFail();
+    $category = (string) Str::uuid();
+    $categorized = in_array($scenario, ['used', 'mixed', 'hidden-link', 'hidden-category']);
+    $links = [['id' => (string) Str::uuid(), 'label' => 'Panduan', 'url' => 'https://example.com/guide', 'visible' => $scenario !== 'hidden-link', 'category_id' => $categorized ? $category : null]];
+    if (in_array($scenario, ['mixed', 'hidden-link', 'hidden-category'])) {
+        $links[] = ['id' => (string) Str::uuid(), 'label' => 'Kontak', 'url' => 'https://example.com/contact', 'visible' => true];
+    }
+    $data = ['revision' => 1, 'title' => 'Filters', 'theme_id' => $theme, 'categories' => $scenario === 'empty' ? [] : [['id' => $category, 'name' => 'Layanan', 'visible' => $scenario !== 'hidden-category']], 'links' => $links];
+    $this->putJson('/panel/community-links/'.$page->id, $data)->assertOk();
+    $this->post('/panel/community-links/'.$page->id.'/publish', ['revision' => 2])->assertRedirect()->assertSessionHasNoErrors();
+    foreach (['/panel/community-links/'.$page->id.'/preview', '/c/'.$handle] as $url) {
+        $response = $this->get($url)->assertOk()->assertSee('id="search"', false);
+        if (in_array($scenario, ['used', 'mixed'])) {
+            $response->assertSee('class="filters"', false)->assertSee('data-category="all"', false)->assertSee('data-category="'.$category.'"', false);
+            if ($scenario === 'mixed') {
+                $response->assertSee('>Umum</button>', false);
+            } else {
+                $response->assertDontSee('>Umum</button>', false);
+            }
+        } else {
+            $response->assertDontSee('class="filters"', false)->assertDontSee('>Semua</button>', false)->assertDontSee('>Umum</button>', false)->assertDontSee('Cari atau pilih kategori');
+        }
+    }
+})->with(['empty', 'unused', 'hidden-link', 'hidden-category', 'used', 'mixed'])->with(['clean-light', 'perinatologi-care']);
+
 test('hidden categories never enter the public snapshot and theme revocation keeps links usable', function (): void {
     config(['community_links.exclusive_communities' => [$this->community->id]]);
     $handle = 'categories-'.Str::lower(Str::random(10));

@@ -60,6 +60,8 @@ Logo halaman dapat dihapus dari draft melalui Hapus Logo. Logo publik tetap samp
 
 Kartu tautan lebih ringkas; tampil/sembunyikan memakai sakelar on/off, bukan dropdown. Nama/URL berdampingan pada layar lebar; opsi tambahan dilipat, urut/hapus tetap terlihat. Perubahan sakelar tersimpan otomatis ke draft; publik tetap membutuhkan Terbitkan.
 
+Tanpa kategori yang dipakai tautan terlihat, preview dan halaman publik hanya menampilkan pencarian, tanpa tombol Semua/Umum. Filter kategori otomatis tersedia saat kategori mulai dipakai.
+
 Ukuran emblem dapat diatur64–240px lewat Kustomisasi Tema > Ukuran emblem; bawaan88px, disarankan160–200px untuk logo lebih besar. Berlaku gambar timbul,emblem bawaan danGLB; draft/publikasi tetap terpisah.23 tes/491 assertions dan build lulus.
 
 Emblem juga dapat dibuat dari logo PNG/WebP transparan tanpa GLB: upload lewat Logo Halaman, pilih Kustomisasi Tema > Kustom > Dari logo unggahan (siluet 3D). Ketebalan dan kecepatan putar dapat diatur; detail asli di depan, sisi memakai warna emblem. Latar gambar tidak dihapus otomatis; bentuk terlalu rumit tetap gambar statis. Autosave draft dan publikasi eksplisit tetap. 22 tes/465 assertions,5 check JS dan build lulus.

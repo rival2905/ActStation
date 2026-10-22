@@ -32,6 +32,7 @@ $modelAsset = $themeId === 'perinatologi-care' && !$imageEmblem ? ($content['mod
 $lightButton = in_array($themeId, ['midnight']);
 $visibleCategories = collect($content['categories'] ?? [])->filter(fn($c) => $c['visible'] ?? true);
 $links = collect($content['links'] ?? [])->filter(fn($link) => !empty($link['visible']) && (empty($link['category_id']) || $visibleCategories->contains('id', $link['category_id'])));
+$visibleCategories = $visibleCategories->filter(fn($category) => $links->contains('category_id', $category['id']));
 @endphp
 @if($themeId === 'perinatologi-care')
 <link rel="stylesheet" href="{{ asset('assets/community-links/perinatologi-care.css') }}?v={{ filemtime(public_path('assets/community-links/perinatologi-care.css')) }}">
@@ -67,8 +68,9 @@ $links = collect($content['links'] ?? [])->filter(fn($link) => !empty($link['vis
 @if($themeId !== 'perinatologi-care')<button type="button" id="share">Salin Tautan</button><p id="share-status" role="status"></p>@endif
 </header>
 <section aria-label="Daftar tautan">
-@if($themeId === 'perinatologi-care')<details class="perina-discovery" @if($links->count() > 5) open @endif><summary>Cari atau pilih kategori</summary>@endif
+@if($themeId === 'perinatologi-care' && $visibleCategories->isNotEmpty())<details class="perina-discovery" @if($links->count() > 5) open @endif><summary>Cari atau pilih kategori</summary>@endif
 <label for="search">Cari tautan</label><input id="search" type="search" placeholder="Cari informasi...">
+@if($visibleCategories->isNotEmpty())
 <div class="filters" aria-label="Kategori tautan">
 <button type="button" data-category="all" aria-pressed="true">Semua</button>
 @foreach($visibleCategories as $category)
@@ -76,7 +78,8 @@ $links = collect($content['links'] ?? [])->filter(fn($link) => !empty($link['vis
 @endforeach
 @if($links->contains(fn($link) => empty($link['category_id'])))<button type="button" data-category="general" aria-pressed="false">Umum</button>@endif
 </div>
-@if($themeId === 'perinatologi-care')</details>@endif
+@endif
+@if($themeId === 'perinatologi-care' && $visibleCategories->isNotEmpty())</details>@endif
 <div id="links">
 @foreach($links as $link)
 <div class="link-entry" data-link data-category="{{ $link['category_id'] ?? 'general' }}">
