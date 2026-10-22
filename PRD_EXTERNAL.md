@@ -60,6 +60,8 @@ Logo halaman dapat dihapus dari draft melalui Hapus Logo. Logo publik tetap samp
 
 Kartu tautan lebih ringkas; tampil/sembunyikan memakai sakelar on/off, bukan dropdown. Nama/URL berdampingan pada layar lebar; opsi tambahan dilipat, urut/hapus tetap terlihat. Perubahan sakelar tersimpan otomatis ke draft; publik tetap membutuhkan Terbitkan.
 
+Setiap tautan publik/preview kini memiliki tombol Bagikan tersendiri: salin,WhatsApp,Facebook,X,LinkedIn,Email serta menu perangkat bila didukung. Yang dibagikan URL tujuan dan judul tautan, bukan seluruh profil. Menu tidak memicu kunjungan tujuan/klik analitik atau posting otomatis. 16 tes/299 assertions,check JS dan build lulus.
+
 ---
 
 ## 4. Konvensi URL & Route Utama Eksternal

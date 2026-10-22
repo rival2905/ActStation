@@ -39,7 +39,9 @@ test('community activates multiple independent pages with one primary and explic
     $this->put('/panel/community-links/'.$pages[0]->id, $data)->assertRedirect()->assertSessionHasNoErrors();
     $this->get('/panel/community-links/'.$pages[0]->id.'/edit')->assertOk()->assertSee('Draft tersimpan. Publik belum berubah.');
     $this->post('/panel/community-links/'.$pages[0]->id.'/publish', ['revision' => 2])->assertRedirect()->assertSessionHasNoErrors();
-    $this->get('/c/'.$a)->assertOk()->assertSee('Panduan Aman')->assertSee('Layanan')->assertDontSee('Jangan Tampil')->assertDontSee('community_id');
+    $this->get('/c/'.$a)->assertOk()->assertSee('Panduan Aman')->assertSee('Layanan')->assertDontSee('Jangan Tampil')->assertDontSee('community_id')
+        ->assertSee('data-share-url="https://example.com/guide"', false)->assertSee('Bagikan Panduan Aman')->assertSee('id="link-share-dialog"', false)->assertSee('community-links/share.js?v=')
+        ->assertDontSee('data-share-url="https://example.com/private"', false);
     $data['revision'] = 3;
     $data['title'] = 'Draft Baru';
     $this->put('/panel/community-links/'.$pages[0]->id, $data)->assertRedirect()->assertSessionHasNoErrors();

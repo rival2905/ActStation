@@ -1,0 +1,19 @@
+.link-entry{position:relative;margin:14px 0}
+.link-entry>.link{margin:0;padding-right:76px;min-height:64px}
+.link-entry .link-share-button{position:absolute;right:12px;top:10px;display:grid;place-items:center;width:44px;height:44px;min-height:44px;padding:0;border:1px solid currentColor;border-radius:12px;background:transparent;color:var(--button-text);box-shadow:none}
+.perinatologi-care .link-entry>.link{margin:0;padding-right:76px}
+.perinatologi-care .link-entry>.link::after{content:none}
+.perinatologi-care .link-entry .link-share-button{color:#365e52;border-color:#dae8e1;background:#fff}
+#link-share-dialog{width:min(440px,calc(100% - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:24px;border:1px solid #d4e4dd;border-radius:20px;background:#fff;color:#253e38;box-shadow:0 20px 80px #0003}
+#link-share-dialog::backdrop{background:#0f172a88}
+.link-share-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.link-share-heading h2{font-size:20px;margin:0}
+#link-share-title{font-weight:600;overflow-wrap:anywhere}
+#link-share-dialog label{font-size:14px;display:block;margin-bottom:6px}
+#link-share-dialog input{font-size:14px;min-width:0;border-color:#c2d5cb}
+.link-share-platforms{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
+#link-share-dialog button,#link-share-dialog a{display:flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:8px 12px;border:1px solid #d4e4dd;border-radius:10px;background:#f5faf7;color:#253e38;font-size:14px;text-decoration:none;font-weight:500;overflow-wrap:anywhere}
+#link-share-dialog [hidden]{display:none!important}
+#link-share-dialog :focus-visible{outline:3px solid #0f766e;outline-offset:3px}
+#link-share-feedback{font-size:14px;margin-bottom:0}
+#link-share-feedback:empty{display:none}
