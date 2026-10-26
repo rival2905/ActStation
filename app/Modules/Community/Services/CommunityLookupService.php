@@ -8,6 +8,7 @@ use App\Contracts\CommunityLookup;
 use App\Contracts\DTOs\CommunitySummary;
 use App\Contracts\EntityRequirements;
 use App\Modules\Community\Models\Community;
+use App\Modules\Community\Models\CommunityAthlete;
 use App\Modules\Community\Models\CommunityOfficial;
 use App\Modules\Community\Models\SchoolRegistration;
 use Illuminate\Support\Facades\DB;
@@ -47,7 +48,42 @@ class CommunityLookupService implements CommunityLookup
                 : null,
             latitude: $community->latitude !== null ? (float) $community->latitude : null,
             longitude: $community->longitude !== null ? (float) $community->longitude : null,
+            logo: $community->logo,
         );
+    }
+
+    public function athleteCommunities(int $userId): array
+    {
+        return Community::query()->where('is_active', true)->where('status', 'verified')
+            ->whereIn('id', CommunityAthlete::query()->where('user_id', $userId)->where('status', 'active')->whereNull('left_at')->select('community_id'))
+            ->orderBy('name')->pluck('id')->map(fn ($id) => $this->find((int) $id))->filter()->values()->all();
+    }
+
+    public function searchableCommunities(string $query): array
+    {
+        $query = trim($query);
+        if (mb_strlen($query) < 2) {
+            return [];
+        }
+
+        return Community::query()->where('is_active', true)->where('status', 'verified')
+            ->where('name', 'like', '%'.addcslashes($query, '%_\\').'%')
+            ->orderBy('name')->limit(20)->pluck('id')->map(fn ($id) => $this->find((int) $id))->filter()->values()->all();
+    }
+
+    public function canManage(int $userId, int $communityId): bool
+    {
+        return CommunityOfficial::query()->where('user_id', $userId)->where('community_id', $communityId)
+            ->where('status', 'active')->whereNull('ended_at')
+            ->whereHas('user', fn ($query) => $query->where('is_active', true))
+            ->whereHas('community', fn ($query) => $query->where('is_active', true))->exists();
+    }
+
+    public function activeAthleteIds(int $communityId): array
+    {
+        return CommunityAthlete::query()->where('community_id', $communityId)->where('status', 'active')->whereNull('left_at')
+            ->whereHas('user', fn ($query) => $query->where('is_active', true))
+            ->pluck('user_id')->map(fn ($id): int => (int) $id)->all();
     }
 
     public static function resolveActiveCommunityId(?int $userId = null): ?int

@@ -114,6 +114,25 @@ test('screening_first membolehkan pendaftaran tim melebihi kuota max_teams tanpa
         ->and($participant->waiting_list_order)->toBeNull();
 });
 
+test('public screening quota separates unverified applications from reserved slots', function (): void {
+    $category = EventCategory::factory()->create([
+        'event_id' => $this->event->id, 'registration_flow' => 'screening_first', 'max_teams' => 3,
+    ]);
+    foreach (['registered', 'revision_needed', 'pending_payment', 'confirmed'] as $status) {
+        EventParticipant::factory()->create([
+            'event_id' => $this->event->id, 'event_category_id' => $category->id,
+            'status' => $status, 'payment_deadline_at' => now()->addDay(),
+        ]);
+    }
+    EventParticipant::factory()->create([
+        'event_id' => $this->event->id, 'event_category_id' => $category->id,
+        'status' => 'pending_payment', 'payment_deadline_at' => now()->subDay(),
+    ]);
+    $this->get(route('events.show', $this->event->slug))->assertOk()
+        ->assertDontSee('Pengajuan belum lolos')
+        ->assertSee('2 Slot terpakai / Kuota: 3');
+});
+
 test('organizer dapat melakukan toggle visibilitas roster publik pada kategori', function (): void {
     $category = EventCategory::factory()->create([
         'event_id' => $this->event->id,

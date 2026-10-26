@@ -233,6 +233,52 @@ test('canAddNewTeam requires saved draft and blocks when unsaved or dirty', () =
     assert.equal(f.ui.canAddNewTeam(), true, 'allows adding new team when draft is saved and clean');
 });
 
+test('full allocations lock stored category and hide unchanged identity save without blocking edits', () => {
+    const f = fixture();
+    const category = f.fields.event_category_id;
+    category.value = '10';
+    category.options = [
+        { value: '', dataset: {} },
+        { value: '10', textContent: 'Putri', dataset: { baseRegCount: '0', draftIds: '["draft-1"]', maxTeams: '1' } },
+        { value: '20', textContent: 'Putra', dataset: { baseRegCount: '1', draftIds: '[]', maxTeams: '1' } },
+    ];
+    const save = { hidden: false };
+    const query = f.ui.document.querySelectorAll;
+    f.ui.document.querySelectorAll = selector => selector === '[data-registration-save-team]' ? [save] : query(selector);
+    f.fields['locked-event-category'] = { disabled: true, value: '' };
+    f.ui.manager.draftId = 'draft-1';
+    f.ui.manager.savedCategoryId = '10';
+    f.ui.manager.savedPayloadJSON = JSON.stringify(Object.fromEntries(['team_name', 'contact_person', 'contact_phone', 'notes'].map(id => [id, f.fields[id]?.value || ''])));
+    f.ui.updateActiveTeam();
+    assert.equal(category.disabled, true);
+    assert.equal(f.fields['locked-event-category'].disabled, false);
+    assert.equal(f.fields['locked-event-category'].value, '10');
+    assert.equal(save.hidden, true);
+    f.fields.team_name.value = 'Edited team';
+    f.ui.updateActiveTeam();
+    assert.equal(save.hidden, false);
+    assert.equal(save.textContent, 'Simpan Perubahan Tim');
+    category.options[2].dataset.baseRegCount = '0';
+    f.ui.updateActiveTeam();
+    assert.equal(category.disabled, false);
+    assert.equal(f.fields['locked-event-category'].disabled, true);
+});
+
+test('saved draft does not advertise a new team when all category allocations are used', () => {
+    const f = fixture();
+    f.ui.manager.draftId = 'draft-1';
+    f.ui.manager.savedCategoryId = '10';
+    f.fields.event_category_id.options = [
+        { value: '10', dataset: { baseRegCount: '0', draftIds: '["draft-1"]', maxTeams: '1' } },
+        { value: '20', dataset: { baseRegCount: '1', draftIds: '[]', maxTeams: '1' } },
+    ];
+    assert.equal(f.ui.hasNewTeamCapacity(), false);
+    assert.equal(f.ui.canAddNewTeam(), false);
+    f.fields.event_category_id.options[1].dataset.maxTeams = '2';
+    assert.equal(f.ui.hasNewTeamCapacity(), true);
+    assert.equal(f.ui.canAddNewTeam(), true);
+});
+
 test('deleted or non-existent draft ID (404) resets draftId and creates new draft on manual save', async () => {
     const f = fixture();
     let requests = [];

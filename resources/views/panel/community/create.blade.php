@@ -29,6 +29,10 @@
 
 <x-flash-alert />
 
+@if(session(\App\Services\EventRegistrationReturn::SESSION_KEY))
+<div class="alert alert-info" role="status">Setelah disimpan, Anda kembali ke pendaftaran turnamen dengan kategori yang sudah dipilih. Gunakan komunitas / instansi yang Anda wakili; jangan membuat organisasi baru jika hanya ingin bergabung sebagai atlet.</div>
+@endif
+
 <div class="card mb-3">
     <div class="card-header bg-body-tertiary">
         <h5 class="mb-0 fs-10 text-900 fw-bold">

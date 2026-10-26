@@ -6,7 +6,7 @@
 <div class="card mb-3">
     <div class="card-header bg-body-tertiary">
         <h5 class="mb-0">Undangan Bergabung Komunitas / Klub</h5>
-        <p class="text-600 fs-10 mb-0">Daftar permohonan dan undangan dari pengurus klub yang menunggu persetujuan Anda</p>
+        <p class="text-600 fs-10 mb-0">Undangan pengurus menunggu keputusan Anda. Pengajuan yang Anda kirim menunggu persetujuan pengurus.</p>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -48,6 +48,11 @@
                         </td>
                         <td class="text-700">{{ $req->created_at?->format('d/m/Y H:i') }}</td>
                         <td class="text-end pe-3">
+                            @if($req->initiated_by === 'athlete')
+                                <span class="badge badge-subtle-warning" role="status">Menunggu persetujuan pengurus</span>
+                                <small class="d-block text-muted mt-1">Persetujuan Anda sudah diberikan saat mengirim pengajuan.</small>
+                                <a href="{{ route('my-events.index') }}" class="btn btn-sm btn-primary mt-1">Lengkapi Berkas Turnamen</a>
+                            @elseif($req->initiated_by === 'community')
                             <div class="d-inline-flex gap-2">
                                 <form method="POST" action="{{ route('panel.my-requests.approve', $req) }}" class="d-inline">
                                     @csrf
@@ -62,6 +67,7 @@
                                     </button>
                                 </form>
                             </div>
+                            @endif
                         </td>
                     </tr>
                     @empty

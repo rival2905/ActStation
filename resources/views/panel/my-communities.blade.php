@@ -18,6 +18,8 @@
 </div></div>
 @empty
 <div class="alert alert-info">Belum menjadi pengurus komunitas.</div>
+<p class="text-muted">Mewakili klub, sekolah, atau instansi untuk mendaftarkan tim? Daftarkan organisasi Anda sekali. Jika hanya menjadi atlet, minta link roster dari pengurus tim.</p>
+<a href="{{ route('panel.community.create') }}" class="btn btn-primary mb-3">Daftarkan Komunitas / Instansi</a>
 @endforelse
 <h5 class="mt-4 mb-3">Sebagai Atlet</h5>
 <p class="text-muted">Atlet aktif dapat melihat anggota, pengurus, pelatih, dan riwayat keanggotaan komunitas. Akses hanya baca, tanpa hak kelola.</p>

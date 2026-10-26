@@ -480,6 +480,8 @@ Usulan default berikut belum merupakan persetujuan pengguna:
 
 ## 16. Checkpoint dokumen
 
+Menu Link Tree konsisten pada Profil, Event, daftar Link Tree dan Permintaan Saya. Sidebar sebelumnya memakai CommunityPolicy pada CommunitySummary DTO sehingga pemeriksaan izin gagal di halaman event. Composer kini menyelesaikan model Community berdasarkan konteks aktif dan memakai Gate update existing; asing/keanggotaan ended/tanpa komunitas tetap tidak mendapat menu. Aturan tiga menu olahraga dan draft tidak berubah.66 tes/734 assertions,Pint/Blade/diff lulus; tanpa perubahan permission/data runtime.
+
 Filter kategori preview/publik hanya tampil jika ada kategori terlihat yang dipakai tautan terlihat. Kategori kosong, belum dipakai, atau hanya dipakai tautan tersembunyi tidak menampilkan Semua/Umum maupun disclosure kategori; pencarian langsung tetap tersedia. Jika kategori benar dipakai, Semua dan kategori terkait tetap ada; Umum hanya untuk tautan tanpa kategori pada kondisi itu. Tidak mengubah draft/snapshot pengguna.35 tes/695 assertions,Pint/Blade/build/diff lulus; fixture browser search/reset dan320/393/1024 terverifikasi.
 
 Ukuran emblem kini dapat diatur64–240px, default88px tetap. theme_options.emblem_size divalidasi integer/bounds dan premium; mengikuti autosave/revision/snapshot. CSS membesarkan wadah,canvas dan fallback secara proporsional, bukan zoom geometri yang memotong objek; buffer renderer minimal152px dan mengikuti ukuran besar. Berlaku emblem bawaan,gambar timbul danGLB. Browser fixture ukuran240px pada320/393/1024 tanpa overflow,buffer240px,fallback196.36px; default tetap88px.23 tes/491 assertions,5 check Node,Pint/Blade/build/diff lulus. Tidak mengubah ukuran halaman runtime atau deploy production.

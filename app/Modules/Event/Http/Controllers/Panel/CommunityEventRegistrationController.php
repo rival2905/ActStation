@@ -16,6 +16,8 @@ use App\Modules\Event\Models\EventCategory;
 use App\Modules\Event\Models\EventParticipant;
 use App\Modules\Event\Models\EventParticipantMember;
 use App\Modules\Event\Models\RegistrationDraft;
+use App\Modules\Event\Services\AthleteEventInterestService;
+use App\Modules\Event\Services\AthleteEventWorkspace;
 use App\Modules\Event\Services\EventInvitationService;
 use App\Modules\Event\Services\RegistrationDraftService;
 use App\Modules\Event\Services\RegistrationGuard;
@@ -48,18 +50,19 @@ class CommunityEventRegistrationController extends Controller
 
     public function index(): View
     {
-        $events = Event::query()
-            ->where('status', 'published')
-            ->where('registration_open', true)
-            ->with(['categories'])
-            ->latest()
-            ->paginate(12);
-
         $community = $this->communityLookup->findForUser((int) Auth::id());
         request()->attributes->set('panel_active_community', $community);
 
         $myRegistrations = collect();
+        $myDrafts = collect();
         if ($community) {
+            $myDrafts = RegistrationDraft::query()
+                ->where('user_id', Auth::id())
+                ->where('community_id', $community->id)
+                ->whereNull('participant_id')->unexpired()
+                ->whereHas('event', fn ($query) => $query->where('status', 'published'))
+                ->with(['event', 'category'])->latest('updated_at')->get()
+                ->reject(fn (RegistrationDraft $draft) => $draft->isSubmitted());
             $myRegistrations = EventParticipant::query()
                 ->where('community_id', $community->id)
                 ->with(['event', 'category'])
@@ -67,11 +70,27 @@ class CommunityEventRegistrationController extends Controller
                 ->get();
         }
 
+        $events = Event::query()
+            ->where('status', 'published')
+            ->where('registration_open', true)
+            ->where(fn ($query) => $query->whereNull('registration_deadline')->orWhere('registration_deadline', '>=', now()))
+            ->whereNotIn('id', $myDrafts->pluck('event_id')->unique())
+            ->with(['categories'])
+            ->latest()
+            ->paginate(12);
+
         return view('panel.events.index', [
             'events' => $events,
             'community' => $community,
             'activeCommunity' => $community,
             'myRegistrations' => $myRegistrations,
+            'myDrafts' => $myDrafts,
+            'athleteSummary' => app(AthleteEventWorkspace::class)->actionSummary((int) Auth::id()),
+            'interestEventIds' => app(AthleteEventInterestService::class)->forUserEventIds((int) Auth::id()),
+            'canExpressInterest' => $this->communityLookup->athleteCommunities((int) Auth::id()) !== [],
+            'managerInterests' => $community && $this->communityLookup->canManage((int) Auth::id(), $community->id)
+                ? app(AthleteEventInterestService::class)->forManager((int) Auth::id(), $community->id)
+                : null,
         ]);
     }
 
@@ -86,12 +105,11 @@ class CommunityEventRegistrationController extends Controller
         $community = $this->communityLookup->findForUser((int) Auth::id());
 
         if (! $community) {
-            $context = request()->validate(['event_category_id' => ['nullable', 'integer']]);
-            app(EventRegistrationReturn::class)->remember(request(), (int) $event->id, isset($context['event_category_id']) ? (int) $context['event_category_id'] : null);
+            $data = request()->validate(['event_category_id' => ['nullable', 'integer']]);
+            app(EventRegistrationReturn::class)->remember(request(), (int) $event->id, isset($data['event_category_id']) ? (int) $data['event_category_id'] : null);
 
-            return redirect()
-                ->route('panel.community.create')
-                ->with('info', 'Buat atau pilih komunitas terlebih dahulu, lalu lanjutkan pendaftaran event ini.');
+            return redirect()->route('panel.community.create')
+                ->with('info', 'Lengkapi komunitas / instansi Anda sekali, lalu lanjutkan pendaftaran tim pada turnamen ini.');
         }
 
         // Ambil atlet yang eligible per kategori untuk form selection

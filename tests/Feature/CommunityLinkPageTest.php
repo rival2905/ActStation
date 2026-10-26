@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Contracts\CommunityLookup;
 use App\Models\User;
 use App\Modules\Community\Models\Community;
 use App\Modules\Community\Models\CommunityLinkPage;
@@ -38,6 +39,32 @@ test('community profile stays available when community links route is absent', f
     app('url')->setRoutes($routes);
     $this->get('/panel/profile')->assertOk()->assertDontSee('Kelola Tautan Komunitas');
 });
+
+test('link tree sidebar stays visible for the same manager across panel pages', function (): void {
+    $this->community->update(['sport_category_id' => null]);
+    foreach (['/panel/profile', '/panel/events', '/panel/community-links', '/panel/my-requests'] as $url) {
+        $response = $this->get($url)->assertOk();
+        $html = $response->getContent();
+        $start = strpos($html, 'aria-label="Menu panel"');
+        expect($start)->not->toBeFalse();
+        $sidebar = substr($html, $start, strpos($html, '</nav>', $start) - $start);
+        expect($sidebar)->toContain('href="'.route('panel.community-links.index').'"');
+        foreach (['panel.coaches.index', 'panel.athletes.index', 'panel.documents.index'] as $menu) {
+            expect($sidebar)->not->toContain('href="'.route($menu).'"');
+        }
+    }
+});
+
+test('link tree sidebar retains model policy checks for summary data', function (string $scenario): void {
+    $community = $scenario === 'foreign' ? Community::factory()->create(['is_active' => true]) : $this->community;
+    if ($scenario === 'ended') {
+        CommunityOfficial::where('community_id', $community->id)->where('user_id', $this->owner->id)->update(['ended_at' => today()]);
+    }
+    $summary = $scenario === 'missing' ? null : app(CommunityLookup::class)->find($community->id);
+    request()->attributes->set('panel_active_community', $summary);
+    $html = view('layouts.partials.panel-sidebar', ['activeCommunity' => $summary])->render();
+    expect(str_contains($html, 'href="'.route('panel.community-links.index').'"'))->toBe($scenario === 'managed');
+})->with(['managed', 'foreign', 'ended', 'missing']);
 
 test('community activates multiple independent pages with one primary and explicit publication', function (): void {
     $this->get('/panel/profile')->assertOk()->assertSee('Kelola Tautan Komunitas');

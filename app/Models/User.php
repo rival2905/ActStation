@@ -162,7 +162,7 @@ class User extends Authenticatable implements MustVerifyEmail
                 'recipient_email' => (string) $this->getEmailForVerification(),
                 'recipient_name' => $this->name,
                 'subject' => 'Verifikasi Alamat Email',
-                'body' => "Halo {$this->name},\n\nSilakan klik tautan di bawah ini untuk memverifikasi alamat email akun ActStation Anda. Tautan ini berlaku selama 60 menit:\n{$verificationUrl}",
+                'body' => 'Silakan klik tombol di bawah ini untuk memverifikasi alamat email akun ActStation Anda. Tautan ini berlaku selama 60 menit.',
                 'action_url' => $verificationUrl,
                 'action_label' => 'Verifikasi Email',
                 'type' => 'verification',

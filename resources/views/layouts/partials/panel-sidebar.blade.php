@@ -25,7 +25,7 @@
                 <span class="navbar-toggle-icon"><span class="toggle-line"></span></span>
             </button>
         </div>
-        <a class="navbar-brand" href="{{ $activeCommunity && Route::has('panel.profile.show') ? route('panel.profile.show') : (Route::has('panel.community.create') ? route('panel.community.create') : url('/panel/community/create')) }}">
+        <a class="navbar-brand" href="{{ route('panel.community-events.index') }}">
             <div class="d-flex align-items-center py-3">
                 <img class="me-2" src="{{ asset('assets/img/logo_fix.png') }}" alt="{{ config('app.name', 'ActStation') }}" width="40" />
                 <span class="font-sans-serif text-primary fw-bolder">ActStation</span>
@@ -54,10 +54,10 @@
 
                 <!-- Daftar Turnamen -->
                 <li class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('panel.community-events.*') ? 'active' : '' }}" href="{{ Route::has('panel.community-events.index') ? route('panel.community-events.index') : '#' }}" role="button">
+                    <a class="nav-link {{ request()->routeIs('panel.community-events.*', 'panel.event-interests.*') ? 'active' : '' }}" href="{{ Route::has('panel.community-events.index') ? route('panel.community-events.index') : '#' }}" role="button">
                         <div class="d-flex align-items-center">
                             <span class="nav-link-icon"><span class="fas fa-trophy"></span></span>
-                            <span class="nav-link-text ps-1">Ikuti Turnamen</span>
+                            <span class="nav-link-text ps-1">Turnamen</span>
                         </div>
                     </a>
                 </li>
@@ -112,16 +112,16 @@
                 </li>
 
                 @if(Route::has('panel.community-links.index'))
-                @can('update', $activeCommunity)
+                @if($canManageCommunityLinks)
                 <li class="nav-item">
                     <a class="nav-link {{ request()->routeIs('panel.community-links.*') ? 'active' : '' }}" href="{{ route('panel.community-links.index') }}">
                         <div class="d-flex align-items-center">
                             <span class="nav-link-icon"><span class="fas fa-link"></span></span>
-                            <span class="nav-link-text ps-1">Tautan Komunitas</span>
+                            <span class="nav-link-text ps-1">Link Tree</span>
                         </div>
                     </a>
                 </li>
-                @endcan
+                @endif
                 @endif
                 <!-- Pengurus -->
                 <li class="nav-item">
@@ -133,6 +133,7 @@
                     </a>
                 </li>
 
+                @if($showCommunitySportsMenus)
                 <!-- Pelatih -->
                 <li class="nav-item">
                     <a class="nav-link {{ request()->routeIs('panel.coaches.*') ? 'active' : '' }}" href="{{ Route::has('panel.coaches.index') ? route('panel.coaches.index') : '#' }}" role="button">
@@ -162,6 +163,8 @@
                         </div>
                     </a>
                 </li>
+
+                @endif
 
                 <!-- Undangan -->
                 <li class="nav-item">
@@ -208,6 +211,9 @@
                         <div class="d-flex align-items-center">
                             <span class="nav-link-icon"><span class="fas fa-calendar-check"></span></span>
                             <span class="nav-link-text ps-1">Turnamen Saya</span>
+                            @if($athleteActionCount > 0)
+                            <span class="badge rounded-pill bg-warning text-dark ms-2" data-athlete-action-count="{{ $athleteActionCount }}" aria-label="{{ $athleteActionCount }} pendaftaran membutuhkan kelengkapan berkas">{{ $athleteActionCount }}</span>
+                            @endif
                         </div>
                     </a>
                 </li>

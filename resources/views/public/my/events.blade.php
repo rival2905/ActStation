@@ -1,4 +1,4 @@
-@extends('layouts.public')
+@extends('layouts.panel')
 
 @section('title', 'Turnamen Saya — ActStation')
 
@@ -20,13 +20,13 @@
         </p>
     </div>
     <div class="col-12 col-md-auto d-flex gap-2">
-        <a href="{{ route('events.index') }}" class="btn btn-sm btn-primary shadow-none">
-            <span class="fas fa-compass me-1"></span> Jelajahi Turnamen
+        <a href="{{ route('panel.community-events.index') }}" class="btn btn-sm btn-primary shadow-none">
+            <span class="fas fa-compass me-1"></span> Turnamen
         </a>
     </div>
 </div>
 
-<x-flash-alert />
+
 
 {{-- Summary Stat Widgets (3 kolom seimbang) --}}
 <div class="row g-3 mb-4">
@@ -117,7 +117,7 @@
         <h5 class="fw-bold mb-1">Tidak Ada Draft Pendaftaran</h5>
         <p class="text-600 fs-10 mb-3">Saat ini tidak ada pendaftaran turnamen yang sedang berjalan.</p>
         <div>
-            <a href="{{ route('events.index') }}" class="btn btn-sm btn-primary">Cari Turnamen Baru</a>
+            <a href="{{ route('panel.community-events.index') }}" class="btn btn-sm btn-primary">Cari Turnamen Baru</a>
         </div>
     </div>
 
@@ -137,6 +137,33 @@
 
 @push('scripts')
 <script>
+function validateAthleteDocument(input) {
+    const file = input.files[0];
+    const notice = input.form.querySelector('[data-upload-error]');
+    const photo = !input.accept.includes('application/pdf');
+    let message = '';
+    if (file && file.size > 2 * 1024 * 1024) {
+        message = 'Ukuran berkas maksimal 2 MB. Pilih berkas yang lebih kecil.';
+    } else if (file && ((file.type && !input.accept.split(',').includes(file.type)) || !(photo ? /\.(jpe?g|png)$/i : /\.(pdf|jpe?g|png)$/i).test(file.name))) {
+        message = photo ? 'Pasfoto harus berupa gambar JPG, JPEG, atau PNG. PDF tidak diperbolehkan.' : 'Berkas harus berupa PDF, JPG, JPEG, atau PNG.';
+    }
+    notice.textContent = message;
+    notice.hidden = !message;
+    input.setAttribute('aria-invalid', message ? 'true' : 'false');
+    return !message;
+}
+
+document.querySelectorAll('[data-athlete-document-upload]').forEach(form => {
+    const input = form.querySelector('input[type="file"]');
+    input.addEventListener('change', () => validateAthleteDocument(input));
+    form.addEventListener('submit', event => {
+        if (!validateAthleteDocument(input)) {
+            event.preventDefault();
+            input.focus();
+        }
+    });
+});
+
 function filterTournaments(type) {
     const secDrafts = document.getElementById('section-drafts');
     const secParticipants = document.getElementById('section-participants');

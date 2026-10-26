@@ -12,6 +12,7 @@ use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventCategory;
 use App\Modules\Event\Models\RegistrationDraft;
 use Database\Seeders\RolePermissionSeeder;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Http;
 
@@ -28,6 +29,91 @@ beforeEach(function (): void {
     $this->event = Event::factory()->create(['status' => 'published', 'registration_open' => true, 'registration_deadline' => now()->addDays(5), 'personnel_requirements' => [['role_id' => $this->role->id, 'min' => 0, 'max' => 2]]]);
     $this->category = EventCategory::factory()->create(['event_id' => $this->event->id, 'registration_end' => now()->addDays(5)]);
     $this->draft = RegistrationDraft::create(['event_id' => $this->event->id, 'event_category_id' => $this->category->id, 'community_id' => $this->community->id, 'user_id' => $this->manager->id, 'revision' => 1, 'expires_at' => now()->addDays(5), 'payload' => ['event_category_id' => $this->category->id, 'personnel' => []], 'files' => []]);
+});
+
+test('personnel invitation uses athlete style auth card for guest and authenticated statuses', function (): void {
+    $this->community->update(['logo' => 'community-logos/personnel-test.png']);
+    $token = str_repeat('u', 64);
+    DraftPersonnelInvitation::create(['registration_draft_id' => $this->draft->id, 'event_category_id' => $this->category->id, 'token' => $token, 'token_hash' => hash('sha256', $token)]);
+    $url = route('personnel-invitations.show', $token);
+    $this->get($url)->assertOk()->assertSee('row min-vh-100 flex-center g-0', false)
+        ->assertSee('col-md-5 text-center bg-card-gradient', false)->assertSee('col-md-7 d-flex flex-center', false)
+        ->assertSee($this->community->name)->assertSee(asset('storage/community-logos/personnel-test.png'), false)->assertSee('Gabung Roster Tenaga Olahraga')
+        ->assertSee('data-personnel-form', false)->assertSee('data-personnel-details hidden disabled', false)
+        ->assertDontSee('name="birth_date"', false)->assertDontSee('name="jersey_number"', false);
+    $member = User::factory()->create(['is_active' => true]);
+    $member->assignRole('member');
+    CommunityCoach::factory()->create(['community_id' => $this->community->id, 'user_id' => $member->id, 'sports_personnel_role_id' => $this->role->id, 'status' => 'pending', 'ended_at' => null]);
+    $this->actingAs($member)->get($url)->assertOk()->assertSee('bg-card-gradient', false)
+        ->assertSee('Keanggotaan menunggu persetujuan')->assertDontSee('data-personnel-form', false);
+    $this->draft->update(['payload' => ['personnel' => [['user_id' => $member->id, 'role_id' => $this->role->id]]]]);
+    $this->get($url)->assertOk()->assertSee('Sudah masuk roster draft ini')->assertDontSee('name="consent"', false);
+});
+
+test('personnel email gate distinguishes accounts without exposing profiles or writing membership', function (): void {
+    $token = str_repeat('g', 64);
+    DraftPersonnelInvitation::create(['registration_draft_id' => $this->draft->id, 'event_category_id' => $this->category->id, 'token' => $token, 'token_hash' => hash('sha256', $token)]);
+    $existing = User::factory()->create(['name' => 'Private Person Name', 'email' => 'personnel-existing@example.test']);
+    $counts = [User::count(), CommunityCoach::count(), $this->draft->fresh()->revision];
+    $this->get(route('personnel-invitations.show', $token))->assertOk()->assertSee('Periksa Akun')->assertSee('data-personnel-details', false);
+    $this->postJson('/personnel-invitations/'.$token.'/check', ['email' => $existing->email])->assertOk()
+        ->assertJsonPath('registered', true)->assertJsonPath('login_url', route('personnel-invitations.login', $token))->assertDontSee($existing->name);
+    $this->postJson('/personnel-invitations/'.$token.'/check', ['email' => 'personnel-new@example.test'])->assertOk()->assertJsonPath('registered', false);
+    $this->postJson('/personnel-invitations/'.$token.'/check', ['email' => ['bad']])->assertUnprocessable();
+    expect([User::count(), CommunityCoach::count(), $this->draft->fresh()->revision])->toBe($counts);
+    $this->draft->update(['expires_at' => now()->subSecond()]);
+    $this->postJson('/personnel-invitations/'.$token.'/check', ['email' => $existing->email])->assertNotFound();
+});
+
+test('new personnel registers inline without verifying email or gaining management access', function (): void {
+    Illuminate\Support\Facades\Event::fake([Registered::class]);
+    $token = str_repeat('n', 64);
+    DraftPersonnelInvitation::create(['registration_draft_id' => $this->draft->id, 'event_category_id' => $this->category->id, 'token' => $token, 'token_hash' => hash('sha256', $token)]);
+    $data = ['email' => 'inline-personnel@example.test', 'name' => 'Personel Baru', 'phone_number' => '089876543210',
+        'password' => 'Synthetic-only-pass123', 'password_confirmation' => 'Synthetic-only-pass123', 'role_id' => $this->role->id, 'consent' => 1];
+    $url = '/personnel-invitations/'.$token.'/register';
+    $this->post($url, array_diff_key($data, ['consent' => true]))->assertSessionHasErrors('consent');
+    $this->assertDatabaseMissing('users', ['email' => $data['email']]);
+    $this->post($url, array_replace($data, ['role_id' => 999999]))->assertStatus(422);
+    $this->assertDatabaseMissing('users', ['email' => $data['email']]);
+    $this->post($url, $data)->assertRedirect(route('personnel-invitations.show', $token))->assertSessionHasNoErrors();
+    $user = User::where('email', $data['email'])->firstOrFail();
+    $this->assertAuthenticatedAs($user);
+    expect($user->email_verified_at)->toBeNull()->and($user->phone_normalized)->toBe('+6289876543210')
+        ->and($user->getRoleNames()->all())->toBe(['member']);
+    $this->assertDatabaseHas('community_coaches', ['community_id' => $this->community->id, 'user_id' => $user->id, 'status' => 'pending']);
+    $this->assertDatabaseMissing('community_officials', ['user_id' => $user->id]);
+    expect($this->draft->fresh()->payload['personnel'])->toBe([])->and($this->draft->fresh()->revision)->toBe(1);
+    $this->get(route('personnel-invitations.show', $token))->assertOk()->assertSee('Keanggotaan menunggu persetujuan')->assertDontSee('data-personnel-form', false);
+});
+
+test('inline personnel registration rejects existing accounts duplicate phone and expired invitation without changes', function (): void {
+    $token = str_repeat('r', 64);
+    DraftPersonnelInvitation::create(['registration_draft_id' => $this->draft->id, 'event_category_id' => $this->category->id, 'token' => $token, 'token_hash' => hash('sha256', $token)]);
+    $existing = User::factory()->create(['email' => 'protected-personnel@example.test', 'phone_normalized' => '+6289876543210']);
+    $data = ['email' => 'other-personnel@example.test', 'name' => 'Not Existing Name', 'phone_number' => '089876543210',
+        'password' => 'Synthetic-only-pass123', 'password_confirmation' => 'Synthetic-only-pass123', 'role_id' => $this->role->id, 'consent' => 1];
+    $url = '/personnel-invitations/'.$token.'/register';
+    $counts = [User::count(), CommunityCoach::count()];
+    $this->post($url, array_replace($data, ['email' => $existing->email]))->assertSessionHasErrors('email');
+    $this->post($url, $data)->assertSessionHasErrors('phone_normalized');
+    $this->postJson($url, array_replace($data, ['phone_number' => ['bad']]))->assertUnprocessable();
+    $this->draft->update(['expires_at' => now()->subSecond()]);
+    $this->post($url, $data)->assertNotFound();
+    expect([User::count(), CommunityCoach::count()])->toBe($counts)->and($existing->fresh()->name)->toBe($existing->name);
+    $this->assertGuest();
+});
+
+test('existing personnel login preserves invitation and cannot create another account while authenticated', function (): void {
+    $token = str_repeat('l', 64);
+    DraftPersonnelInvitation::create(['registration_draft_id' => $this->draft->id, 'event_category_id' => $this->category->id, 'token' => $token, 'token_hash' => hash('sha256', $token)]);
+    $this->get(route('personnel-invitations.login', $token))->assertRedirect(route('panel.login'))
+        ->assertSessionHas('url.intended', route('personnel-invitations.show', $token));
+    $count = User::count();
+    $this->actingAs($this->manager)->post('/personnel-invitations/'.$token.'/register', [])->assertForbidden();
+    expect(User::count())->toBe($count);
+    $this->manager->update(['is_active' => false]);
+    $this->postJson('/personnel-invitations/'.$token.'/check', ['email' => 'probe@example.test'])->assertForbidden();
 });
 
 test('personnel links enforce lifecycle roles max capacity and active target context', function (): void {

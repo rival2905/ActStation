@@ -24,7 +24,10 @@ test('academic invitation saves education detail for guest and existing member',
     $this->post(route('invitations.public.submit', $token), ['consent' => '1', 'name' => 'Siswa Uji', 'email' => $email, 'password' => 'test-password-123', 'password_confirmation' => 'test-password-123', 'birth_place' => 'Bandung', 'birth_date' => '2005-01-01', 'gender' => 'male', 'identity_number' => $identifier, 'education_detail' => $detail])->assertRedirect()->assertSessionHasNoErrors();
     $user = User::where('email', $email)->firstOrFail();
     expect($user->educations()->firstOrFail()->education_detail)->toBe($detail);
-    $this->actingAs($user)->post(route('invitations.public.join', $token), ['consent' => '1', 'education_detail' => 'Detail Baru'])->assertRedirect()->assertSessionHasNoErrors();
+    $this->actingAs($user)->get(route('invitations.public.show', $token))->assertOk()
+        ->assertSee('name="education_detail"', false)->assertSee('Simpan Detail Pendidikan')
+        ->assertDontSee('Lengkapi Berkas Turnamen');
+    $this->post(route('invitations.public.join', $token), ['consent' => '1', 'education_detail' => 'Detail Baru'])->assertRedirect()->assertSessionHasNoErrors();
     expect($user->educations()->firstOrFail()->education_detail)->toBe('Detail Baru')->and($user->educations()->count())->toBe(1);
     $this->postJson(route('invitations.public.join', $token), ['consent' => '1', 'education_detail' => ['bad']])->assertUnprocessable()->assertJsonValidationErrors('education_detail');
     expect($user->educations()->firstOrFail()->education_detail)->toBe('Detail Baru');

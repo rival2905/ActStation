@@ -205,12 +205,14 @@ class SchoolExtracurricularPersonnelService
 
                     if ($registration && app()->bound(EmailDelivery::class)) {
                         app(EmailDelivery::class)->send([
+                            'recipient_user_id' => $targetUser->id,
                             'recipient_email' => $targetUser->email,
+                            'recipient_name' => $targetUser->name,
                             'subject' => 'Undangan Personel Ekstrakurikuler',
-                            'body' => "Undangan penugasan personel baru untuk peran {$role->name}.\nTautan: {$inviteUrl}",
+                            'body' => "Undangan penugasan personel baru untuk peran {$role->name}.",
                             'action_url' => $inviteUrl,
                             'action_label' => 'Terima Undangan',
-                            'type' => 'extracurricular_personnel_invite',
+                            'type' => 'assignment',
                         ]);
                     }
                 } catch (Throwable $e) {

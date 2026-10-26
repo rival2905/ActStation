@@ -1,4 +1,4 @@
-@if(in_array($invitationContext['identity_type'], ['nisn', 'nim'], true))
+@if(in_array($invitationContext['identity_type'], ['nisn', 'nim'], true) && (!$invitationContext['is_roster'] || $alreadyJoined || empty($educationDetail)))
 <div class="mb-3">
     <label class="form-label" for="education_detail">{{ $invitationContext['identity_type'] === 'nim' ? 'Prodi / Fakultas' : 'Kelas / Jurusan' }}</label>
     <input class="form-control @error('education_detail') is-invalid @enderror" id="education_detail" name="education_detail" type="text" maxlength="150" value="{{ old('education_detail', $educationDetail ?? '') }}" aria-describedby="education_detail-help education_detail-error">

@@ -13,3 +13,175 @@ ln -s /home/rivaldoi/actstation.net/storage/app/public/event_documents /home/riv
 ln -s /home/rivaldoi/actstation.net/storage/app/public/community_logos /home/rivaldoi/actstation.net/storage
 
 community_logos
+
+
+
+INFORMASI SINKRONISASI ACTSTATION — GATEWAY ACTSTATIONOFFICE
+
+Ada perubahan lokal pada codebase ActStation dari pekerjaan integrasi ActStationOffice. Baca dan pertahankan perubahan ini sebelum melanjutkan tugasmu. Ini pemberitahuan koordinasi, bukan izin deploy atau aktivasi gateway.
+
+LOKASI
+
+Core:
+C:/laragon/www/ActStation
+
+Office:
+C:/laragon/www/ActStationOffice
+
+Sumber kebenaran:
+- Core/AGENTS.md.
+- Core/PRD.md.
+- Core/docs/prd/13_agent_office_api.md, terutama checkpoint Bagian 9.
+- Office/PRD.md, checkpoint terbaru.
+
+Baca versi aktual. Banyak perubahan paralel; jangan mengembalikan file ke versi lama atau menimpa perubahan lain.
+
+PERUBAHAN YANG SUDAH ADA
+
+Fondasi gateway mesin:
+GET /api/v1/internal/agent-office/system-health
+
+Status: implemented dan verified terbatas pada fixture lokal. Runtime/production tetap disabled. Belum integrasi live Office–Core atau seluruh acceptance Modul 13.
+
+Dependency:
+- laravel/sanctum v4.3.3.
+- composer.json dan composer.lock berubah.
+- Dependency lain tidak diupdate oleh pekerjaan gateway.
+
+File utama:
+- app/Http/Middleware/AgentOfficeGateway.php
+- app/Models/AgentOfficePrincipal.php
+- app/Services/AgentOfficeSecurity.php
+- app/Services/AgentOfficeState.php
+- app/Console/Commands/AgentOfficeProvision.php
+- app/Modules/Report/Http/Controllers/AgentOfficeHealthController.php
+- app/Modules/Report/Http/Resources/AgentOfficeHealthResource.php
+- app/Modules/Report/Routes/api.php
+- config/agent_office.php
+- bootstrap/app.php: registrasi route gateway stateless, terpisah dari web/session.
+
+Sebagian besar file gateway masih untracked. Jangan menganggapnya file sementara atau menghapusnya saat cleanup.
+
+API ASISTEN HARUS TETAP TERPISAH
+
+Endpoint existing /api/v1/assistant/* memakai session auth:web, CSRF dan izin Asisten. Instalasi Sanctum bukan alasan mengubah autentikasi endpoint tersebut.
+
+Gateway Office memakai principal bot tersendiri, bukan akun manusia, cookie founder atau role superadmin. User.php tidak perlu diberi HasApiTokens untuk kebutuhan gateway ini.
+
+PERILAKU KEAMANAN SAAT INI
+
+- Default AGENT_OFFICE_ENABLED=false.
+- Default loopback HTTP=false.
+- IP diperiksa dari REMOTE_ADDR sebelum query DB; forwarded headers tidak dipercaya.
+- Registry privat terenkripsi AES-256-GCM memakai master key terpisah dari APP_KEY.
+- HMAC-SHA256 v1 mengikuti bytes dan urutan field Modul 13.
+- Timestamp toleransi 60 detik.
+- Nonce diklaim setelah signature valid, retensi 300 detik.
+- Replay/quota memakai file lock dan atomic replacement, lintas proses pada satu node.
+- Bearer Sanctum persisten, principal aktif, expiry, binding key/principal dan ability agent:health-read.
+- Wildcard dan session manusia tidak menggantikan bearer bot.
+- Quota 60 request/menit per principal lintas token; pre-auth 120/menit per peer.
+- Health hanya GET tanpa body/query; ambiguity Content-Length dan header invalid ditolak.
+- Audit non-DB memakai field allowlist, tanpa Authorization, secret atau body.
+- Health melakukan SELECT 1 nyata dan mengukur latency; n8n_status=not_checked. Tidak mengirim webhook.
+
+Jangan mengganti nonce store dengan default cache tanpa membuktikan atomicity lintas worker dan memastikan bukan DB bisnis/process-local memory. Jangan menghapus state replay untuk memperbaiki error.
+
+DATABASE DAN PROVISIONING
+
+Migration:
+database/migrations/2026_10_24_075332_create_agent_office_gateway_tables.php
+
+Membuat:
+- agent_office_principals
+- personal_access_tokens
+
+Migration hanya diterapkan pada db_actstation_test setelah guard target dan SELECT DATABASE(). Runtime db_actstation belum dimigrasikan oleh pekerjaan ini.
+
+Jangan menjalankan seluruh pending migrations atau provisioning runtime secara otomatis.
+
+Command operator:
+agent-office:provision --name= --cidr= --output= --days=30
+agent-office:provision --disable
+
+Credential ditulis ke file privat baru secara eksklusif, bukan stdout. Belum dibuat credential runtime. Publikasi registry dan transaksi DB bukan satu transaksi atomik; batasnya dicatat di Modul 13.
+
+VERIFIKASI TERAKHIR
+
+- 22 tes, 180 assertions lulus.
+- Pint --test scoped lulus.
+- Native HTTP fixture: health200, replay409, pencabutan key403.
+- Enam proses PHP bersamaan: nonce/quota masing-masing satu pemenang; replay setelah restart ditolak.
+- TestDB read-back: machine principals0, synthetic remaining0.
+- Default enabled=false dan loopback_http=false.
+- Tidak full suite, browser UAT, build frontend atau production test.
+- Tidak ada frontend berubah.
+- Review dan semua child pekerjaan gateway sudah selesai.
+
+File tes:
+- tests/Feature/AgentOfficeGatewayTest.php
+- tests/Feature/AgentOfficeContractTest.php
+- tests/Feature/AgentOfficeBoundaryTest.php
+- tests/Feature/AgentOfficeProvisionTest.php
+- tests/agent-office-state-check.py
+- tests/agent-office-http-check.php
+- tests/fixtures/agent_office_state.php
+- tests/fixtures/agent_office_router.php
+
+Catatan tes: gunakan GET body kosong dan Accept eksplisit. Laravel getJson() membawa body [] yang memang harus ditolak gateway.
+
+BATAS YANG BELUM SELESAI
+
+- Admin UI allowlist dengan reauthentication/MFA.
+- Proxy resmi dan enforcement webserver untuk raw header ambiguity.
+- ACL/private filesystem deployment.
+- Signer/konektor backend Office.
+- Break-glass saat registry rusak.
+- Metrics, assessment, operasi bisnis, ACC dan receipt.
+- Aktivasi runtime/production.
+
+Jangan menyebut gateway production-ready atau seluruh Gate A lulus.
+
+YANG PERLU KAMU LAKUKAN
+
+1. Periksa git status/diff terbaru dan checkpoint Modul 13.
+2. Pertahankan file gateway, migration, dependency dan registrasi route ketika mengerjakan fitur lain.
+3. Jika tugasmu menyentuh bootstrap, auth, Composer, Report, test DB atau migration, rekonsiliasi perubahan sebelum edit. Laporkan konflik, jangan overwrite.
+4. Koordinasikan satu pemilik tes DB. Jangan menjalankan RefreshDatabase bersamaan atau mengarahkannya ke runtime.
+5. Lanjutkan tugas ActStation milikmu tanpa memperluas scope gateway.
+6. Balas ringkas: perubahan gateway sudah dikenali, konflik yang ditemukan dan file beririsan dengan pekerjaanmu.
+
+Tidak deploy, migrasi runtime, aktivasi gateway, membuat credential nyata, mengirim email/Telegram, commit atau push berdasarkan pemberitahuan ini.
+
+
+#### phasee 
+
+Lanjutkan perbaikan invite roster ActStation di C:\laragon\www\ActStation.
+
+URL: http://localhost:7000/invite/VGF6IOe99Q7lF2uf0KuNgYglW6nWrfdcRm56rYstpXdFRaz5
+Akun: accout.farming2nd@gmail.com
+
+Kebutuhan:
+Akun sudah masuk roster tim target. Halaman undangan cukup tampilkan notifikasi “Anda sudah terdaftar pada roster tim ini.” dan tombol kembali ke panel. Jangan tampilkan form pendidikan, biodata, atau consent. Replay POST tidak boleh mengubah data atau memakai kuota lagi. Anggota komunitas yang belum masuk roster tim target tetap boleh menerima undangan.
+
+Temuan:
+- resources/views/public/invite.blade.php:65–76: cabang $alreadyJoined masih menampilkan form pendidikan untuk NISN/NIM.
+- app/Modules/Community/Services/InvitationService.php:385–390: cabang alreadyJoined masih memanggil saveEducationDetail() bila education_detail dikirim.
+- Pemeriksaan browser sebelumnya masih guest, belum memverifikasi akun tersebut setelah login. Jangan klaim akun sudah diuji.
+
+Perubahan yang sudah diterapkan:
+Hanya tests/Feature/RegistrationDraftInvitationTest.php:
+- Tes “saved academic member records education detail without repeating identity or consuming twice” sekarang mengharapkan notifikasi roster tanpa input education_detail, consent, birth_place.
+- Ekspektasi replay POST diubah: education_detail tetap “Detail Institusi”, bukan “Detail Diperbarui”.
+
+Verifikasi:
+DB_DATABASE=db_actstation_test php artisan test --compact tests/Feature/RegistrationDraftInvitationTest.php --filter='saved academic member records education detail'
+Hasil RED: 2 tes gagal karena form education_detail masih muncul.
+Setelah itu ekspektasi replay diperbarui, belum dijalankan ulang.
+Kode produksi BELUM diubah.
+
+Lanjutkan:
+1. Baca ulang file dan git status; banyak perubahan pengguna, jangan timpa.
+2. Hapus form pada cabang alreadyJoined; jadikan replay POST tanpa perubahan data.
+3. Jalankan tes regresi dan seluruh RegistrationDraftInvitationTest.php, lalu Pint sesuai AGENTS.md.
+4. Laporkan hasil nyata. Jangan ubah akun, roster, atau kirim email nyata untuk pengujian.

@@ -77,6 +77,31 @@ class EventRegistrationReturn
         return route('panel.community-events.create', $params);
     }
 
+    public function publicDestinationFromIntended(Request $request): ?string
+    {
+        $intended = $request->session()->get('url.intended');
+        $pattern = str_replace('EVENT_SLUG', '([^/?#]+)', preg_quote(route('panel.community-events.create', ['slug' => 'EVENT_SLUG']), '~'));
+        if (! is_string($intended) || ! preg_match('~^'.$pattern.'(?:\?([^#]*))?$~D', $intended, $matches)) {
+            return null;
+        }
+
+        $event = Event::query()->where('slug', rawurldecode($matches[1]))
+            ->where('status', 'published')->where('registration_open', true)->first();
+        if (! $event) {
+            return null;
+        }
+
+        parse_str($matches[2] ?? '', $query);
+        $categoryId = $query['event_category_id'] ?? null;
+        $params = ['slug' => $event->slug];
+        if (is_string($categoryId) && ctype_digit($categoryId) && $event->categories()->whereKey($categoryId)->exists()) {
+            $params['event_category_id'] = (int) $categoryId;
+        }
+        $request->session()->forget('url.intended');
+
+        return route('events.register', $params);
+    }
+
     public function clear(Request $request): void
     {
         $request->session()->forget(self::SESSION_KEY);

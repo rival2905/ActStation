@@ -7,6 +7,7 @@ namespace App\Modules\Event\Http\Controllers\Public;
 use App\Http\Controllers\Controller;
 use App\Modules\Community\Models\Document;
 use App\Modules\Event\Models\Event;
+use App\Modules\Event\Services\AthleteEventWorkspace;
 use App\Modules\Event\Services\EventVenueService;
 use App\Modules\MasterData\Models\SportCategory;
 use Illuminate\Http\RedirectResponse;
@@ -115,6 +116,9 @@ class PublicEventController extends Controller
             ->where('slug', $slug)
             ->whereIn('status', ['published', 'ongoing', 'completed'])
             ->with([
+                'categories' => fn ($q) => $q->withCount([
+                    'participants as occupied_slots_count' => fn ($participants) => $participants->occupyingSlot(),
+                ]),
                 'categories.participants' => fn ($q) => $q->whereIn('status', ['confirmed', 'registered']),
                 'user',
                 'sportCategory',
@@ -124,7 +128,11 @@ class PublicEventController extends Controller
 
         $eventVenues = DB::table('venues')->whereIn('id', app(EventVenueService::class)->venueIds($event))->orderBy('name')->get(['id', 'name', 'address']);
 
-        return view('public.events.show', compact('event', 'eventVenues'));
+        $athleteSummary = auth()->user()?->is_active
+            ? app(AthleteEventWorkspace::class)->actionSummary((int) auth()->id())
+            : ['event_ids' => [], 'action_event_ids' => []];
+
+        return view('public.events.show', compact('event', 'eventVenues', 'athleteSummary'));
     }
 
     public function downloadDocument(string $slug, Document $document): StreamedResponse|RedirectResponse

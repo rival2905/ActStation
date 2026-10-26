@@ -2,8 +2,16 @@
 
 declare(strict_types=1);
 
+use App\Modules\Settings\Http\Controllers\AgentOfficeSecurityController;
 use App\Modules\Settings\Http\Controllers\SettingsController;
 use Illuminate\Support\Facades\Route;
+
+Route::prefix('settings/agent-office')->name('settings.agent-office')->middleware('permission:setting.agent-office-security')->group(function (): void {
+    Route::get('', [AgentOfficeSecurityController::class, 'index']);
+    Route::post('reauth', [AgentOfficeSecurityController::class, 'reauthenticate'])->block()->name('.reauth');
+    Route::put('', [AgentOfficeSecurityController::class, 'update'])->block()->name('.update');
+    Route::post('reenable', [AgentOfficeSecurityController::class, 'reenable'])->block()->name('.reenable');
+});
 
 Route::get('settings', [SettingsController::class, 'general'])
     ->middleware('permission:setting.view')

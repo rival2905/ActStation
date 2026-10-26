@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Modules\Community\Models\Document;
 use App\Modules\Event\Exceptions\RosterValidationException;
 use App\Modules\Event\Models\Event;
+use App\Modules\Event\Models\EventCategory;
 use App\Modules\Event\Models\EventParticipant;
 use App\Modules\Event\Models\RegistrationDraft;
 use App\Modules\Event\Services\EventCommitteeAccess;
@@ -252,156 +253,178 @@ class OrganizerTeamController extends Controller
     {
         $this->authorizeOrganizer($event);
         $this->authorizeParticipant($event, $participant);
-        $participant->loadMissing(['category', 'members']);
 
-        $category = $participant->category;
-        abort_unless($category, 422, 'Kategori peserta tidak ditemukan.');
+        return DB::transaction(function () use ($event, $participant): RedirectResponse {
+            $event = Event::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
+            EventCategory::query()->whereKey($participant->event_category_id)->lockForUpdate()->firstOrFail();
+            $participant = EventParticipant::query()->whereKey($participant->id)->lockForUpdate()->firstOrFail();
+            $participant->loadMissing(['category', 'members']);
 
-        if (! in_array($participant->status, ['registered', 'revision_needed', 'verified'], true)) {
-            return back()->with('error', 'Status pendaftaran ini tidak dapat diverifikasi.');
-        }
-        $hasFee = (float) $category->registration_fee > 0;
-        $flow = (string) $category->registration_flow;
+            $category = $participant->category;
+            abort_unless($category, 422, 'Kategori peserta tidak ditemukan.');
 
-        if ($participant->members->isEmpty()) {
-            return back()->with('error', 'Roster peserta belum tersedia dan tidak dapat diverifikasi.');
-        }
+            if (! in_array($participant->status, ['registered', 'revision_needed', 'verified'], true)
+                && ! ($category->registration_flow === 'screening_first' && $participant->status === 'waiting_list')) {
+                return back()->with('error', 'Status pendaftaran ini tidak dapat diverifikasi.');
+            }
+            $hasFee = (float) $category->registration_fee > 0;
+            $flow = (string) $category->registration_flow;
 
-        try {
-            $this->rosterValidator->validate($participant, $participant->members->map(fn ($member): array => [
-                'user_id' => (int) $member->user_id,
-                'jersey_number' => $member->jersey_number,
-                'is_captain' => (bool) $member->is_captain,
-                'position' => $member->position,
-                'team_role' => $member->team_role,
-            ])->all());
-        } catch (RosterValidationException $exception) {
-            return back()->withErrors($exception->errors())->with('error', 'Roster tidak lolos validasi kategori.');
-        }
-
-        $personnelEvent = clone $event;
-        $personnelEvent->personnel_requirements = $participant->personnel_requirements ?? [];
-        app(TeamPersonnelRoster::class)->validate($personnelEvent, (int) $participant->community_id, $participant->personnel()->get(['user_id', 'role_id'])->toArray());
-
-        $requiredDocuments = $category->required_documents ?? [];
-        if (! empty($requiredDocuments)) {
-            $documentTypes = DocumentType::query()->whereIn('code', $requiredDocuments)->get()->keyBy('code');
-
-            foreach ($requiredDocuments as $docCode) {
-                if (! $documentTypes->has($docCode)) {
-                    return back()->with('error', "Jenis dokumen [{$docCode}] tidak valid atau tidak terdaftar di sistem.");
-                }
+            if ($participant->members->isEmpty()) {
+                return back()->with('error', 'Roster peserta belum tersedia dan tidak dapat diverifikasi.');
             }
 
-            $actualSubtype = '';
-            if ($participant->community_id) {
-                $communitySummary = $this->communityLookup->find((int) $participant->community_id);
-                $actualSubtype = (string) ($communitySummary?->subtype ?? '');
+            try {
+                $this->rosterValidator->validate($participant, $participant->members->map(fn ($member): array => [
+                    'user_id' => (int) $member->user_id,
+                    'jersey_number' => $member->jersey_number,
+                    'is_captain' => (bool) $member->is_captain,
+                    'position' => $member->position,
+                    'team_role' => $member->team_role,
+                ])->all());
+            } catch (RosterValidationException $exception) {
+                return back()->withErrors($exception->errors())->with('error', 'Roster tidak lolos validasi kategori.');
             }
 
-            $applicableRequiredDocs = [];
-            foreach ($requiredDocuments as $docCode) {
-                $docMeta = $documentTypes->get($docCode);
-                if (! in_array($docMeta->scope, ['team', 'athlete'], true)) {
-                    return back()->with('error', "Scope dokumen [{$docCode}] tidak valid.");
-                }
+            $personnelEvent = clone $event;
+            $personnelEvent->personnel_requirements = $participant->personnel_requirements ?? [];
+            app(TeamPersonnelRoster::class)->validate($personnelEvent, (int) $participant->community_id, $participant->personnel()->get(['user_id', 'role_id'])->toArray());
 
-                if (empty($actualSubtype) || $docMeta->appliesToEntity($actualSubtype)) {
-                    $applicableRequiredDocs[] = $docCode;
-                }
-            }
+            $requiredDocuments = $category->required_documents ?? [];
+            if (! empty($requiredDocuments)) {
+                $documentTypes = DocumentType::query()->whereIn('code', $requiredDocuments)->get()->keyBy('code');
 
-            if (! empty($applicableRequiredDocs)) {
-                $memberIds = $participant->members->pluck('user_id')->map(fn ($id): int => (int) $id)->all();
-
-                $athleteDocuments = Document::query()
-                    ->where('documentable_type', User::class)
-                    ->whereIn('documentable_id', $memberIds)
-                    ->whereIn('category', $applicableRequiredDocs)
-                    ->where('status', 'verified')
-                    ->get()
-                    ->filter(fn (Document $d) => ! empty($d->file_path) && (Storage::disk('local')->exists($d->file_path) || Storage::disk('public')->exists($d->file_path)));
-
-                $teamDocuments = Document::query()
-                    ->where('documentable_type', EventParticipant::class)
-                    ->where('documentable_id', $participant->id)
-                    ->whereIn('category', $applicableRequiredDocs)
-                    ->where('status', 'verified')
-                    ->get()
-                    ->filter(fn (Document $d) => ! empty($d->file_path) && (Storage::disk('local')->exists($d->file_path) || Storage::disk('public')->exists($d->file_path)));
-
-                foreach ($applicableRequiredDocs as $documentCode) {
-                    $docMeta = $documentTypes->get($documentCode);
-                    if ($docMeta->scope === 'team') {
-                        if (! $teamDocuments->contains('category', $documentCode)) {
-                            return back()->with('error', "Dokumen tim [{$documentCode}] belum diverifikasi atau berkas fisik tidak ditemukan.");
-                        }
-
-                        continue;
-                    }
-
-                    if ($docMeta->scope === 'athlete') {
-                        $coveredMembers = $athleteDocuments->where('category', $documentCode)->pluck('documentable_id')->map(fn ($id): int => (int) $id);
-                        if ($coveredMembers->unique()->count() !== count(array_unique($memberIds))) {
-                            return back()->with('error', "Dokumen atlet [{$documentCode}] belum diverifikasi untuk seluruh roster.");
-                        }
-
-                        continue;
+                foreach ($requiredDocuments as $docCode) {
+                    if (! $documentTypes->has($docCode)) {
+                        return back()->with('error', "Jenis dokumen [{$docCode}] tidak valid atau tidak terdaftar di sistem.");
                     }
                 }
+
+                $actualSubtype = '';
+                if ($participant->community_id) {
+                    $communitySummary = $this->communityLookup->find((int) $participant->community_id);
+                    $actualSubtype = (string) ($communitySummary?->subtype ?? '');
+                }
+
+                $applicableRequiredDocs = [];
+                foreach ($requiredDocuments as $docCode) {
+                    $docMeta = $documentTypes->get($docCode);
+                    if (! in_array($docMeta->scope, ['team', 'athlete'], true)) {
+                        return back()->with('error', "Scope dokumen [{$docCode}] tidak valid.");
+                    }
+
+                    if (empty($actualSubtype) || $docMeta->appliesToEntity($actualSubtype)) {
+                        $applicableRequiredDocs[] = $docCode;
+                    }
+                }
+
+                if (! empty($applicableRequiredDocs)) {
+                    $memberIds = $participant->members->pluck('user_id')->map(fn ($id): int => (int) $id)->all();
+
+                    $athleteDocuments = Document::query()
+                        ->where('documentable_type', User::class)
+                        ->whereIn('documentable_id', $memberIds)
+                        ->whereIn('category', $applicableRequiredDocs)
+                        ->where('status', 'verified')
+                        ->get()
+                        ->filter(fn (Document $d) => ! empty($d->file_path) && (Storage::disk('local')->exists($d->file_path) || Storage::disk('public')->exists($d->file_path)));
+
+                    $teamDocuments = Document::query()
+                        ->where('documentable_type', EventParticipant::class)
+                        ->where('documentable_id', $participant->id)
+                        ->whereIn('category', $applicableRequiredDocs)
+                        ->where('status', 'verified')
+                        ->get()
+                        ->filter(fn (Document $d) => ! empty($d->file_path) && (Storage::disk('local')->exists($d->file_path) || Storage::disk('public')->exists($d->file_path)));
+
+                    foreach ($applicableRequiredDocs as $documentCode) {
+                        $docMeta = $documentTypes->get($documentCode);
+                        if ($docMeta->scope === 'team') {
+                            if (! $teamDocuments->contains('category', $documentCode)) {
+                                return back()->with('error', "Dokumen tim [{$documentCode}] belum diverifikasi atau berkas fisik tidak ditemukan.");
+                            }
+
+                            continue;
+                        }
+
+                        if ($docMeta->scope === 'athlete') {
+                            $coveredMembers = $athleteDocuments->where('category', $documentCode)->pluck('documentable_id')->map(fn ($id): int => (int) $id);
+                            if ($coveredMembers->unique()->count() !== count(array_unique($memberIds))) {
+                                return back()->with('error', "Dokumen atlet [{$documentCode}] belum diverifikasi untuk seluruh roster.");
+                            }
+
+                            continue;
+                        }
+                    }
+                }
             }
-        }
 
-        if ($flow === 'screening_first' && $hasFee && in_array($participant->status, ['registered', 'revision_needed'], true)) {
-            $hours = (int) ($category->payment_time_limit_hours ?? 24);
-            $deadline = now()->addHours($hours);
-            if ($event->starts_at !== null && $deadline->greaterThan($event->starts_at)) {
-                $deadline = $event->starts_at->copy();
+            if ($flow === 'screening_first') {
+                $categoryFull = $category->max_teams !== null && $category->participants()->occupyingSlot()->whereKeyNot($participant->id)->count() >= $category->max_teams;
+                $eventFull = $event->max_participants !== null && $event->participants()->occupyingSlot()->whereKeyNot($participant->id)->count() >= $event->max_participants;
+                if ($categoryFull || $eventFull) {
+                    if ($category->enable_waiting_list) {
+                        $participant->update(['status' => 'waiting_list', 'waiting_list_order' => (int) $category->participants()->where('status', 'waiting_list')->max('waiting_list_order') + 1]);
+
+                        return back()->with('success', 'Berkas lolos verifikasi, tetapi kuota penuh. Tim masuk daftar tunggu tanpa tagihan.');
+                    }
+
+                    return back()->with('error', 'Kuota peserta lolos verifikasi sudah penuh. Pengajuan belum mengambil slot.');
+                }
             }
 
-            if ($deadline->lessThanOrEqualTo(now())) {
-                return back()->with('error', 'Tenggat pembayaran sudah melewati waktu mulai event.');
+            if ($flow === 'screening_first' && $hasFee && in_array($participant->status, ['registered', 'revision_needed', 'waiting_list'], true)) {
+                $hours = (int) ($category->payment_time_limit_hours ?? 24);
+                $deadline = now()->addHours($hours);
+                if ($event->starts_at !== null && $deadline->greaterThan($event->starts_at)) {
+                    $deadline = $event->starts_at->copy();
+                }
+
+                if ($deadline->lessThanOrEqualTo(now())) {
+                    return back()->with('error', 'Tenggat pembayaran sudah melewati waktu mulai event.');
+                }
+
+                DB::transaction(function () use ($participant, $category, $deadline): void {
+                    $participant->update([
+                        'status' => 'pending_payment',
+                        'payment_deadline_at' => $deadline,
+                        'waiting_list_order' => null,
+                        'revision_notes' => null,
+                    ]);
+
+                    Transaction::firstOrCreate(
+                        ['payable_type' => 'event_participant', 'payable_id' => $participant->id],
+                        [
+                            'user_id' => $participant->user_id,
+                            'invoice_number' => 'INV-REG-'.strtoupper(Str::random(8)),
+                            'type' => 'registration',
+                            'amount' => $category->registration_fee,
+                            'fee' => 0.00,
+                            'total' => $category->registration_fee,
+                            'status' => 'pending',
+                            'expired_at' => $deadline,
+                        ]
+                    );
+                });
+
+                return back()->with('success', "Berkas tim [{$participant->team_name}] lolos verifikasi. Invoice berlaku {$hours} jam dan tidak melewati waktu mulai event.");
             }
 
-            DB::transaction(function () use ($participant, $category, $deadline): void {
-                $participant->update([
-                    'status' => 'pending_payment',
-                    'payment_deadline_at' => $deadline,
-                    'revision_notes' => null,
-                ]);
-
-                Transaction::firstOrCreate(
-                    ['payable_type' => 'event_participant', 'payable_id' => $participant->id],
-                    [
-                        'user_id' => $participant->user_id,
-                        'invoice_number' => 'INV-REG-'.strtoupper(Str::random(8)),
-                        'type' => 'registration',
-                        'amount' => $category->registration_fee,
-                        'fee' => 0.00,
-                        'total' => $category->registration_fee,
-                        'status' => 'pending',
-                        'expired_at' => $deadline,
-                    ]
-                );
-            });
-
-            return back()->with('success', "Berkas tim [{$participant->team_name}] lolos verifikasi. Invoice berlaku {$hours} jam dan tidak melewati waktu mulai event.");
-        }
-
-        if ($hasFee) {
-            $paid = Transaction::query()
-                ->where('payable_type', 'event_participant')
-                ->where('payable_id', $participant->id)
-                ->where('status', 'paid')
-                ->exists();
-            if (! $paid) {
-                return back()->with('error', 'Pendaftaran berbayar belum dapat dikonfirmasi sebelum pembayaran lunas.');
+            if ($hasFee) {
+                $paid = Transaction::query()
+                    ->where('payable_type', 'event_participant')
+                    ->where('payable_id', $participant->id)
+                    ->where('status', 'paid')
+                    ->exists();
+                if (! $paid) {
+                    return back()->with('error', 'Pendaftaran berbayar belum dapat dikonfirmasi sebelum pembayaran lunas.');
+                }
             }
-        }
 
-        $participant->update(['status' => 'confirmed', 'revision_notes' => null]);
+            $participant->update(['status' => 'confirmed', 'revision_notes' => null, 'waiting_list_order' => null]);
 
-        return back()->with('success', "Tim [{$participant->team_name}] berhasil diverifikasi dan roster resmi terkunci (Roster Lock).");
+            return back()->with('success', "Tim [{$participant->team_name}] berhasil diverifikasi dan roster resmi terkunci (Roster Lock).");
+        });
     }
 
     public function requestRevision(Request $request, Event $event, EventParticipant $participant): RedirectResponse
@@ -523,7 +546,7 @@ class OrganizerTeamController extends Controller
             $participant->delete();
 
             // Jika kategori memiliki waiting list dan kuota tim terbuka, promosikan antrean #1
-            if ($category && $category->enable_waiting_list && $category->max_teams !== null) {
+            if ($category && $category->registration_flow !== 'screening_first' && $category->enable_waiting_list && $category->max_teams !== null) {
                 $activeCount = $category->participants()
                     ->whereIn('status', ['registered', 'revision_needed', 'verified', 'pending_payment', 'confirmed'])
                     ->count();

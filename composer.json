@@ -8,7 +8,9 @@
     "require": {
         "php": "^8.3",
         "laravel/framework": "^13.17",
+        "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
+        "pragmarx/google2fa": "^9.0",
         "spatie/laravel-permission": "6.25.0",
         "symfony/html-sanitizer": "7.4.20"
     },

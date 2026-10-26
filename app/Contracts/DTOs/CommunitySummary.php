@@ -19,5 +19,6 @@ final readonly class CommunitySummary
         public ?string $school_level = null,
         public ?float $latitude = null,
         public ?float $longitude = null,
+        public ?string $logo = null,
     ) {}
 }

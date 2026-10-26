@@ -15,6 +15,7 @@ use App\Events\SchoolAthleteActivated;
 use App\Models\User;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventCategory;
+use App\Modules\Event\Models\EventParticipant;
 use App\Modules\Event\Models\RegistrationDraft;
 use App\Modules\Event\Models\RegistrationDraftCandidate;
 use App\Modules\MasterData\Models\DocumentType;
@@ -478,6 +479,78 @@ class RegistrationDraftService implements RegistrationDraftProvider
         Storage::disk('local')->deleteDirectory("registration_drafts/{$draft->id}");
     }
 
+    public function canWithdraw(EventParticipant $participant, User $user): bool
+    {
+        return $user->is_active
+            && $participant->community_id !== null
+            && $this->communityLookup->find((int) $participant->community_id)?->is_active
+            && DB::table('community_officials')->where('community_id', $participant->community_id)
+                ->where('user_id', $user->id)->where('status', 'active')->whereNull('ended_at')->exists()
+            && $participant->category?->registration_flow === 'screening_first'
+            && in_array($participant->status, ['registered', 'revision_needed'], true)
+            && $participant->payment_verified_at === null
+            && ! DB::table('transactions')->where('payable_type', 'event_participant')->where('payable_id', $participant->id)->exists()
+            && ! $participant->poolTeams()->exists()
+            && ! $participant->homeGames()->exists()
+            && ! $participant->awayGames()->exists();
+    }
+
+    public function withdraw(EventParticipant $participant, User $user): RegistrationDraft
+    {
+        $draftId = (string) Str::uuid();
+        try {
+            return DB::transaction(function () use ($participant, $user, $draftId): RegistrationDraft {
+                Event::query()->whereKey($participant->event_id)->lockForUpdate()->firstOrFail();
+                EventCategory::query()->whereKey($participant->event_category_id)->lockForUpdate()->firstOrFail();
+                $participant = EventParticipant::query()->whereKey($participant->id)->lockForUpdate()->firstOrFail();
+                $official = DB::table('community_officials')->where('community_id', $participant->community_id)
+                    ->where('user_id', $user->id)->where('status', 'active')->whereNull('ended_at')->lockForUpdate()->first();
+                abort_unless($official && $this->communityLookup->find((int) $participant->community_id)?->is_active && $user->is_active, 403);
+                abort_unless($this->canWithdraw($participant, $user), 409, 'Pengajuan sudah lolos verifikasi, memiliki pembayaran, atau terikat kompetisi; hubungi panitia.');
+
+                $payload = $participant->only(['team_name', 'contact_person', 'contact_phone', 'notes', 'event_category_id']);
+                $payload['revision_notes'] = $participant->revision_notes;
+                $payload['members'] = $participant->members()->get(['user_id', 'jersey_number', 'is_captain', 'position', 'team_role'])->toArray();
+                $payload['personnel'] = $participant->personnel()->get(['user_id', 'role_id'])->toArray();
+                $files = ['team_documents' => [], 'athlete_documents' => [], 'personnel_licenses' => []];
+                $stage = function (string $path, string $field) use ($draftId): array {
+                    $disk = Storage::disk('local');
+                    $target = "registration_drafts/{$draftId}/restored/".Str::uuid().'.'.pathinfo($path, PATHINFO_EXTENSION);
+                    if (! $disk->exists($path) || ! $disk->copy($path, $target)) {
+                        throw ValidationException::withMessages(['withdraw' => 'Berkas pengajuan tidak dapat dipulihkan. Hubungi panitia.']);
+                    }
+
+                    return ['name' => basename($path), 'size' => $disk->size($target), 'mime' => $disk->mimeType($target), 'staged_path' => $target, 'field_key' => $field];
+                };
+                foreach (DB::table('documents')->where('documentable_type', EventParticipant::class)->where('documentable_id', $participant->id)->get() as $document) {
+                    $files['team_documents'][$document->category] = $stage($document->file_path, 'team_documents.'.$document->category);
+                    $files['team_documents'][$document->category]['status'] = $document->status;
+                    $files['team_documents'][$document->category]['notes'] = $document->notes;
+                }
+                foreach ($participant->personnel()->whereNotNull('license_path')->get() as $person) {
+                    $files['personnel_licenses'][$person->user_id][$person->role_id] = $stage($person->license_path, "personnel_licenses.{$person->user_id}.{$person->role_id}");
+                }
+                $draft = RegistrationDraft::create([
+                    'id' => $draftId, 'user_id' => $user->id, 'community_id' => $participant->community_id,
+                    'event_id' => $participant->event_id, 'event_category_id' => $participant->event_category_id,
+                    'payload' => $payload, 'files' => $files, 'revision' => 1, 'expires_at' => now()->addDays(7),
+                ]);
+                // Keep submitted drafts tombstoned and expired; never revive old invitations or count them as editable drafts.
+                RegistrationDraft::query()->where('participant_id', $participant->id)->update(['expires_at' => now()]);
+                $snapshot = app(EventRegistrationEmailService::class)->createSnapshot($participant, 'withdrawn');
+                $participant->recordActivity('deleted');
+                $participant->deleteQuietly();
+                DB::table('documents')->where('documentable_type', EventParticipant::class)->where('documentable_id', $participant->id)->delete();
+                DB::afterCommit(fn () => app(EventRegistrationEmailService::class)->sendNotification($snapshot));
+
+                return $draft;
+            });
+        } catch (\Throwable $exception) {
+            Storage::disk('local')->deleteDirectory("registration_drafts/{$draftId}");
+            throw $exception;
+        }
+    }
+
     public function cleanStagedFiles(RegistrationDraft $draft): void
     {
         Storage::disk('local')->deleteDirectory("registration_drafts/{$draft->id}");
@@ -504,6 +577,8 @@ class RegistrationDraftService implements RegistrationDraftProvider
                     'size' => $meta['size'] ?? null,
                     'mime' => $meta['mime'] ?? null,
                     'field_key' => $meta['field_key'] ?? "team_documents.{$code}",
+                    'status' => $meta['status'] ?? null,
+                    'notes' => $meta['notes'] ?? null,
                 ];
             }
         }
@@ -552,6 +627,9 @@ class RegistrationDraftService implements RegistrationDraftProvider
         $teamUploads = $request->file('team_documents') ?? [];
         if (! empty($stagedFiles['team_documents']) && is_array($stagedFiles['team_documents'])) {
             foreach ($stagedFiles['team_documents'] as $code => $meta) {
+                if (($meta['status'] ?? null) === 'rejected' && ! isset($teamUploads[$code])) {
+                    throw ValidationException::withMessages(['team_documents.'.$code => 'Dokumen tim ditolak. Unggah berkas pengganti sebelum mengirim ulang.']);
+                }
                 if (! isset($teamUploads[$code])) {
                     $stagedPath = $meta['staged_path'] ?? null;
                     if ($stagedPath && Storage::disk('local')->exists($stagedPath)) {

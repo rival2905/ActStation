@@ -9,8 +9,13 @@ use App\Contracts\TeamPersonnelProvider;
 use App\Models\User;
 use App\Modules\Event\Models\DraftPersonnelInvitation;
 use App\Modules\Event\Models\RegistrationDraft;
+use Illuminate\Auth\Events\Registered;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Spatie\Permission\Models\Role;
 
 class DraftPersonnelInvitations
 {
@@ -56,7 +61,37 @@ class DraftPersonnelInvitations
         }
         $selected = collect($draft->payload['personnel'] ?? [])->filter(fn ($row) => $user && (int) $row['user_id'] === (int) $user->id)->pluck('role_id')->all();
 
-        return ['draft' => $draft, 'roles' => $roles, 'statuses' => $statuses, 'selectedRoles' => $selected, 'token' => $token];
+        return ['draft' => $draft, 'community' => app(CommunityLookup::class)->find((int) $draft->community_id), 'roles' => $roles, 'statuses' => $statuses, 'selectedRoles' => $selected, 'token' => $token];
+    }
+
+    public function accountExists(string $email): bool
+    {
+        return User::where('email', $email)->exists();
+    }
+
+    public function register(string $token, array $data): array
+    {
+        $invite = $this->find($token);
+        try {
+            return DB::transaction(function () use ($invite, $token, $data): array {
+                $draft = RegistrationDraft::whereKey($invite->registration_draft_id)->lockForUpdate()->firstOrFail();
+                $this->find($token);
+                abort_unless(collect($this->allowedRoles($draft))->contains('id', (int) $data['role_id']), 422, 'Peran tidak diizinkan untuk event ini.');
+                $user = User::create([
+                    'name' => $data['name'], 'email' => $data['email'],
+                    'phone_number' => $data['phone_number'], 'phone_normalized' => $data['phone_normalized'],
+                    'password' => Hash::make($data['password']), 'is_active' => true, 'email_verified_at' => null,
+                ]);
+                Role::firstOrCreate(['name' => 'member', 'guard_name' => 'web'], ['panel_access' => 'external']);
+                $user->assignRole('member');
+                $status = $this->join($token, $user, (int) $data['role_id']);
+                DB::afterCommit(static fn () => event(new Registered($user)));
+
+                return ['user' => $user, 'status' => $status];
+            });
+        } catch (UniqueConstraintViolationException) {
+            throw ValidationException::withMessages(['email' => 'Email atau nomor WhatsApp sudah terdaftar. Masuk dengan akun Anda atau periksa data kembali.']);
+        }
     }
 
     public function join(string $token, User $user, int $roleId): string

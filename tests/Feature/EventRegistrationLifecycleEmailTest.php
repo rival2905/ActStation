@@ -5,15 +5,22 @@ declare(strict_types=1);
 use App\Contracts\EmailDelivery;
 use App\Contracts\Events\PaymentSucceeded;
 use App\Models\User;
+use App\Modules\Communication\Services\CommunicationEmailDelivery;
+use App\Modules\Community\Models\Community;
+use App\Modules\Community\Models\CommunityOfficial;
 use App\Modules\Event\Exceptions\RegistrationGuardException;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventCategory;
 use App\Modules\Event\Models\EventParticipant;
+use App\Modules\Event\Services\EventRegistrationEmailService;
+use App\Modules\Event\Services\RegistrationDraftService;
 use App\Modules\Event\Services\RegistrationGuard;
 use App\Modules\Payment\Models\Transaction;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
 
@@ -88,6 +95,76 @@ beforeEach(function (): void {
         'payment_start' => Carbon::now()->subDays(1),
         'payment_end' => Carbon::now()->addDays(5),
     ]);
+});
+
+test('lifecycle HTML owns one greeting and only button plus fallback URL', function (string $transition, string $status): void {
+    config([
+        'services.n8n.email_enabled' => true,
+        'services.n8n.webhook_url' => 'https://email.example.test/webhook/actstation-email',
+        'services.n8n.webhook_secret' => 'test-only-secret',
+        'services.n8n.allowed_host' => 'email.example.test',
+    ]);
+    Http::preventStrayRequests();
+    Http::fake(['https://email.example.test/webhook/actstation-email' => Http::response(['success' => true])]);
+    app()->instance(EmailDelivery::class, app(CommunicationEmailDelivery::class));
+    DB::transaction(function () use ($transition, $status): void {
+        app(EventRegistrationEmailService::class)->sendNotification([
+            'transition' => $transition, 'status' => $status, 'participant_id' => 123,
+            'user_id' => $this->registrant->id, 'recipient_email' => $this->registrant->email,
+            'recipient_name' => 'Demo & Peserta', 'team_name' => 'Tim <Putra>',
+            'event_title' => 'Kejuaraan Multicabor', 'event_slug' => $this->event->slug,
+            'category_name' => 'Terbuka', 'revision_notes' => 'Berkas <script>alert(1)</script> perlu revisi.',
+            'fee' => '1500000', 'deadline' => '25 Oct 2026 12:00', 'invoice_number' => 'INV-DEMO',
+        ]);
+    });
+    Http::assertSentCount(1);
+    Http::assertSent(function (Request $request): bool {
+        $data = $request['data'];
+        $dom = new DOMDocument;
+        @$dom->loadHTML($data['html']);
+        $text = preg_replace('/\s+/', ' ', $dom->textContent);
+        expect(substr_count($text, 'Halo Demo & Peserta,'))->toBe(1);
+        expect($data['body'])->not->toContain('Halo Demo & Peserta,', $data['url']);
+        $links = array_values(array_filter(iterator_to_array($dom->getElementsByTagName('a')), fn ($link) => $link->getAttribute('href') === $data['url']));
+        expect($links)->toHaveCount(2);
+        expect(trim($links[1]->textContent))->toBe($data['url']);
+        expect($dom->getElementsByTagName('script')->length)->toBe(0);
+
+        return true;
+    });
+})->with([
+    ['revision_needed', 'revision_needed'], ['payment_verified', 'confirmed'],
+    ['pending_payment', 'pending_payment'], ['confirmed', 'confirmed'],
+    ['cancelled', 'cancelled'], ['rejected', 'rejected'], ['waiting_list', 'waiting_list'],
+    ['withdrawn', 'registered'], ['deleted', 'cancelled'], ['created', 'registered'],
+    ['created', 'pending_payment'], ['created', 'waiting_list'],
+]);
+
+test('withdrawal sends draft notice only after commit and never on rollback', function (): void {
+    $community = Community::create([
+        'name' => 'Withdrawal Community', 'slug' => 'withdrawal-community',
+        'sport_category_id' => $this->event->sport_category_id, 'status' => 'verified', 'is_active' => true,
+    ]);
+    CommunityOfficial::create([
+        'community_id' => $community->id, 'user_id' => $this->registrant->id,
+        'position' => 'Manager', 'status' => 'active', 'started_at' => today(),
+    ]);
+    $participant = EventParticipant::factory()->create([
+        'event_id' => $this->event->id, 'event_category_id' => $this->category->id,
+        'community_id' => $community->id, 'user_id' => $this->registrant->id, 'status' => 'registered',
+    ]);
+    $this->fakeDelivery->sent = [];
+    $service = app(RegistrationDraftService::class);
+    DB::beginTransaction();
+    $service->withdraw($participant, $this->registrant);
+    expect($this->fakeDelivery->sent)->toBeEmpty();
+    DB::rollBack();
+    expect($participant->fresh()->status)->toBe('registered');
+    expect($this->fakeDelivery->sent)->toBeEmpty();
+    $service->withdraw($participant, $this->registrant);
+    expect($this->fakeDelivery->sent)->toHaveCount(1);
+    expect($this->fakeDelivery->sent[0]['subject'])->toContain('Pengajuan Ditarik ke Draf');
+    expect($this->fakeDelivery->sent[0]['action_url'])->toBe(route('panel.community-events.create', $this->event->slug));
 });
 
 test('creation aftercommit sends email and rollback sends no email', function (): void {

@@ -582,7 +582,7 @@
                 </li>
                 @endcan
 
-                @canany(['setting.view', 'setting.payment', 'setting.email'])
+                @canany(['setting.view', 'setting.payment', 'setting.email', 'setting.agent-office-security'])
                 <li class="nav-item">
                     <div class="row navbar-vertical-label-wrapper mt-3 mb-2">
                         <div class="col-auto navbar-vertical-label">Pengaturan</div>
@@ -590,6 +590,19 @@
                     </div>
                 </li>
                 @endcanany
+
+                @if(in_array((int) auth()->id(), config('agent_office.operator_ids', []), true))
+                @can('setting.agent-office-security')
+                <li class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('admin.settings.agent-office*') ? 'active' : '' }}" href="{{ route('admin.settings.agent-office') }}">
+                        <div class="d-flex align-items-center">
+                            <span class="nav-link-icon"><span class="fas fa-shield-alt"></span></span>
+                            <span class="nav-link-text ps-1">Keamanan Gateway Office</span>
+                        </div>
+                    </a>
+                </li>
+                @endcan
+                @endif
 
                 @can('setting.view')
                 <li class="nav-item">

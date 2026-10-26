@@ -7,9 +7,11 @@ use App\Modules\Community\Models\Community;
 use App\Modules\Community\Models\CommunityOfficial;
 use App\Modules\Community\Models\SchoolExtracurricular;
 use App\Modules\Community\Models\SchoolExtracurricularAppointment;
+use App\Modules\Community\Models\SchoolRegistration;
 use App\Modules\Community\Models\SportsPersonnelRole;
 use App\Modules\MasterData\Models\SportCategory;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Spatie\Permission\Models\Role;
 
@@ -34,6 +36,41 @@ test('outsider cannot open scoped personnel workspace', function (): void {
     $stranger = User::factory()->create(['is_active' => true]);
     $stranger->assignRole('member');
     $this->actingAs($stranger)->get(route('panel.schools.extracurriculars.personnel.index', [$this->school->id, $this->unit->id]))->assertForbidden();
+});
+
+test('personnel invitation renders one greeting and only button plus fallback URL', function (): void {
+    config([
+        'services.n8n.email_enabled' => true,
+        'services.n8n.webhook_url' => 'https://email.example.test/webhook/actstation-email',
+        'services.n8n.webhook_secret' => 'test-only-secret',
+        'services.n8n.allowed_host' => 'email.example.test',
+    ]);
+    Http::fake(['https://email.example.test/webhook/actstation-email' => Http::response(['success' => true])]);
+    SchoolRegistration::create([
+        'community_id' => $this->school->id, 'user_id' => $this->manager->id,
+        'npsn' => '12345678', 'contact_email' => 'school@example.test',
+        'email_hash' => hash('sha256', 'school@example.test'), 'status' => 'approved',
+        'email_verified_at' => now(), 'reviewed_at' => now(),
+    ]);
+    $role = SportsPersonnelRole::firstOrCreate(['code' => 'coach'], ['name' => 'Pelatih', 'is_active' => true, 'sort_order' => 1]);
+    $target = User::factory()->create(['name' => 'Demo & Pelatih', 'is_active' => true]);
+    $this->actingAs($this->manager)->post(route('panel.schools.extracurriculars.personnel.invite', [$this->school->id, $this->unit->id]), [
+        'target_user_id' => $target->id, 'sports_personnel_role_id' => $role->id,
+    ])->assertRedirect()->assertSessionHasNoErrors()->assertSessionHas('invite_url');
+    $inviteUrl = session('invite_url');
+    Http::assertSentCount(1);
+    Http::assertSent(function (Request $request) use ($inviteUrl): bool {
+        $data = $request['data'];
+        expect($data['url'])->toBe($inviteUrl);
+        expect($data['body'])->not->toContain($inviteUrl);
+        $dom = new DOMDocument;
+        @$dom->loadHTML($data['html']);
+        expect(substr_count(preg_replace('/\s+/', ' ', $dom->textContent), 'Halo Demo & Pelatih,'))->toBe(1);
+        $links = array_filter(iterator_to_array($dom->getElementsByTagName('a')), fn ($link) => $link->getAttribute('href') === $inviteUrl);
+        expect($links)->toHaveCount(2);
+
+        return true;
+    });
 });
 
 test('replacement activates after acceptance without school-wide rights', function (): void {

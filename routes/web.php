@@ -27,6 +27,8 @@ Route::prefix('personnel-invitations')->name('personnel-invitations.')->middlewa
     Route::get('{token}', [PersonnelInvitationController::class, 'show'])->name('show');
     Route::get('{token}/login', [PersonnelInvitationController::class, 'login'])->name('login');
     Route::get('{token}/register', [PersonnelInvitationController::class, 'register'])->name('register');
+    Route::post('{token}/check', [PersonnelInvitationController::class, 'check'])->name('check');
+    Route::post('{token}/register', [PersonnelInvitationController::class, 'submit'])->name('submit');
     Route::post('{token}/join', [PersonnelInvitationController::class, 'join'])->middleware('auth:web')->name('join');
 });
 

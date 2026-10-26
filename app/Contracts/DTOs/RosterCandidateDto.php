@@ -20,6 +20,7 @@ final readonly class RosterCandidateDto implements JsonSerializable
         public ?int $age = null,
         public ?string $studentIdentifierType = null,
         public ?string $studentIdentifierValue = null,
+        public ?string $approvalUrl = null,
     ) {}
 
     /** @return array<string, int|string|bool|null> */
@@ -37,6 +38,7 @@ final readonly class RosterCandidateDto implements JsonSerializable
             'age' => $this->age,
             'student_identifier_type' => $this->studentIdentifierType,
             'student_identifier_value' => $this->studentIdentifierValue,
+            'approval_url' => $this->approvalUrl,
         ];
     }
 }

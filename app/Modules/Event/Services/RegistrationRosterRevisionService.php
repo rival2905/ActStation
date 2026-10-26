@@ -68,6 +68,8 @@ class RegistrationRosterRevisionService
 
                 $lockedParticipant->setRelation('category', $lockedCategory);
 
+                abort_if($actor && app(RegistrationDraftService::class)->canWithdraw($lockedParticipant, $actor), 409, 'Kembalikan pengajuan ke draf lalu perbaiki melalui wizard pendaftaran.');
+
                 $this->rosterValidator->validate($lockedParticipant, $members);
                 $selection = $personnel ?? $lockedParticipant->personnel()->get(['user_id', 'role_id'])->toArray();
                 app(TeamPersonnelRoster::class)->sync($lockedParticipant, $selection);

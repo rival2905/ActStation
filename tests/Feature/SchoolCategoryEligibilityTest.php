@@ -169,7 +169,7 @@ test('allowedEntityLabels formats canonical school tokens and legacy school labe
     expect($labels)->not->toContain('Klub')
         ->and($labels)->toContain('SD/MI')
         ->and($labels)->toContain('SMP/MTs')
-        ->and($labels)->toContain('SMA/SMK')
+        ->and($labels)->toContain('SMA/SMK/MA')
         ->and($labels)->toContain('Perguruan Tinggi / Universitas');
 
     $legacyCategory = EventCategory::factory()->create([

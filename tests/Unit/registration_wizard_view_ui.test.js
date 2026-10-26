@@ -1,8 +1,72 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import vm from 'node:vm';
 
 const view = fs.readFileSync('resources/views/panel/events/register.blade.php', 'utf8');
+
+test('roster invitation explains sharing and follow-up without claiming official enrollment', () => {
+    const start = view.indexOf('id="registration-athlete-invitation-guide"');
+    const end = view.indexOf('data-registration-athlete-picker', start);
+    assert.ok(start >= 0 && end > start);
+    const guide = view.slice(start, end);
+    for (const text of ['Salin Link', 'WhatsApp', 'login atau daftar akun', 'Setujui Keanggotaan', 'Turnamen Saya', 'belum menjadi peserta resmi', 'jangan bagikan di grup publik']) {
+        assert.ok(guide.includes(text), `missing next-step instruction: ${text}`);
+    }
+    assert.match(guide, /<ol\b/);
+    assert.match(view, /aria-describedby="registration-athlete-invitation-guide"/);
+});
+
+test('category refresh respects staged and rejected evidence and never invents jersey values', () => {
+    const file = { disabled: true, required: false };
+    const group = { style: {}, querySelectorAll: () => [file] };
+    const option = { getAttribute: key => key === 'data-required-docs' ? '["mandate"]' : '[]' };
+    const ids = { event_category_id: { selectedOptions: [option] }, team_doc_group_mandate: group };
+    const window = { registrationDraftManager: { serverFiles: { team_documents: { mandate: { name: 'Saved.pdf' } } } } };
+    const document = { getElementById: id => ids[id], querySelectorAll: selector => selector === '.team-doc-group' ? [group] : [] };
+    const start = view.indexOf('function filterAthletesByCategory(');
+    const end = view.indexOf('function setCaptain(', start);
+    assert.ok(start > 0 && end > start);
+    const context = { document, window };
+    vm.runInNewContext(view.slice(start, end), context);
+    context.filterAthletesByCategory('1');
+    assert.equal(file.required, false);
+    window.registrationDraftManager.serverFiles.team_documents.mandate.status = 'rejected';
+    context.filterAthletesByCategory('1');
+    assert.equal(file.required, true);
+    delete window.registrationDraftManager.serverFiles.team_documents.mandate;
+    context.filterAthletesByCategory('1');
+    assert.equal(file.required, true);
+    const jersey = { value: '', disabled: true };
+    const row = { querySelector: selector => selector === '.jersey-input' ? jersey : {}, querySelectorAll: () => [] };
+    context.toggleAthleteRow({ checked: true, closest: () => row });
+    assert.equal(jersey.value, '');
+    assert.equal(jersey.disabled, false);
+});
+
+test('restored selected athlete can replace vault file without requiring duplicate evidence', () => {
+    const upload = { disabled: true, required: true, name: 'athlete_documents[7][photo]', dataset: { vaultAvailable: '1' }, getAttribute: () => 'photo' };
+    const row = { querySelector: () => ({}), querySelectorAll: () => [upload] };
+    const checkbox = { checked: true, value: '7', closest: () => row };
+    const window = { registrationDraftManager: { serverFiles: { athlete_documents: {} } } };
+    const start = view.indexOf('function toggleAthleteRow(');
+    const end = view.indexOf('function setCaptain(', start);
+    const context = { window };
+    vm.runInNewContext(view.slice(start, end), context);
+    context.toggleAthleteRow(checkbox);
+    assert.equal(upload.disabled, false);
+    assert.equal(upload.required, false);
+    upload.dataset.vaultAvailable = '0';
+    context.toggleAthleteRow(checkbox);
+    assert.equal(upload.required, true);
+    window.registrationDraftManager.serverFiles.athlete_documents['7'] = { photo: { name: 'Replacement.pdf' } };
+    context.toggleAthleteRow(checkbox);
+    assert.equal(upload.required, false);
+    checkbox.checked = false;
+    context.toggleAthleteRow(checkbox);
+    assert.equal(upload.disabled, true);
+    assert.equal(upload.required, false);
+});
 
 test('registration uses three Falcon progress tabs without incompatible theme auto-init', () => {
     assert.match(view, /nav-wizard/);
@@ -94,7 +158,7 @@ test('step1 renders add team action and accordion with active editable item and 
     assert.match(view, /\(string\)\s*\$draft->id\s*===\s*\$activeDraftId/);
 
     // Overview tables remain native details
-    assert.match(categoryView, /<details class="mb-3">/);
+    assert.match(categoryView, /<details class="mb-3"(?:\s+open)?>/);
 });
 
 test('registration form has data-autosave="false" and removes automatic saving copy', () => {
@@ -147,8 +211,8 @@ test('active accordion in step 1 has manual save button with conditional label a
     );
     assert.match(
         activeCollapseView,
-        /data-registration-save-team[\s\S]*?\{\{\s*\$activeDraft\s*\?\s*['"]Simpan & Lengkapi Tim['"]\s*:\s*['"]Simpan & Daftarkan Tim['"]\s*\}\}/,
-        'button label must be "Simpan & Lengkapi Tim" if $activeDraft exists else "Simpan & Daftarkan Tim"'
+        /data-registration-save-team[\s\S]*?\{\{\s*\$activeDraft\s*\?\s*['"]Simpan Perubahan Tim['"]\s*:\s*['"]Simpan & Daftarkan Tim['"]\s*\}\}/,
+        'stored team save edits an existing team, not a new registration'
     );
     assert.match(
         activeCollapseView,
@@ -246,6 +310,14 @@ test('register blade prioritizes first existing draft when arriving without draf
         view,
         /elseif\s*\(\s*!\s*\$isNewTeam\s*&&\s*\$registrationDrafts->isNotEmpty\(\)\s*\)\s*\{\s*\$activeDraft\s*=\s*\$registrationDrafts->first\(\);/s,
         'blade must select first saved draft when new_team is false and drafts exist'
+    );
+});
+
+test('summary details in step 1 is open by default', () => {
+    assert.match(
+        view,
+        /<details\s+class=["']mb-3["']\s+open>/,
+        'registration summary details must have open attribute by default'
     );
 });
 

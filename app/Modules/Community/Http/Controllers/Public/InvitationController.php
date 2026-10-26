@@ -6,9 +6,11 @@ namespace App\Modules\Community\Http\Controllers\Public;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Community\Exceptions\InvalidInvitationException;
+use App\Modules\Community\Http\Requests\Public\CheckInvitationRequest;
 use App\Modules\Community\Http\Requests\Public\JoinInvitationRequest;
 use App\Modules\Community\Http\Requests\Public\PublicInvitationRequest;
 use App\Modules\Community\Services\InvitationService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -36,8 +38,20 @@ class InvitationController extends Controller
         $canUseSavedDetails = ! $alreadyJoined && $this->invitationService->savedRosterDetails($invitation, request()->user()) !== null;
 
         $educationDetail = request()->user()?->educations()->where('community_id', $invitation->community_id)->value('education_detail');
+        $savedInvitationFields = $this->invitationService->savedInvitationFields($invitation, request()->user());
 
-        return view('public.invite', compact('invitation', 'community', 'token', 'invitationContext', 'alreadyJoined', 'canUseSavedDetails', 'educationDetail'));
+        return view('public.invite', compact('invitation', 'community', 'token', 'invitationContext', 'alreadyJoined', 'canUseSavedDetails', 'educationDetail', 'savedInvitationFields'));
+    }
+
+    public function check(CheckInvitationRequest $request, string $token): JsonResponse
+    {
+        try {
+            $this->invitationService->checkEligibility($token, $request->validated(), $request->user());
+        } catch (InvalidInvitationException) {
+            abort(404, 'Undangan tidak ditemukan atau sudah tidak berlaku.');
+        }
+
+        return response()->json(['message' => 'Memenuhi syarat kategori.', 'eligible' => true]);
     }
 
     public function submit(PublicInvitationRequest $request, string $token): RedirectResponse

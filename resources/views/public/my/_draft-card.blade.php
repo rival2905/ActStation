@@ -14,7 +14,7 @@
     $expiresAt = $draft->expires_at ? $draft->expires_at->diffForHumans() : null;
 @endphp
 
-<div class="card mb-3 border border-200 shadow-none overflow-hidden">
+<div class="card mb-3 border border-200 shadow-none overflow-hidden" id="draft-{{ $draft->id }}">
     <div class="card-header bg-body-tertiary border-bottom border-200 py-3">
         <div class="row align-items-center g-2">
             <div class="col-12 col-md">

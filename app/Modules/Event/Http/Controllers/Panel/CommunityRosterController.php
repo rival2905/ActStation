@@ -11,6 +11,7 @@ use App\Modules\Community\Models\CommunityOfficial;
 use App\Modules\Event\Exceptions\RosterValidationException;
 use App\Modules\Event\Http\Requests\Panel\ResubmitRosterRequest;
 use App\Modules\Event\Models\EventParticipant;
+use App\Modules\Event\Services\RegistrationDraftService;
 use App\Modules\Event\Services\RegistrationInspectionSummary;
 use App\Modules\Event\Services\RegistrationRosterRevisionService;
 use App\Modules\Event\Services\TeamPersonnelRoster;
@@ -42,8 +43,18 @@ class CommunityRosterController extends Controller
             || ($activeCommunity && (int) $activeCommunity->id === (int) $participant->community_id);
         $canRevise = $isManager && $participant->status === 'revision_needed';
         $inspection = app(RegistrationInspectionSummary::class)->inspect($participant);
+        $canWithdraw = app(RegistrationDraftService::class)->canWithdraw($participant, Auth::user());
 
-        return view('panel.registrations.roster', compact('participant', 'viewerId', 'isManager', 'canRevise', 'inspection'));
+        return view('panel.registrations.roster', compact('participant', 'viewerId', 'isManager', 'canRevise', 'inspection', 'canWithdraw'));
+    }
+
+    public function withdraw(EventParticipant $participant, RegistrationDraftService $draftService): RedirectResponse
+    {
+        $draft = $draftService->withdraw($participant, Auth::user());
+
+        return redirect()->route('panel.community-events.create', [
+            'slug' => $draft->event->slug, 'draft_id' => $draft->id, 'step' => 'roster',
+        ])->with('success', 'Pengajuan ditarik ke draf. Data tim, roster, dan berkas tetap tersimpan; silakan edit lalu ajukan ulang.');
     }
 
     public function revise(EventParticipant $participant): View
@@ -55,6 +66,10 @@ class CommunityRosterController extends Controller
             'category',
             'members.user',
         ]);
+
+        if (app(RegistrationDraftService::class)->canWithdraw($participant, Auth::user())) {
+            return view('panel.registrations.restore-draft', compact('participant'));
+        }
 
         $category = $participant->category;
         $eligibleAthletes = $participant->community_id !== null

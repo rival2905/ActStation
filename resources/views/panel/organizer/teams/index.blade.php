@@ -251,14 +251,14 @@
                             @endphp
                             <div class="d-inline-flex gap-1 align-items-center">
                                 @if($canReviewTeams)
-                                @if($p->status === 'registered' && (float) ($p->category?->registration_fee ?? 0) > 0 && ($p->category?->registration_flow ?? 'screening_first') === 'screening_first')
+                                @if(in_array($p->status, ['registered', 'revision_needed', 'waiting_list'], true) && (float) ($p->category?->registration_fee ?? 0) > 0 && ($p->category?->registration_flow ?? 'screening_first') === 'screening_first')
                                 <form action="{{ route($workspaceRoutePrefix.'teams.verify', [$event->id, $p->id]) }}" method="POST">
                                     @csrf
                                     <button type="submit" class="btn btn-xs btn-primary" onclick="return confirm('Loloskan berkas tim ini dan terbitkan invoice tagihan pembayaran?')">
                                         <span class="fas fa-file-invoice-dollar me-1"></span>Loloskan & Terbitkan Tagihan
                                     </button>
                                 </form>
-                                @elseif(in_array($p->status, ['registered', 'revision_needed', 'verified'], true))
+                                @elseif(in_array($p->status, ['registered', 'revision_needed', 'verified'], true) || ($p->status === 'waiting_list' && $p->category?->registration_flow === 'screening_first'))
                                 <form action="{{ route($workspaceRoutePrefix.'teams.verify', [$event->id, $p->id]) }}" method="POST">
                                     @csrf
                                     <button type="submit" class="btn btn-xs btn-success" onclick="return confirm('Verifikasi sah tim ini dan kunci roster (Roster Lock)?')">

@@ -25,10 +25,23 @@ class ReviewTeamDocumentRequest extends FormRequest
      */
     public function rules(): array
     {
+        if ($this->route()->getActionMethod() === 'verifyAll') {
+            return [
+                'documents' => ['required', 'array', 'min:1'],
+                'documents.*.code' => ['required', 'string', 'distinct'],
+                'documents.*.version' => ['required', 'string', 'size:64'],
+            ];
+        }
+
         return [
             'status' => ['required', 'in:verified,rejected'],
             'notes' => ['nullable', 'required_if:status,rejected', 'string', 'max:2000'],
             'version' => ['required', 'string', 'size:64'],
         ];
+    }
+
+    public function messages(): array
+    {
+        return ['notes.required_if' => 'Isi alasan penolakan dokumen terlebih dahulu.', 'notes.max' => 'Alasan penolakan maksimal 2000 karakter.'];
     }
 }

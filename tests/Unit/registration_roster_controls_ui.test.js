@@ -59,3 +59,49 @@ test('server rendered roster exposes remove action and sport-aware positions', (
     assert.match(source, /Shooting Guard/);
     assert.match(source, /data-sport-slug/);
 });
+
+test('empty roster guidance follows current selection and available members, not personnel', () => {
+    const ui = Object.create(RegistrationDraftUI.prototype);
+    const notice = { hidden: true };
+    const availableHint = { hidden: true };
+    let checks = [];
+    let category = '1';
+    ui.currentCategory = () => category;
+    ui.manager = { isSubmitted: false };
+    ui.document = {
+        getElementById: () => ({ querySelectorAll: () => checks }),
+        querySelector: s => ({ '[data-registration-empty-roster]': notice, '[data-registration-empty-roster-members]': availableHint }[s]),
+    };
+    ui.updateRosterPicker();
+    assert.equal(notice.hidden, false);
+    assert.equal(availableHint.hidden, true);
+    checks = [{ checked: false, disabled: false, closest: () => ({ dataset: {}, querySelector: () => null }) }];
+    ui.updateRosterPicker();
+    assert.equal(notice.hidden, false);
+    assert.equal(availableHint.hidden, false);
+    checks[0].checked = true;
+    ui.updateRosterPicker();
+    assert.equal(notice.hidden, true);
+    checks = [];
+    ui.updateRosterPicker();
+    assert.equal(notice.hidden, false);
+    ui.manager.isSubmitted = true;
+    ui.updateRosterPicker();
+    assert.equal(notice.hidden, true);
+    ui.manager.isSubmitted = false;
+    category = '';
+    ui.updateRosterPicker();
+    assert.equal(notice.hidden, true);
+});
+
+test('empty roster offers existing team-scoped invitation action without a hardcoded token', () => {
+    const source = fs.readFileSync(new URL('../../resources/views/panel/events/register.blade.php', import.meta.url), 'utf8');
+    const notice = source.match(/<div[^>]*data-registration-empty-roster[\s\S]*?<\/div>/)?.[0] || '';
+    assert.match(notice, /role="status"/);
+    assert.match(notice, /Belum ada atlet di roster tim ini/);
+    assert.match(notice, /data-registration-athlete-invite-link/);
+    assert.match(notice, /Undang Atlet ke Tim Ini/);
+    assert.match(notice, /Salin Link/);
+    assert.match(notice, /data-registration-empty-roster-members/);
+    assert.doesNotMatch(notice, /href=.*\/invite\//);
+});

@@ -174,6 +174,7 @@
                                 <a href="{{ route('panel.community-events.create', [$event->slug, 'event_category_id' => $category->id]) }}" class="btn btn-primary w-100">
                                     <span class="fas fa-users me-1"></span>Daftar Tim pada Kategori Ini
                                 </a>
+                                <p class="fs-11 text-muted mt-2 mb-0">Belum punya komunitas atau instansi? Lengkapi identitasnya sekali, lalu lanjut menyusun tim. Jika hanya bergabung sebagai atlet, minta link roster dari pengurus tim Anda.</p>
                             </div>
                         </div>
                     </div>

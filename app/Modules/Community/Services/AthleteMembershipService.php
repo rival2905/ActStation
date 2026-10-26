@@ -48,6 +48,10 @@ class AthleteMembershipService
                         'user_id' => 'Permohonan keanggotaan atlet ini masih berstatus pending.',
                     ]);
                 }
+
+                throw ValidationException::withMessages([
+                    'user_id' => 'Permohonan sebelumnya telah ditolak. Hubungi pengurus komunitas sebelum mengajukan kembali.',
+                ]);
             }
 
             // Jalur admin/manager yang membuat atlet langsung berstatus active dipaksa menjadi pending.
@@ -90,7 +94,6 @@ class AthleteMembershipService
 
             $athlete->update([
                 'status' => 'active',
-                'region_status' => 'pending',
                 'responded_at' => now(),
             ]);
 
@@ -126,21 +129,21 @@ class AthleteMembershipService
      */
     public function approveByManager(CommunityAthlete $athlete, ?User $actor = null): CommunityAthlete
     {
-        $this->assertCanApprove($athlete, $actor, 'manager');
-        if ($athlete->status !== 'pending') {
-            throw ValidationException::withMessages([
-                'athlete' => 'Permohonan keanggotaan sudah tidak berstatus pending.',
-            ]);
-        }
+        return DB::transaction(function () use ($athlete, $actor): CommunityAthlete {
+            $user = User::query()->where('id', $athlete->user_id)->lockForUpdate()->firstOrFail();
+            $athlete = CommunityAthlete::query()->whereKey($athlete->id)->lockForUpdate()->firstOrFail();
+            $this->assertCanApprove($athlete, $actor, 'manager');
+            if (! $user->is_active || $athlete->left_at !== null || ! in_array($athlete->status, ['pending', 'active'], true)) {
+                throw ValidationException::withMessages(['athlete' => 'Permohonan keanggotaan tidak lagi dapat disetujui.']);
+            }
+            if ($athlete->status === 'active') {
+                return $athlete;
+            }
 
-        return DB::transaction(function () use ($athlete): CommunityAthlete {
-            User::query()->where('id', $athlete->user_id)->lockForUpdate()->first();
             $athlete->loadMissing('community');
             $this->assertNoActiveDualMembership($athlete->user_id, $athlete->community, $athlete->id);
-
             $athlete->update([
                 'status' => 'active',
-                'region_status' => 'pending',
                 'responded_at' => now(),
             ]);
 

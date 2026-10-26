@@ -12,6 +12,7 @@ use App\Modules\Community\Models\CommunityOfficial;
 use App\Modules\Community\Models\SchoolRegistration;
 use App\Modules\Community\Services\CommunityLifecycle;
 use App\Modules\Community\Services\SchoolOnboardingService;
+use App\Services\EventRegistrationReturn;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -139,7 +140,7 @@ class ProfileController extends PanelBaseController
         });
 
         return redirect()
-            ->route('panel.profile.show')
+            ->to(app(EventRegistrationReturn::class)->destination($request) ?? route('panel.profile.show'))
             ->with('success', 'Komunitas berhasil didaftarkan! Silakan lengkapi pengurus, pelatih, roster atlet, dan dokumen legalitas.');
     }
 

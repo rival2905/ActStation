@@ -346,6 +346,21 @@ test('draft hydration clears previous roster, text, token and staged files', () 
     assert.equal(manager.clearFiles.size, 0);
 });
 
+test('draft revision note follows selected team and renders as text', () => {
+    const h = createTestHarness(true);
+    const note = new MockElement('div');
+    const text = new MockElement('p');
+    const original = h.mockDocument.getElementById.bind(h.mockDocument);
+    h.mockDocument.getElementById = id => id === 'draft-revision-note' ? note : id === 'draft-revision-note-text' ? text : original(id);
+    const manager = new RegistrationDraftManager({ document: h.mockDocument, window: h.mockWindow, form: h.form });
+    manager.applyPayloadToForm({ revision_notes: '<b>Perbaiki berkas</b>', members: [] });
+    assert.equal(note.hidden, false);
+    assert.equal(text.textContent, '<b>Perbaiki berkas</b>');
+    manager.applyPayloadToForm({ members: [] });
+    assert.equal(note.hidden, true);
+    assert.equal(text.textContent, '');
+});
+
 test('leaving submitted draft restores prior enabled controls only', () => {
     const h = createTestHarness(true);
     const manager = new RegistrationDraftManager({ document: h.mockDocument, window: h.mockWindow, form: h.form });
@@ -714,7 +729,20 @@ test('staged files resume: disables required on file input when server staged fi
     assert.equal(harness.elements.teamDocInput.required, false, 'Required must be disabled when server staged file exists');
     const badge = harness.elements.teamDocGroup.querySelector('.staged-file-badge');
     assert.ok(badge, 'Staged file badge must be created');
-    assert.ok(badge.innerHTML.includes('mandat_resumed.pdf'), 'Badge must display filename');
+    assert.equal(badge.querySelectorAll('strong').length, 1, 'Filename must appear once');
+});
+
+test('rejected restored evidence requires replacement and displays reason as text', () => {
+    const h = createTestHarness(true);
+    const manager = new RegistrationDraftManager({ document: h.mockDocument, window: h.mockWindow, form: h.form });
+    manager.resumeDraft({ id: 'draft-rejected', revision: 1, payload: {}, files: { team_documents: { surat_mandat: { name: 'Old.pdf', status: 'rejected', notes: '<b>Belum ditandatangani</b>' } } } });
+    assert.equal(h.elements.teamDocInput.required, true);
+    const badge = h.elements.teamDocGroup.querySelector('.staged-file-badge');
+    assert.ok(badge.children.some(child => child.textContent.includes('Belum ditandatangani')));
+    manager.serverFiles.team_documents.surat_mandat = { name: 'New.pdf' };
+    manager.renderServerFilesUI();
+    assert.equal(h.elements.teamDocInput.required, false);
+    assert.equal(badge.classList.contains('text-danger'), false);
 });
 
 test('unsafe filename DOMtextContent: escapes filenames and uses safe textContent to prevent XSS', () => {
@@ -747,7 +775,7 @@ test('unsafe filename DOMtextContent: escapes filenames and uses safe textConten
     const badge = harness.elements.teamDocGroup.querySelector('.staged-file-badge');
     assert.ok(badge, 'Staged file badge must exist');
     assert.ok(!badge.innerHTML.includes('<img src=x'), 'Raw HTML tag must not be injected into badge innerHTML');
-    assert.ok(badge.innerHTML.includes('&lt;img src=x'), 'Unsafe filename must be HTML-escaped');
+    assert.equal(badge.querySelectorAll('strong').length, 1, 'Filename must appear once');
     const strong = badge.querySelector('strong');
     assert.ok(strong, 'Strong tag exists');
     assert.equal(strong.textContent, unsafeName, 'DOM textContent matches unsafe filename safely');

@@ -21,7 +21,7 @@ class RegionOversightController extends Controller
     public function index(Request $request, RegionOversightService $service): View|Response
     {
         $query = CommunityAthlete::query()
-            ->with(['community', 'user']);
+            ->with(['community.sportCategory', 'user']);
 
         $query = $service->applyAthleteScope($query, $request->user());
 
@@ -47,7 +47,7 @@ class RegionOversightController extends Controller
             });
         }
 
-        $athletes = $query->latest()->paginate(15)->withQueryString();
+        $athletes = $query->latest()->paginate(100)->withQueryString();
         $filters = $request->only(['search', 'region_status', 'city_id']);
 
         $citiesQuery = DB::table('wilayah')->whereRaw('LENGTH(kode) = 5')->orderBy('nama');

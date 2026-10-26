@@ -6,6 +6,7 @@ namespace App\Modules\Event\Http\Requests\Panel;
 
 use App\Contracts\CommunityLookup;
 use App\Modules\Event\Models\EventParticipant;
+use App\Modules\Event\Services\RegistrationDraftService;
 use Illuminate\Foundation\Http\FormRequest;
 
 class ResubmitRosterRequest extends FormRequest
@@ -23,6 +24,10 @@ class ResubmitRosterRequest extends FormRequest
 
         $user = $this->user();
         if (! $user) {
+            return false;
+        }
+
+        if (app(RegistrationDraftService::class)->canWithdraw($participant, $user)) {
             return false;
         }
 

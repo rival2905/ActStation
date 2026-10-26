@@ -98,6 +98,12 @@ class RosterProviderService implements RosterProvider
                     studentIdentifierValue: match ($identityType) {
                         'nisn' => $membership->nisn, 'nim' => $membership->nim, default => null
                     },
+                    approvalUrl: $membership && $row->membership_status === 'pending'
+                        && $membership->initiated_by === 'athlete'
+                        && auth()->user()?->is_active
+                        && (int) auth()->id() !== (int) $row->user_id
+                        && auth()->user()->can('update', $membership->community)
+                            ? route('panel.athletes.approve', $membership) : null,
                 );
             })
             ->values();

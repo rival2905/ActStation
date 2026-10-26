@@ -65,7 +65,7 @@
                                 @if($alreadyJoined)
                                 <div class="alert alert-info" role="status">{{ $invitationContext['is_roster'] ? 'Anda sudah terdaftar pada roster tim ini.' : 'Anda sudah terdaftar sebagai anggota komunitas ini.' }}</div>
                                 <p class="fs-10 text-muted">Pendaftaran ulang tidak diperlukan. Status pemeriksaan tetap mengikuti proses yang berlaku.</p>
-                                @if(in_array($invitationContext['identity_type'], ['nisn', 'nim'], true))
+                                @if(!$invitationContext['is_roster'] && in_array($invitationContext['identity_type'], ['nisn', 'nim'], true))
                                 <form method="POST" action="{{ route('invitations.public.join', $token) }}" class="mb-3">
                                     @csrf
                                     @include('public._invitation-education')
@@ -73,20 +73,28 @@
                                     <button type="submit" class="btn btn-primary">Simpan Detail Pendidikan</button>
                                 </form>
                                 @endif
+                                @if($invitationContext['is_roster'])
+                                <a href="{{ route('my-events.index') }}" class="btn btn-primary">Lengkapi Berkas Turnamen</a>
+                                @endif
                                 <a href="{{ route('panel.login') }}" class="btn btn-primary">Kembali ke Panel</a>
                                 @elseif($canUseSavedDetails)
                                 <h4 class="mb-3">Gabung Roster Tim</h4>
                                 <p>Anda sudah menjadi anggota komunitas ini. Biodata dan identitas tersimpan memenuhi syarat gender dan usia kategori; tidak perlu diisi ulang.</p>
                                 <p class="fs-10 text-muted">Bergabung hanya menambahkan Anda ke roster draft tim pengundang. Pemeriksaan dokumen dan syarat kategori tetap berlaku; ini bukan konfirmasi peserta resmi. Verifikasi wilayah tidak menjadi syarat pendaftaran.</p>
-                                <form method="POST" action="{{ route('invitations.public.join', $token) }}">
+                                <form method="POST" action="{{ route('invitations.public.join', $token) }}" data-invitation-check="{{ route('invitations.public.check', $token) }}">
                                     @csrf
+                                    @include('public._invitation-gate')
+                                    <fieldset data-invitation-details hidden disabled tabindex="-1">
+                                    <legend class="h5">Informasi Tim</legend>
                                     @include('public._invitation-education')
+                                    @include('public._invitation-playing-details')
                                     <div class="form-check mb-3">
                                         <input class="form-check-input @error('consent') is-invalid @enderror" id="roster_consent" type="checkbox" name="consent" value="1" required aria-describedby="roster_consent-error">
                                         <label class="form-check-label" for="roster_consent">Saya setuju masuk roster draft tim ini dan penggunaan data saya untuk pemeriksaan pendaftaran.</label>
                                         @error('consent')<div class="invalid-feedback" id="roster_consent-error" role="alert">{{ $message }}</div>@enderror
                                     </div>
                                     <button class="btn btn-primary w-100" type="submit">Gabung Roster Tim</button>
+                                    </fieldset>
                                 </form>
                                 @elseif(auth('web')->check())
                                 <div class="mb-3">
@@ -94,21 +102,32 @@
                                     <p class="fs-10 text-600 mb-0">Anda masuk sebagai <strong>{{ auth('web')->user()->name }}</strong> ({{ auth('web')->user()->email }}).</p>
                                 </div>
                                 <div class="alert alert-info fs-10" role="status">Permohonan ini mengikuti persetujuan keanggotaan pengurus. Verifikasi wilayah tidak menjadi syarat pendaftaran. {{ $invitation->registration_draft_id ? 'Anda otomatis masuk roster draft tim pengundang, bukan roster resmi.' : 'Ini bukan penambahan otomatis ke roster tim kompetisi.' }}</div>
-                                <form method="POST" action="{{ route('invitations.public.join', $token) }}">
+                                <form method="POST" action="{{ route('invitations.public.join', $token) }}" @if($invitationContext['is_roster']) data-invitation-check="{{ route('invitations.public.check', $token) }}" @endif>
                                     @csrf
+                                    @if($invitationContext['is_roster'])
+                                        @include('public._invitation-gate')
+                                        <fieldset data-invitation-details hidden disabled tabindex="-1">
+                                        <legend class="h5">Lengkapi Data Pendaftaran</legend>
+                                        <p class="fs-10 text-muted">Data tersimpan yang lengkap digunakan kembali. Isi bagian yang belum lengkap serta informasi bermain untuk tim ini.</p>
+                                    @endif
                                     @include('public._invitation-education')
                                     <div class="row g-2 mb-3">
+                                        @if(empty($savedInvitationFields['birth_place']))
                                         <div class="col-sm-6">
                                             <label class="form-label" for="birth_place">Tempat Lahir</label>
                                             <input class="form-control @error('birth_place') is-invalid @enderror" id="birth_place" name="birth_place" required type="text" maxlength="255" value="{{ old('birth_place', auth('web')->user()?->birth_place) }}" aria-describedby="birth_place-error">
                                             @error('birth_place')<div class="invalid-feedback" id="birth_place-error" role="alert">{{ $message }}</div>@enderror
                                         </div>
+                                        @endif
+                                        @if(!$invitationContext['is_roster'])
                                         <div class="col-sm-6">
                                             <label class="form-label" for="birth_date">Tanggal Lahir</label>
                                             <input class="form-control @error('birth_date') is-invalid @enderror" id="birth_date" name="birth_date" required type="date" value="{{ old('birth_date', auth('web')->user()?->birth_date?->format('Y-m-d')) }}" aria-describedby="birth_date-error">
                                             @error('birth_date')<div class="invalid-feedback" id="birth_date-error" role="alert">{{ $message }}</div>@enderror
                                         </div>
+                                        @endif
                                     </div>
+                                    @if(!$invitationContext['is_roster'])
                                     <div class="mb-3">
                                         <label class="form-label" for="gender">Jenis Kelamin <span class="text-danger">*</span></label>
                                         <select class="form-select @error('gender') is-invalid @enderror" id="gender" name="gender" required aria-describedby="gender-error">
@@ -119,7 +138,8 @@
                                         </select>
                                         @error('gender')<div class="invalid-feedback" id="gender-error" role="alert">{{ $message }}</div>@enderror
                                     </div>
-                                    @if($invitationContext['identity_type'] !== null)
+                                    @endif
+                                    @if($invitationContext['identity_type'] !== null && empty($savedInvitationFields['identity_number']))
                                     <div class="mb-3">
                                         <label class="form-label" for="identity_number">{{ $invitationContext['identity_label'] }}</label>
                                         <input class="form-control @error('identity_number') is-invalid @enderror" id="identity_number" name="{{ $invitationContext['identity_field'] }}" required type="text" inputmode="{{ $identityType === 'nim' ? 'text' : 'numeric' }}" pattern="{{ $identityPattern }}" minlength="{{ $identityType === 'nim' ? 1 : $identityLength }}" maxlength="{{ $identityLength }}" value="{{ old('identity_number') }}" aria-describedby="identity_number-error identity_number-help">
@@ -156,6 +176,7 @@
                                         @error('consent')<div class="invalid-feedback" id="join_consent-error" role="alert">{{ $message }}</div>@enderror
                                     </div>
                                     <button class="btn btn-primary d-block w-100" type="submit"><span class="fas fa-paper-plane me-1"></span>Ajukan Keanggotaan</button>
+                                    @if($invitationContext['is_roster'])</fieldset>@endif
                                 </form>
                                 @else
                                 <div class="mb-3">
@@ -163,8 +184,13 @@
                                     <p class="fs-10 text-600 mb-0">Buat akun untuk mengajukan keanggotaan komunitas. {{ $invitation->registration_draft_id ? 'Lewat undangan ini, Anda otomatis masuk roster draft tim pengundang, bukan roster resmi. Persetujuan dan verifikasi tetap diperlukan.' : 'Pemilihan tim kompetisi dilakukan terpisah.' }}</p>
                                 </div>
                                 <p class="fs-10 text-600 mb-3">Sudah punya akun? <a href="{{ route('invitations.public.login', $token) }}">Masuk untuk melanjutkan</a>.</p>
-                                <form method="POST" action="{{ route('invitations.public.submit', $token) }}">
+                                <form method="POST" action="{{ route('invitations.public.submit', $token) }}" @if($invitationContext['is_roster']) data-invitation-check="{{ route('invitations.public.check', $token) }}" @endif>
                                     @csrf
+                                    @if($invitationContext['is_roster'])
+                                        @include('public._invitation-gate')
+                                        <fieldset data-invitation-details hidden disabled tabindex="-1">
+                                        <legend class="h5">Lengkapi Data Pendaftaran</legend>
+                                    @endif
                                     @include('public._invitation-education')
                                     <div class="row g-2 mb-3">
                                         <div class="col-sm-6">
@@ -172,12 +198,15 @@
                                             <input class="form-control @error('birth_place') is-invalid @enderror" id="birth_place" name="birth_place" required type="text" maxlength="255" value="{{ old('birth_place', auth('web')->user()?->birth_place) }}" aria-describedby="birth_place-error">
                                             @error('birth_place')<div class="invalid-feedback" id="birth_place-error" role="alert">{{ $message }}</div>@enderror
                                         </div>
+                                        @if(!$invitationContext['is_roster'])
                                         <div class="col-sm-6">
                                             <label class="form-label" for="birth_date">Tanggal Lahir</label>
                                             <input class="form-control @error('birth_date') is-invalid @enderror" id="birth_date" name="birth_date" required type="date" value="{{ old('birth_date', auth('web')->user()?->birth_date?->format('Y-m-d')) }}" aria-describedby="birth_date-error">
                                             @error('birth_date')<div class="invalid-feedback" id="birth_date-error" role="alert">{{ $message }}</div>@enderror
                                         </div>
+                                        @endif
                                     </div>
+                                    @if(!$invitationContext['is_roster'])
                                     <div class="mb-3">
                                         <label class="form-label" for="gender">Jenis Kelamin <span class="text-danger">*</span></label>
                                         <select class="form-select @error('gender') is-invalid @enderror" id="gender" name="gender" required aria-describedby="gender-error">
@@ -188,6 +217,7 @@
                                         </select>
                                         @error('gender')<div class="invalid-feedback" id="gender-error" role="alert">{{ $message }}</div>@enderror
                                     </div>
+                                    @endif
                                     @if($invitationContext['identity_type'] !== null)
                                     <div class="mb-3">
                                         <label class="form-label" for="identity_number">{{ $invitationContext['identity_label'] }}</label>
@@ -205,12 +235,13 @@
 
                                     <div class="mb-3">
                                         <label class="form-label" for="name">Nama Lengkap <span class="text-danger">*</span></label>
-                                        <input class="form-control @error('name') is-invalid @enderror" id="name" type="text" name="name" maxlength="255" value="{{ old('name', $invitation->name ?? '') }}" required autofocus placeholder="Nama Anda" aria-invalid="{{ $errors->has('name') ? 'true' : 'false' }}" aria-describedby="name-error" />
+                                        <input class="form-control @error('name') is-invalid @enderror" id="name" type="text" name="name" maxlength="255" value="{{ old('name', $invitation->name ?? '') }}" required placeholder="Nama Anda" aria-invalid="{{ $errors->has('name') ? 'true' : 'false' }}" aria-describedby="name-error" />
                                         @error('name')
                                             <div class="invalid-feedback" id="name-error" role="alert">{{ $message }}</div>
                                         @enderror
                                     </div>
 
+                                    @if(!$invitationContext['is_roster'])
                                     <div class="mb-3">
                                         <label class="form-label" for="email">Alamat Email <span class="text-danger">*</span></label>
                                         <input class="form-control @error('email') is-invalid @enderror" id="email" type="email" name="email" maxlength="255" value="{{ old('email', $invitation->email ?? '') }}" required placeholder="email@domain.com" {{ !empty($invitation->email) ? 'readonly' : '' }} aria-invalid="{{ $errors->has('email') ? 'true' : 'false' }}" aria-describedby="email-error" />
@@ -218,6 +249,7 @@
                                             <div class="invalid-feedback" id="email-error" role="alert">{{ $message }}</div>
                                         @enderror
                                     </div>
+                                    @endif
 
                                     <div class="row g-2 mb-3">
                                         <div class="col-sm-6">
@@ -281,6 +313,7 @@
                                             <span class="fas fa-paper-plane me-1"></span>Kirim Pendaftaran
                                         </button>
                                     </div>
+                                    @if($invitationContext['is_roster'])</fieldset>@endif
                                 </form>
                                 @endif
                             </div>
@@ -307,6 +340,7 @@
 @endsection
 
 @push('scripts')
+<script src="{{ asset('assets/js/invitation-form.js') }}?v={{ filemtime(public_path('assets/js/invitation-form.js')) }}" defer></script>
 <script data-invitation-age>
 (() => {
     const output = document.getElementById('invitation-event-age');

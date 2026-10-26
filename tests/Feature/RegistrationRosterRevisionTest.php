@@ -10,6 +10,8 @@ use App\Modules\Community\Models\Document;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventCategory;
 use App\Modules\Event\Models\EventParticipant;
+use App\Modules\Event\Models\RegistrationDraft;
+use App\Modules\Event\Services\RegistrationGuard;
 use App\Modules\Event\Services\RegistrationInspectionSummary;
 use App\Modules\MasterData\Models\DocumentType;
 use App\Modules\MasterData\Models\SportCategory;
@@ -173,17 +175,246 @@ beforeEach(function (): void {
     )->all();
 });
 
-test('active community manager can open revision form while roster athlete remains read only', function (): void {
+test('manager withdraws screening application into editable draft and can submit again', function (string $status): void {
+    DocumentType::query()->create(['code' => 'withdraw_team', 'name' => 'Surat Tim', 'scope' => 'team', 'is_active' => true]);
+    $category = ($this->makeCategory)(['required_documents' => ['withdraw_team']]);
+    $participant = ($this->makeParticipant)($category, $status);
+    Storage::disk('local')->put('participant_documents/withdraw.pdf', "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF");
+    Document::query()->create([
+        'documentable_type' => EventParticipant::class,
+        'documentable_id' => $participant->id,
+        'category' => 'withdraw_team',
+        'name' => 'Surat Tim',
+        'file_path' => 'participant_documents/withdraw.pdf',
+        'status' => 'pending',
+        'is_public' => false,
+    ]);
+
+    $this->withSession(['current_community_id' => $this->community->id])->actingAs($this->manager)
+        ->get(route('panel.community-events.roster', $participant))
+        ->assertOk()->assertSee('Tarik Pengajuan ke Draf');
+
+    $response = $this->post('/panel/registrations/'.$participant->id.'/withdraw');
+    $response->assertRedirect()->assertSessionHasNoErrors()->assertSessionHas('success');
+    $draft = RegistrationDraft::query()->where('community_id', $this->community->id)->firstOrFail();
+    expect($draft->isSubmitted())->toBeFalse()
+        ->and($draft->payload['team_name'])->toBe($participant->team_name)
+        ->and($draft->payload['members'])->toHaveCount(5);
+    Storage::disk('local')->assertExists($draft->files['team_documents']['withdraw_team']['staged_path']);
+    Storage::disk('local')->assertExists('participant_documents/withdraw.pdf');
+    $this->assertDatabaseMissing('event_participants', ['id' => $participant->id]);
+    $this->assertDatabaseHas('activity_logs', ['auditable_type' => EventParticipant::class, 'auditable_id' => $participant->id, 'event' => 'deleted']);
+    $response->assertRedirect(route('panel.community-events.create', ['slug' => $this->event->slug, 'draft_id' => $draft->id, 'step' => 'roster']));
+    $this->get(route('panel.registration-drafts.show', [$this->event->slug, $draft->id]))->assertOk();
+    $this->post('/panel/registrations/'.$participant->id.'/withdraw')->assertNotFound();
+
+    $this->post(route('panel.community-events.store', $this->event->slug), array_merge($draft->payload, [
+        'draft_id' => $draft->id,
+        'draft_revision' => $draft->revision,
+    ]))->assertRedirect()->assertSessionHasNoErrors();
+    expect($draft->fresh()->isSubmitted())->toBeTrue();
+})->with(['registered', 'revision_needed']);
+
+test('revision withdrawal keeps old submitted draft closed and rolls back missing files', function (): void {
     $participant = ($this->makeParticipant)(($this->makeCategory)());
+    $old = RegistrationDraft::create([
+        'user_id' => $this->manager->id, 'community_id' => $this->community->id,
+        'event_id' => $this->event->id, 'event_category_id' => $participant->event_category_id,
+        'participant_id' => $participant->id, 'payload' => ['_submitted' => true, '_tombstone' => true],
+        'files' => [], 'revision' => 3, 'expires_at' => now()->addDays(7),
+    ]);
+    $document = Document::query()->create([
+        'documentable_type' => EventParticipant::class, 'documentable_id' => $participant->id,
+        'category' => 'withdraw_missing', 'name' => 'Berkas', 'file_path' => 'participant_documents/missing.pdf',
+        'status' => 'pending', 'is_public' => false,
+    ]);
+    $this->withSession(['current_community_id' => $this->community->id])->actingAs($this->manager)
+        ->post('/panel/registrations/'.$participant->id.'/withdraw')->assertRedirect()->assertSessionHasErrors('withdraw');
+    expect($participant->fresh()->status)->toBe('revision_needed');
+    expect(RegistrationDraft::where('community_id', $this->community->id)->count())->toBe(1);
+    $document->delete();
+    $this->post('/panel/registrations/'.$participant->id.'/withdraw')->assertRedirect()->assertSessionHas('success');
+    expect($old->fresh()->isSubmitted())->toBeTrue();
+    $draft = RegistrationDraft::query()->where('community_id', $this->community->id)->where('id', '!=', $old->id)->firstOrFail();
+    $this->putJson(route('panel.registration-drafts.update', [$this->event->slug, $draft->id]), [
+        'revision' => $draft->revision, 'team_name' => 'Updated withdrawn team', 'event_category_id' => $participant->event_category_id,
+    ])->assertOk();
+});
+
+test('restoring rejected team evidence preserves reason and requires a replacement before submission', function (): void {
+    DocumentType::create(['code' => 'restored_rejected', 'name' => 'Surat Tim', 'scope' => 'team', 'is_active' => true]);
+    $category = ($this->makeCategory)(['required_documents' => ['restored_rejected']]);
+    $participant = ($this->makeParticipant)($category);
+    Storage::disk('local')->put('participant_documents/rejected.pdf', '%PDF-1.4 rejected');
+    Document::create(['documentable_type' => EventParticipant::class, 'documentable_id' => $participant->id, 'category' => 'restored_rejected', 'name' => 'Surat Tim', 'file_path' => 'participant_documents/rejected.pdf', 'status' => 'rejected', 'notes' => 'Tanda tangan belum ada.', 'is_public' => false]);
+    $this->actingAs($this->manager)->post(route('panel.community-events.withdraw', $participant))->assertRedirect();
+    $draft = RegistrationDraft::where('community_id', $this->community->id)->firstOrFail();
+    $this->getJson(route('panel.registration-drafts.show', [$this->event->slug, $draft->id]))->assertOk()
+        ->assertJsonPath('draft.files.team_documents.restored_rejected.status', 'rejected')
+        ->assertJsonPath('draft.files.team_documents.restored_rejected.notes', 'Tanda tangan belum ada.');
+    $this->post(route('panel.community-events.store', $this->event->slug), array_merge($draft->payload, ['draft_id' => $draft->id, 'draft_revision' => $draft->revision]))
+        ->assertRedirect()->assertSessionHasErrors();
+    expect($draft->fresh()->isSubmitted())->toBeFalse();
+    $this->post(route('panel.community-events.store', $this->event->slug), array_merge($draft->payload, [
+        'draft_id' => $draft->id, 'draft_revision' => $draft->revision,
+        'team_documents' => ['restored_rejected' => UploadedFile::fake()->create('replacement.pdf', 10, 'application/pdf')],
+    ]))->assertRedirect()->assertSessionHasNoErrors();
+    expect($draft->fresh()->isSubmitted())->toBeTrue();
+});
+
+test('screening approval reserves only verified slots and cannot exceed category capacity', function (): void {
+    $category = ($this->makeCategory)(['max_teams' => 1, 'registration_fee' => 10000, 'enable_waiting_list' => false]);
+    $first = ($this->makeParticipant)($category, 'registered');
+    $second = ($this->makeParticipant)($category, 'registered');
+    $this->organizer->assignRole(Role::firstOrCreate(['name' => 'organizer', 'guard_name' => 'web'], ['panel_access' => 'external']));
+    // Independent rosters keep athlete conflict validation separate from slot capacity.
+    $second->members()->delete();
+    $second->members()->create(['user_id' => $this->athletes->last()->id, 'jersey_number' => 10, 'is_captain' => true, 'team_role' => 'player']);
+    $category->update(['min_roster' => 1]);
+    $url = fn ($p) => route('panel.organizer.teams.verify', [$this->event, $p]);
+    $this->actingAs($this->organizer)->post($url($first))->assertRedirect()->assertSessionHas('success');
+    expect($first->fresh()->status)->toBe('pending_payment');
+    $this->post($url($second))->assertRedirect()->assertSessionHas('error');
+    expect($second->fresh()->status)->toBe('registered');
+    $this->assertDatabaseMissing('transactions', ['payable_type' => 'event_participant', 'payable_id' => $second->id]);
+    $category->update(['enable_waiting_list' => true]);
+    $this->post($url($second))->assertRedirect()->assertSessionHas('success');
+    expect($second->fresh()->status)->toBe('waiting_list');
+    $first->update(['payment_deadline_at' => now()->subMinute()]);
+    $this->post($url($second))->assertRedirect()->assertSessionHas('success');
+    expect($second->fresh()->status)->toBe('pending_payment');
+});
+
+test('free screening approval respects event slots and only counts confirmed teams', function (): void {
+    $this->event->update(['max_participants' => 1]);
+    $category = ($this->makeCategory)(['min_roster' => 1, 'max_teams' => 10, 'enable_waiting_list' => false]);
+    $first = ($this->makeParticipant)($category, 'registered');
+    $second = ($this->makeParticipant)($category, 'revision_needed');
+    $second->members()->delete();
+    $second->members()->create(['user_id' => $this->athletes->last()->id, 'jersey_number' => 20, 'is_captain' => true, 'team_role' => 'player']);
+    $this->organizer->assignRole(Role::firstOrCreate(['name' => 'organizer', 'guard_name' => 'web'], ['panel_access' => 'external']));
+    $this->actingAs($this->organizer)->post(route('panel.organizer.teams.verify', [$this->event, $first]))->assertRedirect()->assertSessionHas('success');
+    expect($first->fresh()->status)->toBe('confirmed');
+    $this->post(route('panel.organizer.teams.verify', [$this->event, $second]))->assertRedirect()->assertSessionHas('error');
+    expect($second->fresh()->status)->toBe('revision_needed');
+    expect($this->event->participants()->occupyingSlot()->count())->toBe(1);
+});
+
+test('unverified screening applications do not fill event capacity', function (): void {
+    $this->event->update(['max_participants' => 1]);
+    $category = ($this->makeCategory)(['max_teams_per_entity' => 2]);
+    ($this->makeParticipant)($category, 'registered');
+    app(RegistrationGuard::class)->validate(
+        $this->event->fresh(), $category, (int) $this->community->id, 'Second screening application', userId: (int) $this->manager->id,
+    );
+    expect(true)->toBeTrue();
+});
+
+test('withdrawal rejects applications with payment records', function (): void {
+    $participant = ($this->makeParticipant)(($this->makeCategory)(), 'registered');
+    Transaction::create([
+        'user_id' => $this->manager->id, 'invoice_number' => 'INV-WITHDRAW-'.uniqid(),
+        'type' => 'registration', 'payable_type' => 'event_participant', 'payable_id' => $participant->id,
+        'amount' => 10000, 'fee' => 0, 'total' => 10000, 'status' => 'pending',
+    ]);
+    $this->actingAs($this->manager)->post('/panel/registrations/'.$participant->id.'/withdraw')->assertConflict();
+    expect($participant->fresh()->status)->toBe('registered');
+});
+
+test('withdrawal rejects athletes outsiders and ended officials without mutating application', function (): void {
+    $participant = ($this->makeParticipant)(($this->makeCategory)(), 'registered');
+    foreach ([$this->athletes->first(), $this->otherManager] as $actor) {
+        $this->actingAs($actor)->post('/panel/registrations/'.$participant->id.'/withdraw')->assertForbidden();
+    }
+    $this->official->update(['ended_at' => today()]);
+    $this->actingAs($this->manager)->post('/panel/registrations/'.$participant->id.'/withdraw')->assertForbidden();
+    expect($participant->fresh()->status)->toBe('registered');
+    $this->assertDatabaseMissing('event_registration_drafts', ['community_id' => $this->community->id]);
+});
+
+test('withdrawal rejects approved statuses and non screening categories', function (string $status, string $flow): void {
+    $category = ($this->makeCategory)(['registration_flow' => $flow]);
+    $participant = ($this->makeParticipant)($category, $status);
+    $this->withSession(['current_community_id' => $this->community->id])->actingAs($this->manager)
+        ->post('/panel/registrations/'.$participant->id.'/withdraw')->assertConflict();
+    expect($participant->fresh()->status)->toBe($status);
+})->with([
+    ['pending_payment', 'screening_first'], ['confirmed', 'screening_first'],
+    ['verified', 'screening_first'], ['cancelled', 'screening_first'], ['registered', 'payment_first'],
+]);
+
+test('roster presents team identity before supporting details without invented pass status', function (): void {
+    $participant = ($this->makeParticipant)(($this->makeCategory)(), 'registered');
+    $response = $this->withSession(['current_community_id' => $this->community->id])->actingAs($this->manager)
+        ->get(route('panel.community-events.roster', $participant))->assertOk()
+        ->assertSee('Menunggu Pemeriksaan')->assertSee('Daftar Atlet')->assertSee('Pelatih & Tenaga Pendukung', false)
+        ->assertDontSee('Pass Digital')->assertDontSee('AKTIF')
+        ->assertSee('data-label="Hasil pemeriksaan"', false);
+    $html = $response->getContent();
+    expect(strpos($html, 'Roster Tim:'))->toBeLessThan(strpos($html, 'Langkah Berikutnya'));
+    expect(strpos($html, 'Langkah Berikutnya'))->toBeLessThan(strpos($html, 'id="team-personnel"'));
+    expect($participant->fresh()->status)->toBe('registered');
+
+    $this->actingAs($this->athletes->first())->get(route('panel.community-events.roster', $participant))->assertOk()
+        ->assertDontSee($participant->contact_phone)
+        ->assertDontSee($this->manager->email)
+        ->assertDontSee('Tarik Pengajuan ke Draf');
+});
+
+test('roster explains next step for current registration state', function (string $status, int $fee, string $flow, string $message): void {
+    $category = ($this->makeCategory)(['registration_fee' => $fee, 'registration_flow' => $flow]);
+    $participant = ($this->makeParticipant)($category, $status);
+    $this->withSession(['current_community_id' => $this->community->id])->actingAs($this->manager)
+        ->get(route('panel.community-events.roster', $participant))->assertOk()
+        ->assertSee('Langkah Berikutnya')->assertSee($message);
+})->with([
+    ['registered', 10000, 'screening_first', 'Tunggu pemeriksaan panitia. Belum perlu membayar.'],
+    ['registered', 0, 'screening_first', 'Kategori ini gratis; tidak ada tahap pembayaran.'],
+    ['registered', 10000, 'payment_first', 'Tunggu pemeriksaan panitia setelah pembayaran.'],
+    ['revision_needed', 0, 'screening_first', 'Perbaiki roster dan berkas sesuai catatan panitia, lalu kirim ulang.'],
+    ['pending_payment', 10000, 'screening_first', 'Selesaikan pembayaran sebelum batas waktu tagihan.'],
+    ['waiting_list', 10000, 'screening_first', 'Tunggu slot tersedia dan keputusan panitia. Belum perlu membayar.'],
+    ['confirmed', 0, 'screening_first', 'Tim sudah terkonfirmasi. Pantau jadwal pertandingan dan informasi panitia.'],
+    ['cancelled', 0, 'screening_first', 'Pendaftaran dibatalkan. Hubungi panitia jika ingin mengikuti kembali.'],
+]);
+
+test('roster distinguishes uploaded proof and expired payment instructions', function (): void {
+    $participant = ($this->makeParticipant)(($this->makeCategory)(['registration_fee' => 10000]), 'pending_payment');
+    $participant->update(['payment_proof' => 'proof.pdf', 'payment_deadline_at' => now()->addDay()]);
+    $this->actingAs($this->manager)->get(route('panel.community-events.roster', $participant))->assertOk()
+        ->assertSee('Bukti pembayaran sudah dikirim. Tunggu verifikasi pembayaran oleh panitia.');
+    $participant->update(['payment_deadline_at' => now()->subMinute()]);
+    $this->get(route('panel.community-events.roster', $participant))->assertOk()
+        ->assertSee('Batas pembayaran sudah berakhir. Hubungi panitia untuk tindak lanjut.');
+});
+
+test('screening revision offers explicit draft restoration without mutating on get', function (): void {
+    $participant = ($this->makeParticipant)(($this->makeCategory)());
+
+    $this->actingAs($this->athletes->first())->get(route('panel.community-events.revise', $participant))->assertForbidden();
+    $this->actingAs($this->otherManager)->get(route('panel.community-events.revise', $participant))->assertForbidden();
 
     $this->withSession(['current_community_id' => $this->community->id])
         ->actingAs($this->manager)
         ->get(route('panel.community-events.revise', $participant))
-        ->assertOk();
+        ->assertOk()->assertSee('Kembalikan ke Draf & Perbaiki')->assertDontSee('name="members[', false);
+    expect($participant->fresh()->status)->toBe('revision_needed');
+    $this->assertDatabaseMissing('event_registration_drafts', ['community_id' => $this->community->id]);
+    $before = $participant->members()->pluck('user_id')->all();
+    $this->put(route('panel.community-events.resubmit', $participant), ['members' => ($this->validMembers)()])->assertForbidden();
+    expect($participant->fresh()->members()->pluck('user_id')->all())->toBe($before);
+    $this->post(route('panel.community-events.withdraw', $participant))->assertRedirect()->assertSessionHasNoErrors();
+    $draft = RegistrationDraft::where('community_id', $this->community->id)->firstOrFail();
+    expect($draft->payload['revision_notes'])->toBe('Perbaiki roster dan berkas.');
+    $this->get(route('panel.community-events.create', ['slug' => $this->event->slug, 'draft_id' => $draft->id]))->assertOk()->assertSee('Perbaiki roster dan berkas.');
+    $this->putJson(route('panel.registration-drafts.update', [$this->event->slug, $draft->id]), [
+        'revision' => $draft->revision, 'team_name' => 'Nama Revisi', 'event_category_id' => $draft->event_category_id,
+    ])->assertOk();
+    expect($draft->fresh()->payload['revision_notes'])->toBe('Perbaiki roster dan berkas.');
 
     $this->actingAs($this->athletes->first())
         ->get(route('panel.community-events.revise', $participant))
-        ->assertForbidden();
+        ->assertNotFound();
 });
 
 test('roster serves inspection and restricts unrelated manager role to own athlete details', function (): void {
@@ -221,7 +452,7 @@ test('inspection team completeness requires each athlete document availability b
 });
 
 test('resubmit rejects a stale active community token', function (): void {
-    $participant = ($this->makeParticipant)(($this->makeCategory)());
+    $participant = ($this->makeParticipant)(($this->makeCategory)(['registration_flow' => 'instant_free']));
 
     $this->withSession(['current_community_id' => $this->community->id])
         ->actingAs($this->manager)
@@ -234,7 +465,7 @@ test('resubmit rejects a stale active community token', function (): void {
     expect($participant->fresh()->status)->toBe('revision_needed');
 });
 
-test('valid revision replaces roster and scoped documents then returns screening to inspection', function (): void {
+test('legacy revision replaces roster and scoped documents then returns to inspection', function (): void {
     $teamCode = 'rf03_team_mandate';
     $athleteCode = 'rf03_athlete_id';
     DocumentType::query()->updateOrCreate(
@@ -245,7 +476,7 @@ test('valid revision replaces roster and scoped documents then returns screening
         ['code' => $athleteCode],
         ['name' => 'RF03 Athlete ID', 'scope' => 'athlete', 'applicable_entities' => ['free_association'], 'is_active' => true],
     );
-    $category = ($this->makeCategory)(['required_documents' => [$teamCode, $athleteCode]]);
+    $category = ($this->makeCategory)(['registration_flow' => 'instant_free', 'required_documents' => [$teamCode, $athleteCode]]);
     $participant = ($this->makeParticipant)($category);
 
     Storage::disk('local')->put('participant_documents/rf03-old-team.pdf', 'old-team');
@@ -413,7 +644,7 @@ test('non revision registration states reject both revision form and resubmit', 
 })->with(['confirmed', 'registered', 'pending_payment']);
 
 test('invalid live category roster leaves old snapshot notes and status untouched', function (): void {
-    $participant = ($this->makeParticipant)(($this->makeCategory)(['min_roster' => 5, 'max_roster' => 5]));
+    $participant = ($this->makeParticipant)(($this->makeCategory)(['registration_flow' => 'instant_free', 'min_roster' => 5, 'max_roster' => 5]));
     $before = $participant->members()->orderBy('id')->get(['user_id', 'jersey_number', 'is_captain', 'position'])->toArray();
     $invalidMembers = ($this->validMembers)();
     $invalidMembers[1]['jersey_number'] = $invalidMembers[0]['jersey_number'];
@@ -458,7 +689,7 @@ test('resubmit rejects forged foreign athlete upload and preserves snapshot', fu
         ['code' => $athleteCode],
         ['name' => 'RF03 Athlete ID', 'scope' => 'athlete', 'applicable_entities' => ['free_association'], 'is_active' => true],
     );
-    $category = ($this->makeCategory)(['required_documents' => [$athleteCode]]);
+    $category = ($this->makeCategory)(['registration_flow' => 'instant_free', 'required_documents' => [$athleteCode]]);
     $participant = ($this->makeParticipant)($category);
     $before = $participant->members()->orderBy('id')->get(['user_id', 'jersey_number', 'is_captain', 'position'])->toArray();
 
@@ -494,7 +725,7 @@ test('resubmit rejects wrong scope or unknown document code and preserves snapsh
         ['code' => $teamCode],
         ['name' => 'RF03 Team Mandate', 'scope' => 'team', 'applicable_entities' => ['free_association'], 'is_active' => true],
     );
-    $category = ($this->makeCategory)(['required_documents' => [$teamCode]]);
+    $category = ($this->makeCategory)(['registration_flow' => 'instant_free', 'required_documents' => [$teamCode]]);
     $participant = ($this->makeParticipant)($category);
     $before = $participant->members()->orderBy('id')->get(['user_id', 'jersey_number', 'is_captain', 'position'])->toArray();
 
@@ -529,7 +760,7 @@ test('resubmit enforces community subtype applicability and skips inapplicable d
     );
 
     // Category requires both, but community is 'free_association'
-    $category = ($this->makeCategory)(['required_documents' => [$freeDocCode, $schoolDocCode]]);
+    $category = ($this->makeCategory)(['registration_flow' => 'instant_free', 'required_documents' => [$freeDocCode, $schoolDocCode]]);
     $participant = ($this->makeParticipant)($category);
 
     // Sediakan freeDocCode saja -> Sukses karena schoolDocCode tidak berlaku untuk free_association
@@ -560,7 +791,7 @@ test('resubmit rejects inapplicable document upload for community subtype', func
         ['name' => 'School Only Code', 'scope' => 'team', 'applicable_entities' => ['school'], 'is_active' => true],
     );
 
-    $category = ($this->makeCategory)(['required_documents' => [$freeDocCode, $schoolDocCode]]);
+    $category = ($this->makeCategory)(['registration_flow' => 'instant_free', 'required_documents' => [$freeDocCode, $schoolDocCode]]);
     $participant = ($this->makeParticipant)($category);
 
     // Mencoba mengunggah schoolDocCode yang tidak applicable untuk free_association -> Ditolak
@@ -587,7 +818,7 @@ test('resubmit rejects missing mandatory document when not available in vault', 
         ['code' => $teamCode],
         ['name' => 'Mandatory Team Doc', 'scope' => 'team', 'applicable_entities' => ['free_association'], 'is_active' => true],
     );
-    $category = ($this->makeCategory)(['required_documents' => [$teamCode]]);
+    $category = ($this->makeCategory)(['registration_flow' => 'instant_free', 'required_documents' => [$teamCode]]);
     $participant = ($this->makeParticipant)($category);
     $before = $participant->members()->orderBy('id')->get(['user_id', 'jersey_number', 'is_captain', 'position'])->toArray();
 

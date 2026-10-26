@@ -17,6 +17,7 @@ use App\Modules\Event\Services\RegistrationDraftService;
 use App\Modules\Event\Services\TeamPersonnelRoster;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 
 class RegistrationDraftController extends Controller
@@ -44,6 +45,10 @@ class RegistrationDraftController extends Controller
                 (string) $draftModel->id,
                 (int) $draftModel->community_id,
             )->map(fn ($candidate): array => array_replace($candidate->jsonSerialize(), [
+                'is_selected' => collect($draftModel->payload['members'] ?? [])->contains(fn (array $member): bool => (int) $member['user_id'] === $candidate->userId),
+                'event_starts_at' => $event->starts_at?->format('Y-m-d'),
+                'age_at_event' => $candidate->birthDate && $event->starts_at && Carbon::parse($candidate->birthDate)->startOfDay()->lessThanOrEqualTo($event->starts_at)
+                    ? (int) Carbon::parse($candidate->birthDate)->startOfDay()->diffInYears($event->starts_at->copy()->startOfDay()) : null,
                 'meets_membership_requirements' => $candidate->meetsMembershipRequirements && $draftModel->category->acceptsAthleteGender($candidate->gender),
                 'reason' => $draftModel->category->acceptsAthleteGender($candidate->gender) ? $candidate->reason : 'Jenis kelamin atlet tidak sesuai dengan kategori.',
                 'documents' => $this->athleteWorkspace->getRequiredAthleteDocumentsForDraft($draftModel, $candidate->userId),

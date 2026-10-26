@@ -9,6 +9,7 @@ use App\Models\Concerns\Auditable;
 use App\Models\User;
 use App\Modules\Event\Observers\EventParticipantObserver;
 use Database\Factories\EventParticipantFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -74,6 +75,22 @@ class EventParticipant extends Model implements Payable
     protected static function newFactory(): EventParticipantFactory
     {
         return EventParticipantFactory::new();
+    }
+
+    public function scopeOccupyingSlot(Builder $query): Builder
+    {
+        return $query->where(function ($active): void {
+            $active->whereIn('status', ['verified', 'confirmed', 'attended'])
+                ->orWhere(function ($pending): void {
+                    $pending->where('status', 'pending_payment')->where(function ($deadline): void {
+                        $deadline->whereNull('payment_deadline_at')->orWhere('payment_deadline_at', '>=', now());
+                    });
+                })
+                ->orWhere(function ($application): void {
+                    $application->whereIn('status', ['registered', 'revision_needed'])
+                        ->whereHas('category', fn ($category) => $category->where('registration_flow', '!=', 'screening_first'));
+                });
+        });
     }
 
     public function event(): BelongsTo

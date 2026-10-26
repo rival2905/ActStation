@@ -165,13 +165,12 @@ class EventRegistrationEmailService
         $category = (string) ($snapshot['category_name'] ?? '');
         $status = (string) ($snapshot['status'] ?? '');
         $transition = (string) ($snapshot['transition'] ?? '');
-        $name = (string) ($snapshot['recipient_name'] ?? '');
 
         $formattedFee = 'Rp '.number_format((float) ($snapshot['fee'] ?? 0), 0, ',', '.');
         $deadline = (string) ($snapshot['deadline'] ?? '-');
         $invoice = (string) ($snapshot['invoice_number'] ?? '-');
 
-        $body = "Halo {$name},\n\n";
+        $body = '';
 
         switch ($transition) {
             case 'payment_verified':
@@ -232,6 +231,14 @@ class EventRegistrationEmailService
                 $body .= 'Langkah selanjutnya: Tim Anda akan dipromosikan secara otomatis jika kuota tim utama terbuka.';
                 $actionUrl = route('my-events.index');
                 $actionLabel = 'Lihat Pendaftaran';
+                break;
+
+            case 'withdrawn':
+                $subject = "Pengajuan Ditarik ke Draf: {$event} - {$team}";
+                $body .= "Pengajuan tim [{$team}] ditarik dari antrean pemeriksaan dan dikembalikan ke draf. Data tim, roster, dan berkas tetap tersimpan.\n\n";
+                $body .= 'Langkah selanjutnya: Edit draf lalu ajukan ulang untuk pemeriksaan panitia.';
+                $actionUrl = route('panel.community-events.create', $snapshot['event_slug']);
+                $actionLabel = 'Lanjutkan Draf';
                 break;
 
             case 'deleted':

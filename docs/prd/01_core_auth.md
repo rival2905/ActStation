@@ -12,7 +12,21 @@ Sistem autentikasi berbasis session (Guard: `web`). Saat pengguna berhasil login
 
 Route internal `/admin/*` diproteksi middleware `EnsureInternalRole` (menghasilkan status HTTP 403 bagi role eksternal).
 
+### Kembali ke event setelah membuat akun
+- Pengunjung dari tombol Daftar Tim masuk `/panel/login`, lalu `/register`; setelah akun berhasil dibuat dan sesi diregenerasi, kembali ke `/events/{slug}/register` beserta kategori terpilih, bukan katalog semua event.
+- `EventRegistrationReturn::publicDestinationFromIntended()` hanya menerima intended URL route pendaftaran tim pada origin aplikasi, event published dengan pendaftaran terbuka; kategori harus milik event. URL eksternal/internal lain tidak dijadikan tujuan registrasi. Intended event yang berhasil dipakai dikonsumsi.
+- Prioritas undangan personel/panitia dan default registrasi tanpa konteks (`/events`) tetap. Login existing mengikuti intended ke wizard; tanpa komunitas aktif masuk Buat Komunitas, dengan komunitas aktif langsung wizard. Bukan kewajiban membuat komunitas untuk semua login.
+- Verifikasi: 60 tes/344 assertions pada event return, registrasi tim/publik, undangan panitia/personel dan pengiriman email; Pint/diff lulus. Tes memakai DB test dan email fake/nonaktif, tanpa akun runtime atau email nyata.
+
+### Konten email verifikasi
+- `User::sendEmailVerificationNotification()` mengirim body instruksi dan masa berlaku 60 menit tanpa sapaan atau URL mentah. Template `emails.actstation` menjadi sumber tunggal sapaan, tombol Verifikasi Email, URL cadangan, dan footer; n8n hanya meneruskan HTML Laravel.
+- Signed URL, expiry, autentikasi, dan throttle tetap. Berlaku untuk pengiriman baru, tidak mengubah email historis. Regresi diuji melalui resend sampai HTML webhook memakai `Http::fake()` tanpa email nyata: satu sapaan, dua anchor verifikasi (tombol dan URL cadangan), signature valid dan expiry 60 menit. Suite verifikasi/delivery/admin resend: 32 tes, 158 assertions lulus.
+
 ## 3. RBAC (Role-Based Access Control)
+### Direktori pengguna admin
+- `/admin/users` memakai pencarian/filter GET server (`search`, `role`, `is_active`) dan pagination Laravel Bootstrap. Pencarian mencakup seluruh akun, bukan hanya 100 baris halaman yang sudah dimuat. Filter dipertahankan di tautan halaman, tombol Reset menghapus filter. Tidak mengubah data akun, role, atau akses.
+- Menghapus pagination/pencarian List.js lokal yang menutupi pagination server dan membuat akun lama tidak bisa ditemukan lewat kontrol tampilan. Verifikasi: 2 tes/19 assertions lulus, termasuk akun lebih tua dari 101 akun baru, pencarian JSON, peran dan status nonaktif; Pint dan kompilasi Blade lulus.
+
 - Menggunakan `spatie/laravel-permission:6.25.0`.
 - Tabel `roles` memiliki kolom tambahan `panel_access` (boolean) untuk menentukan hak akses ke internal panel secara dinamis.
 - Daftar Role Inti:

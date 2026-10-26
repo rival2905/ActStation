@@ -156,6 +156,24 @@ class TeamInspectionService
         });
     }
 
+    public function verifyAll(Event $event, string $kind, string $id, string $owner, array $documents, int $reviewer): void
+    {
+        abort_unless($kind === 'participant' && ctype_digit($owner), 403);
+        DB::transaction(function () use ($event, $kind, $id, $owner, $documents, $reviewer): void {
+            $registration = $this->registration($event, $kind, $id, true);
+            abort_if($registration->status === 'cancelled', 403);
+            abort_unless(in_array((int) $owner, array_map('intval', array_column($this->members($registration), 'user_id')), true), 404);
+            $required = $this->documents($event, $registration, $kind, $owner, 'organizer');
+            $expected = collect($required)->pluck('code')->sort()->values()->all();
+            $submitted = collect($documents)->pluck('code')->sort()->values()->all();
+            abort_unless($expected && $expected === $submitted, 422, 'Daftar dokumen berubah atau belum lengkap. Muat ulang pemeriksaan.');
+            foreach (collect($documents)->sortBy('code') as $document) {
+                $this->documentType($registration, $owner, $document['code']);
+                $this->vault->review((new User)->getMorphClass(), (int) $owner, $document['code'], $document['version'], 'verified', null, $reviewer);
+            }
+        });
+    }
+
     private function members(EventParticipant|RegistrationDraft $registration): array
     {
         return $registration instanceof RegistrationDraft
@@ -187,7 +205,7 @@ class TeamInspectionService
                 continue;
             }
             $staged = $this->staged($registration, $owner, $type->code);
-            $row = $staged ? ['exists' => Storage::disk('local')->exists($staged['staged_path']), 'status' => 'pending', 'notes' => null, 'version' => null] : (($kind === 'draft' && $owner === 'team') ? null : $this->vault->find($owner === 'team' ? $registration->getMorphClass() : (new User)->getMorphClass(), $owner === 'team' ? (int) $registration->id : (int) $owner, $type->code));
+            $row = $staged ? ['exists' => Storage::disk('local')->exists($staged['staged_path']), 'status' => ($staged['status'] ?? null) === 'rejected' ? 'rejected' : 'pending', 'notes' => $staged['notes'] ?? null, 'version' => null] : (($kind === 'draft' && $owner === 'team') ? null : $this->vault->find($owner === 'team' ? $registration->getMorphClass() : (new User)->getMorphClass(), $owner === 'team' ? (int) $registration->id : (int) $owner, $type->code));
             $row ??= ['exists' => false, 'status' => 'missing', 'notes' => null, 'version' => null];
             $params = ['event' => $event->id, 'kind' => $kind, 'id' => $registration->id, 'owner' => $owner, 'code' => $type->code];
             $prefix = $workspace === 'admin' ? 'admin.events.workspace.' : 'panel.organizer.';
@@ -211,7 +229,8 @@ class TeamInspectionService
         }
         $path = $meta['staged_path'] ?? '';
         $prefix = 'registration_drafts/'.$registration->id.'/'.($owner === 'team' ? 'team/' : 'athlete/');
-        abort_unless(is_string($path) && str_starts_with($path, $prefix) && ! str_contains($path, '..') && ! str_contains($path, '\\'), 404);
+        $restoredPrefix = 'registration_drafts/'.$registration->id.'/restored/';
+        abort_unless(is_string($path) && (str_starts_with($path, $prefix) || ($owner === 'team' && str_starts_with($path, $restoredPrefix))) && ! str_contains($path, '..') && ! str_contains($path, '\\'), 404);
 
         return $meta;
     }

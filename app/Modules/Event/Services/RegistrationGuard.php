@@ -159,8 +159,8 @@ class RegistrationGuard
             }
         }
 
-        if ($event->max_participants !== null) {
-            $activeParticipants = $this->activeParticipants($event->participants(), $now)
+        if ($flow !== 'screening_first' && $event->max_participants !== null) {
+            $activeParticipants = $event->participants()->occupyingSlot()
                 ->when($ignoring, fn ($query) => $query->where('id', '!=', $ignoring->id))
                 ->count();
 

@@ -4,6 +4,7 @@
     $isPending = $task['exists'] && ($task['status'] === 'pending' || $task['status'] === null);
     $isRejected = $task['exists'] && ($task['status'] === 'rejected');
     $notUploaded = ! $task['exists'];
+    $isPhoto = $task['code'] === 'photo';
 @endphp
 <div class="border rounded p-3 mb-2 bg-white shadow-none transition-base">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -13,7 +14,10 @@
             </div>
             <div>
                 <strong class="text-900 fs-10 d-block mb-0">{{ $task['name'] }}</strong>
-                <span class="text-500 fs-11">Format: PDF, PNG, atau JPEG (Maks. 5 MB)</span>
+                <span class="text-500 fs-11">Format: {{ $isPhoto ? 'JPG, JPEG, atau PNG' : 'PDF, JPG, JPEG, atau PNG' }} (Maks. 2 MB)</span>
+                @if($isPhoto)
+                <small class="text-500 fs-11 d-block">Jika foto profil masih kosong, pasfoto ini juga dipakai sebagai foto profil publik. Foto profil yang sudah ada tidak diganti; dokumen pasfoto tetap privat.</small>
+                @endif
             </div>
         </div>
         <div class="d-flex align-items-center gap-2 ms-auto">
@@ -38,17 +42,18 @@
     @if($registration->can_upload)
     <div class="collapse mt-2" id="collapse-doc-{{ $kind }}-{{ $registration->id }}-{{ $task['code'] }}">
         <div class="p-3 bg-body-tertiary rounded border border-dashed border-300">
-            <form method="POST" enctype="multipart/form-data" action="{{ route('my-events.documents.store', ['kind' => $kind, 'id' => $registration->id, 'code' => $task['code']]) }}">
+            <form method="POST" enctype="multipart/form-data" data-athlete-document-upload action="{{ route('my-events.documents.store', ['kind' => $kind, 'id' => $registration->id, 'code' => $task['code']]) }}">
                 @csrf
                 <label class="form-label fs-11 fw-semi-bold mb-1" for="doc-{{ $kind }}-{{ $registration->id }}-{{ $task['code'] }}">
                     Pilih File untuk <strong>{{ $task['name'] }}</strong>
                 </label>
                 <div class="d-flex flex-wrap gap-2">
-                    <input class="form-control form-control-sm flex-grow-1" id="doc-{{ $kind }}-{{ $registration->id }}-{{ $task['code'] }}" type="file" name="document" accept="application/pdf,image/png,image/jpeg" required>
+                    <input class="form-control form-control-sm flex-grow-1" id="doc-{{ $kind }}-{{ $registration->id }}-{{ $task['code'] }}" type="file" name="document" accept="{{ $isPhoto ? 'image/png,image/jpeg' : 'application/pdf,image/png,image/jpeg' }}" aria-describedby="doc-error-{{ $kind }}-{{ $registration->id }}-{{ $task['code'] }}" required>
                     <button class="btn btn-sm btn-primary" type="submit">
                         <span class="fas fa-cloud-upload-alt me-1"></span>Unggah Dokumen
                     </button>
                 </div>
+                <div id="doc-error-{{ $kind }}-{{ $registration->id }}-{{ $task['code'] }}" class="alert alert-danger py-2 mt-2 mb-0 fs-10" data-upload-error role="alert" hidden></div>
             </form>
         </div>
     </div>

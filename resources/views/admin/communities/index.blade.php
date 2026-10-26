@@ -29,65 +29,84 @@
     </div>
 </div>
 
-<x-flash-alert />
-
 <div class="row g-3 mb-3">
     <div class="col-sm-6 col-md-4">
         <x-card-stat title="Total Komunitas" :value="$communities->total()" icon="fas fa-users" color="primary" />
     </div>
 </div>
 
-<x-table-filter :action="route('admin.communities.index')" :reset-url="route('admin.communities.index')">
-    <div class="col-md-3">
-        <input type="text" name="search" class="form-control form-control-sm" placeholder="Cari nama, kontak..." value="{{ $filters['search'] ?? request('search') }}">
+<div class="card mb-3" id="communitiesTable" data-list='{"valueNames":["community","subtype","sport","city","contact","status"],"page":10,"pagination":true}'>
+    <div class="card-header border-bottom border-200">
+        <div class="row flex-between-center g-2">
+            <div class="col-12 col-md-auto">
+                <h5 class="fs-9 mb-0 text-nowrap py-1">Daftar Komunitas</h5>
+            </div>
+            <div class="col-12 col-md-auto ms-auto">
+                <form class="position-relative" onsubmit="event.preventDefault();" style="min-width: 14rem;">
+                    <div class="input-group input-group-sm">
+                        <input class="form-control form-control-sm shadow-none search" type="search" placeholder="Cari nama, kota, kontak..." aria-label="Search" />
+                        <div class="input-group-text bg-transparent"><span class="fa fa-search fs-10 text-600"></span></div>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="row g-2 align-items-center mt-1">
+            <div class="col-auto">
+                <select class="form-select form-select-sm" data-list-filter="subtype">
+                    <option value="">Semua Tipe</option>
+                    @foreach(\App\Contracts\EntityRequirements::SUBTYPES as $key => $label)
+                        <option value="{{ $label }}">{{ $label }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-auto">
+                <select class="form-select form-select-sm" data-list-filter="sport">
+                    <option value="">Semua Cabor</option>
+                    @foreach($sportCategories as $category)
+                        <option value="{{ $category->name }}">{{ $category->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-auto">
+                <select class="form-select form-select-sm" data-list-filter="status">
+                    <option value="">Semua Status</option>
+                    <option value="Terverifikasi">Terverifikasi</option>
+                    <option value="Menunggu">Menunggu</option>
+                    <option value="Draf">Draf</option>
+                    <option value="Ditolak">Ditolak</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                @if(request()->hasAny(['status', 'subtype', 'sport_category_id', 'city_id', 'search']))
+                    <a href="{{ route('admin.communities.index') }}" class="btn btn-sm btn-falcon-default text-danger" title="Reset Filter">
+                        <span class="fas fa-undo me-1"></span>Reset
+                    </a>
+                @else
+                    <button class="btn btn-sm btn-falcon-default" type="button" id="resetTableFilters" title="Reset Filter">
+                        <span class="fas fa-undo"></span>
+                    </button>
+                @endif
+            </div>
+        </div>
     </div>
-    <div class="col-md-3">
-        <select name="subtype" class="form-select form-select-sm">
-            <option value="">Semua Tipe</option>
-            @foreach(\App\Contracts\EntityRequirements::SUBTYPES as $key => $label)
-                <option value="{{ $key }}" {{ ($filters['subtype'] ?? request('subtype')) === $key ? 'selected' : '' }}>{{ $label }}</option>
-            @endforeach
-        </select>
-    </div>
-    <div class="col-md-3">
-        <select name="sport_category_id" class="form-select form-select-sm">
-            <option value="">Semua Cabor</option>
-            @foreach($sportCategories as $category)
-                <option value="{{ $category->id }}" {{ (string) ($filters['sport_category_id'] ?? request('sport_category_id')) === (string) $category->id ? 'selected' : '' }}>
-                    {{ $category->name }}
-                </option>
-            @endforeach
-        </select>
-    </div>
-    <div class="col-md-3">
-        <select name="status" class="form-select form-select-sm">
-            <option value="">Semua Status</option>
-            <option value="draft" {{ ($filters['status'] ?? request('status')) === 'draft' ? 'selected' : '' }}>Draf</option>
-            <option value="pending" {{ ($filters['status'] ?? request('status')) === 'pending' ? 'selected' : '' }}>Menunggu Verifikasi</option>
-            <option value="verified" {{ ($filters['status'] ?? request('status')) === 'verified' ? 'selected' : '' }}>Terverifikasi</option>
-            <option value="rejected" {{ ($filters['status'] ?? request('status')) === 'rejected' ? 'selected' : '' }}>Ditolak</option>
-        </select>
-    </div>
-</x-table-filter>
-
-<div class="card mb-3">
     <div class="card-body p-0">
         <div class="table-responsive scrollbar">
-            <table class="table table-hover table-striped fs-10 mb-0">
+            <table class="table table-sm table-striped fs-10 mb-0 overflow-hidden">
                 <thead class="bg-200 text-900">
                     <tr>
-                        <th class="py-2">Komunitas</th>
-                        <th class="py-2">Tipe / Cabor</th>
-                        <th class="py-2">Wilayah / Alamat</th>
-                        <th class="py-2">Kontak</th>
-                        <th class="py-2 text-center">Status</th>
-                        <th class="py-2 text-end">Aksi</th>
+                        <th class="text-900 sort pe-1 align-middle white-space-nowrap" data-sort="community">Komunitas</th>
+                        <th class="text-900 sort pe-1 align-middle white-space-nowrap" data-sort="subtype">Tipe</th>
+                        <th class="text-900 sort pe-1 align-middle white-space-nowrap" data-sort="sport">Cabor</th>
+                        <th class="text-900 sort pe-1 align-middle white-space-nowrap" data-sort="city">Wilayah / Alamat</th>
+                        <th class="text-900 sort pe-1 align-middle white-space-nowrap" data-sort="contact">Kontak</th>
+                        <th class="text-900 sort pe-1 align-middle white-space-nowrap text-center" data-sort="status">Status</th>
+                        <th class="align-middle no-sort text-end pe-3">Aksi</th>
                     </tr>
                 </thead>
-                <tbody class="list">
+                <tbody class="list" id="table-communities-body">
                     @forelse($communities as $community)
-                    <tr>
-                        <td class="align-middle">
+                    <tr class="btn-reveal-trigger">
+                        <td class="community align-middle white-space-nowrap py-2 ps-3">
                             <div class="d-flex align-items-center">
                                 @if($community->logo)
                                     <div class="avatar avatar-l me-2">
@@ -108,21 +127,25 @@
                                 </div>
                             </div>
                         </td>
-                        <td class="align-middle">
+                        <td class="subtype align-middle white-space-nowrap py-2">
                             <span class="badge badge-subtle-secondary fs-11">
                                 {{ \App\Contracts\EntityRequirements::SUBTYPES[$community->subtype] ?? ucfirst(str_replace('_', ' ', $community->subtype)) }}
                             </span>
-                            @if($community->sport_category_id)
-                                <div class="fs-11 text-700 mt-1">
-                                    <span class="fas fa-running me-1"></span>{{ $community->sportCategory?->name ?? 'Cabor' }}
+                        </td>
+                        <td class="sport align-middle white-space-nowrap py-2">
+                            @if($community->sportCategory)
+                                <div class="fs-11 text-700">
+                                    <span class="fas fa-running me-1 text-primary"></span>{{ $community->sportCategory->name }}
                                 </div>
+                            @else
+                                <span class="text-400 fs-11">-</span>
                             @endif
                         </td>
-                        <td class="align-middle">
+                        <td class="city align-middle py-2">
                             <div class="fs-10 text-800">{{ Str::limit($community->address ?? '-', 35) }}</div>
                             <span class="fs-11 text-500">{{ $community->city_id ?? '' }}</span>
                         </td>
-                        <td class="align-middle">
+                        <td class="contact align-middle py-2">
                             <div class="fs-10 text-800">{{ $community->contact_person ?? '-' }}</div>
                             @if($community->contact_phone)
                                 <div class="fs-11 text-600"><span class="fas fa-phone-alt me-1"></span>{{ $community->contact_phone }}</div>
@@ -131,7 +154,7 @@
                                 <div class="fs-11 text-600"><span class="fas fa-envelope me-1"></span>{{ $community->contact_email }}</div>
                             @endif
                         </td>
-                        <td class="align-middle text-center">
+                        <td class="status align-middle text-center py-2">
                             @switch($community->status)
                                 @case('verified')
                                     <span class="badge rounded-pill badge-subtle-success">Terverifikasi</span>
@@ -146,7 +169,7 @@
                                     <span class="badge rounded-pill badge-subtle-secondary">Draf</span>
                             @endswitch
                         </td>
-                        <td class="align-middle text-end text-nowrap">
+                        <td class="align-middle text-end white-space-nowrap py-2 pe-3">
                             <div class="d-inline-flex gap-1">
                                 <a href="{{ route('admin.communities.show', $community) }}" class="btn btn-sm btn-falcon-default" title="Detail">
                                     <span class="fas fa-eye"></span>
@@ -166,7 +189,7 @@
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="6" class="text-center py-4 text-600">
+                        <td colspan="7" class="text-center py-4 text-600">
                             <span class="fas fa-users fs-6 d-block mb-2 text-400"></span>
                             Tidak ada data komunitas yang ditemukan.
                         </td>
@@ -174,14 +197,47 @@
                     @endforelse
                 </tbody>
             </table>
+            <p class="text-center fs-10 text-muted py-4 mb-0 fallback d-none">Tidak ada data komunitas yang cocok dengan pencarian.</p>
         </div>
     </div>
-    @if($communities->hasPages())
-    <div class="card-footer border-top d-flex justify-content-end p-2">
-        {{ $communities->links() }}
+    <div class="card-footer d-flex align-items-center justify-content-between border-top py-2">
+        <p class="mb-0 fs-10">
+            <span class="d-none d-sm-inline-block" data-list-info="data-list-info"></span>
+            <span class="d-none d-sm-inline-block"> &mdash; </span>
+            <a class="fw-semi-bold" href="#!" data-list-view="*">Lihat semua<span class="fas fa-angle-right ms-1" data-fa-transform="down-1"></span></a>
+            <a class="fw-semi-bold d-none" href="#!" data-list-view="less">Tampilkan sedikit<span class="fas fa-angle-right ms-1" data-fa-transform="down-1"></span></a>
+        </p>
+        <div class="d-flex">
+            <button class="btn btn-sm btn-falcon-default me-1" type="button" title="Previous" data-list-pagination="prev"><span class="fas fa-chevron-left"></span></button>
+            <ul class="pagination mb-0"></ul>
+            <button class="btn btn-sm btn-falcon-default ms-1" type="button" title="Next" data-list-pagination="next"><span class="fas fa-chevron-right"></span></button>
+        </div>
     </div>
-    @endif
 </div>
 
 <x-modal-delete id="deleteModal" title="Hapus Komunitas" message="Apakah Anda yakin ingin menghapus data komunitas ini?" />
 @endsection
+
+@push('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const resetBtn = document.getElementById('resetTableFilters');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', function () {
+                const tableEl = document.getElementById('communitiesTable');
+                if (!tableEl) return;
+                const searchInput = tableEl.querySelector('.search');
+                if (searchInput) {
+                    searchInput.value = '';
+                    searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    searchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
+                }
+                tableEl.querySelectorAll('[data-list-filter]').forEach(function (select) {
+                    select.value = '';
+                    select.dispatchEvent(new Event('change'));
+                });
+            });
+        }
+    });
+</script>
+@endpush

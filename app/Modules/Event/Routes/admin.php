@@ -82,6 +82,7 @@ Route::scopeBindings()->prefix('events/{event}')->name('events.workspace.')->gro
     Route::get('team-inspections/{kind}/{id}/documents/{owner}/{code}/download', [TeamInspectionController::class, 'download'])->middleware('permission:event-participant.view')->name('teams.inspection.download');
     Route::get('team-inspections/{kind}/{id}/personnel-license/{personnelKey}/download', [TeamInspectionController::class, 'downloadPersonnelLicense'])->middleware('permission:event-participant.view')->name('teams.personnel-license.download');
     Route::post('team-inspections/{kind}/{id}/documents/{owner}/{code}/review', [TeamInspectionController::class, 'review'])->middleware('permission:event-participant.confirm')->name('teams.inspection.review');
+    Route::post('team-inspections/{kind}/{id}/documents/{owner}/verify-all', [TeamInspectionController::class, 'verifyAll'])->middleware('permission:event-participant.confirm')->name('teams.inspection.verify-all');
     Route::get('teams', [OrganizerTeamController::class, 'index'])->middleware('permission:event-participant.view')->name('teams.index');
     Route::get('teams/{participant}/documents/{document}/download', [OrganizerTeamController::class, 'downloadDocument'])->middleware('permission:event-participant.view')->name('teams.documents.download');
     Route::post('teams/{participant}/verify', [OrganizerTeamController::class, 'verify'])->middleware('permission:event-participant.confirm')->name('teams.verify');

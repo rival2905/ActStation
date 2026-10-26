@@ -1,3 +1,4 @@
+@include('layouts.partials.assistant-chat')
 <!DOCTYPE html>
 <html data-bs-theme="light" lang="{{ str_replace('_', '-', app()->getLocale()) }}" dir="ltr">
 <head>

@@ -24,32 +24,34 @@
     </div>
 </div>
 
-<div class="card mb-3" id="usersTable" data-list='{"valueNames":["name","email","phone","role","status","joined"],"page":10,"pagination":true}'>
+<div class="card mb-3" id="usersTable">
     <div class="card-header">
         <div class="row flex-between-center g-2">
             <div class="col-12 col-md-auto d-flex align-items-center pe-0">
                 <h5 class="fs-9 mb-0 text-nowrap py-1">Daftar Pengguna</h5>
             </div>
             <div class="col-12 col-md-auto ms-auto text-end ps-0">
-                <div class="d-flex flex-wrap align-items-center justify-content-end gap-2">
+                <form method="GET" action="{{ route('admin.users.index') }}" class="d-flex flex-wrap align-items-center justify-content-end gap-2">
                     <div class="search-box" style="max-width: 18rem;">
-                        <form class="position-relative" data-bs-toggle="search" data-bs-display="static">
-                            <input class="form-control form-control-sm search-input search fuzzy-search" type="search" placeholder="Cari nama, email..." aria-label="Search" />
+                        <div class="position-relative">
+                            <input class="form-control form-control-sm search-input" name="search" value="{{ $filters['search'] ?? '' }}" type="search" placeholder="Cari nama, email, telepon..." aria-label="Cari pengguna di seluruh akun" />
                             <span class="fas fa-search search-box-icon"></span>
-                        </form>
+                        </div>
                     </div>
-                    <select class="form-select form-select-sm" data-list-filter="role" style="width: auto;">
+                    <select class="form-select form-select-sm" name="role" aria-label="Filter peran" style="width: auto;">
                         <option value="">Semua Peran</option>
                         @foreach($roles as $role)
-                            <option value="{{ $role->name }}">{{ $role->name }}</option>
+                            <option value="{{ $role->name }}" @selected(($filters['role'] ?? '') === $role->name)>{{ $role->name }}</option>
                         @endforeach
                     </select>
-                    <select class="form-select form-select-sm" data-list-filter="status" style="width: auto;">
+                    <select class="form-select form-select-sm" name="is_active" aria-label="Filter status akun" style="width: auto;">
                         <option value="">Semua Status</option>
-                        <option value="Aktif">Aktif</option>
-                        <option value="Nonaktif">Nonaktif</option>
+                        <option value="1" @selected(($filters['is_active'] ?? '') === '1')>Aktif</option>
+                        <option value="0" @selected(($filters['is_active'] ?? '') === '0')>Nonaktif</option>
                     </select>
-                </div>
+                    <button type="submit" class="btn btn-sm btn-primary">Cari</button>
+                    <a href="{{ route('admin.users.index') }}" class="btn btn-sm btn-outline-secondary">Reset</a>
+                </form>
             </div>
         </div>
     </div>
@@ -58,11 +60,11 @@
             <table class="table table-sm table-striped fs-10 mb-0 overflow-hidden">
                 <thead class="bg-200 text-900">
                     <tr>
-                        <th class="text-900 sort pe-1 align-middle white-space-nowrap" data-sort="name">Pengguna</th>
-                        <th class="text-900 sort pe-1 align-middle white-space-nowrap" data-sort="phone">No. Telepon</th>
-                        <th class="text-900 sort pe-1 align-middle white-space-nowrap" data-sort="role">Peran</th>
-                        <th class="text-900 sort pe-1 align-middle white-space-nowrap text-center" data-sort="status">Status</th>
-                        <th class="text-900 sort pe-1 align-middle white-space-nowrap" data-sort="joined">Terdaftar</th>
+                        <th class="text-900 pe-1 align-middle white-space-nowrap">Pengguna</th>
+                        <th class="text-900 pe-1 align-middle white-space-nowrap">No. Telepon</th>
+                        <th class="text-900 pe-1 align-middle white-space-nowrap">Peran</th>
+                        <th class="text-900 pe-1 align-middle white-space-nowrap text-center">Status</th>
+                        <th class="text-900 pe-1 align-middle white-space-nowrap">Terdaftar</th>
                         <th class="align-middle no-sort text-end pe-3">Aksi</th>
                     </tr>
                 </thead>
@@ -133,18 +135,9 @@
             <p class="text-center fs-10 text-muted py-4 mb-0 fallback d-none">Tidak ada data pengguna yang cocok dengan pencarian.</p>
         </div>
     </div>
-    <div class="card-footer d-flex align-items-center justify-content-between border-top py-2">
-        <p class="mb-0 fs-10">
-            <span class="d-none d-sm-inline-block" data-list-info="data-list-info"></span>
-            <span class="d-none d-sm-inline-block"> &mdash; </span>
-            <a class="fw-semi-bold" href="#!" data-list-view="*">Lihat semua<span class="fas fa-angle-right ms-1" data-fa-transform="down-1"></span></a>
-            <a class="fw-semi-bold d-none" href="#!" data-list-view="less">Tampilkan sedikit<span class="fas fa-angle-right ms-1" data-fa-transform="down-1"></span></a>
-        </p>
-        <div class="d-flex">
-            <button class="btn btn-sm btn-falcon-default me-1" type="button" title="Previous" data-list-pagination="prev"><span class="fas fa-chevron-left"></span></button>
-            <ul class="pagination mb-0"></ul>
-            <button class="btn btn-sm btn-falcon-default ms-1" type="button" title="Next" data-list-pagination="next"><span class="fas fa-chevron-right"></span></button>
-        </div>
+    <div class="card-footer border-top py-2">
+        <p class="mb-2 fs-10">Menampilkan {{ $users->firstItem() ?? 0 }}–{{ $users->lastItem() ?? 0 }} dari {{ $users->total() }} pengguna. Pencarian mencakup seluruh akun.</p>
+        {{ $users->links('pagination::bootstrap-5') }}
     </div>
 </div>
 

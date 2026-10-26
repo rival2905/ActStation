@@ -11,6 +11,7 @@ use App\Modules\Community\Models\CommunityOfficial;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventCategory;
 use App\Modules\Event\Models\EventParticipant;
+use App\Modules\Event\Models\RegistrationDraft;
 use App\Modules\Event\Services\EventInvitationService;
 use App\Modules\MasterData\Models\DevelopmentLevel;
 use App\Modules\MasterData\Models\SportCategory;
@@ -121,6 +122,171 @@ beforeEach(function (): void {
         'community_subtype' => 'free_association',
     ]);
 });
+
+test('event overview lists resumable drafts without treating them as submitted participation', function (): void {
+    $this->community->update(['sport_category_id' => null]);
+    $draft = RegistrationDraft::create([
+        'user_id' => $this->manager->id, 'community_id' => $this->community->id,
+        'event_id' => $this->event->id, 'event_category_id' => $this->category->id,
+        'payload' => ['team_name' => 'Tim Dalam Proses'], 'revision' => 1, 'expires_at' => now()->addDays(7),
+    ]);
+    $url = route('panel.community-events.create', ['slug' => $this->event->slug, 'draft_id' => $draft->id, 'step' => 'roster']);
+    $response = $this->actingAs($this->manager)->get(route('panel.community-events.index'))->assertOk()
+        ->assertSee('Pendaftaran Sedang Berjalan')->assertSee('Tim Dalam Proses')->assertSee($this->category->name)
+        ->assertSee('href="'.e($url).'"', false)->assertDontSee('Partisipasi Turnamen Komunitas Saya');
+    $html = $response->getContent();
+    $start = strpos($html, 'aria-label="Menu panel"');
+    $sidebar = substr($html, $start, strpos($html, '</nav>', $start) - $start);
+    foreach (['panel.coaches.index', 'panel.athletes.index', 'panel.documents.index'] as $menu) {
+        expect($sidebar)->not->toContain('href="'.route($menu).'"');
+    }
+    $this->get($url)->assertOk()->assertSee($draft->id);
+});
+
+test('ongoing draft cards are informative and replace their event in paginated catalog', function (): void {
+    $this->event->update(['banner_image' => 'events/demo-logo.png']);
+    $other = Event::factory()->create(['status' => 'published', 'registration_open' => true]);
+    RegistrationDraft::create([
+        'user_id' => $this->manager->id, 'community_id' => $this->community->id,
+        'event_id' => $this->event->id, 'event_category_id' => $this->category->id,
+        'payload' => ['team_name' => 'Tim Informasi', 'members' => [['user_id' => $this->athletes[0]->id]]],
+        'expires_at' => now()->addDays(7),
+    ]);
+    $response = $this->actingAs($this->manager)->get(route('panel.community-events.index'))->assertOk()
+        ->assertSee(asset('storage/events/demo-logo.png'), false)
+        ->assertSee('1 atlet tersimpan')->assertSee('Batas simpan draft')
+        ->assertSee($this->event->starts_at->format('d M Y'));
+    $ids = $response->viewData('events')->pluck('id')->all();
+    expect($ids)->not->toContain($this->event->id)->toContain($other->id);
+    expect($response->viewData('events')->total())->toBe(Event::where('status', 'published')->where('registration_open', true)->where('id', '!=', $this->event->id)->count());
+});
+
+test('multi-draft registration wizard displays Tim 1 and Tim 2 badges in accordion headers when multiple drafts exist', function (): void {
+    $draft1 = RegistrationDraft::create([
+        'user_id' => $this->manager->id,
+        'community_id' => $this->community->id,
+        'event_id' => $this->event->id,
+        'event_category_id' => $this->category->id,
+        'payload' => ['team_name' => 'Satria A'],
+        'created_at' => now()->subHours(2),
+        'expires_at' => now()->addDays(7),
+    ]);
+
+    $draft2 = RegistrationDraft::create([
+        'user_id' => $this->manager->id,
+        'community_id' => $this->community->id,
+        'event_id' => $this->event->id,
+        'event_category_id' => $this->category->id,
+        'payload' => ['team_name' => 'Satria B'],
+        'created_at' => now()->subHour(),
+        'expires_at' => now()->addDays(7),
+    ]);
+
+    $response = $this->actingAs($this->manager)
+        ->get(route('panel.community-events.create', ['slug' => $this->event->slug, 'draft_id' => $draft2->id]))
+        ->assertOk();
+
+    $response->assertSee('team-header-index', false)
+        ->assertSee('Tim 1')
+        ->assertSee('Tim 2');
+});
+
+test('single draft registration wizard does not display Tim 1 badge in accordion headers', function (): void {
+    $draft = RegistrationDraft::create([
+        'user_id' => $this->manager->id,
+        'community_id' => $this->community->id,
+        'event_id' => $this->event->id,
+        'event_category_id' => $this->category->id,
+        'payload' => ['team_name' => 'Satria Tunggal'],
+        'expires_at' => now()->addDays(7),
+    ]);
+
+    $this->actingAs($this->manager)
+        ->get(route('panel.community-events.create', ['slug' => $this->event->slug, 'draft_id' => $draft->id]))
+        ->assertOk()
+        ->assertDontSee('team-header-index')
+        ->assertDontSee('Tim 1');
+});
+
+test('event overview keeps multiple drafts including one without category', function (): void {
+    $drafts = collect(['Tim Pertama', 'Tim Kedua'])->map(fn (string $name) => RegistrationDraft::create([
+        'user_id' => $this->manager->id, 'community_id' => $this->community->id,
+        'event_id' => $this->event->id, 'payload' => ['team_name' => $name], 'expires_at' => null,
+    ]));
+    $response = $this->actingAs($this->manager)->get(route('panel.community-events.index'))->assertOk()
+        ->assertSee('Tim Pertama')->assertSee('Tim Kedua')->assertSee('Belum dipilih');
+    foreach ($drafts as $draft) {
+        $response->assertSee('draft_id='.$draft->id, false);
+    }
+});
+
+test('event overview excludes unavailable and unauthorized drafts', function (string $scenario): void {
+    $data = [
+        'user_id' => $this->manager->id, 'community_id' => $this->community->id,
+        'event_id' => $this->event->id, 'event_category_id' => $this->category->id,
+        'payload' => ['team_name' => 'Draft Harus Tersembunyi'], 'expires_at' => now()->addDays(7),
+    ];
+    if ($scenario === 'other-user') {
+        $data['user_id'] = User::factory()->create()->id;
+    } elseif ($scenario === 'other-community') {
+        $data['community_id'] = Community::factory()->create()->id;
+    } elseif ($scenario === 'expired') {
+        $data['expires_at'] = now()->subSecond();
+    } elseif ($scenario === 'submitted') {
+        $data['payload']['_submitted'] = true;
+    } elseif ($scenario === 'tombstone') {
+        $data['payload']['_tombstone'] = true;
+    } elseif ($scenario === 'unpublished') {
+        $this->event->update(['status' => 'draft']);
+    } elseif ($scenario === 'participant') {
+        $data['participant_id'] = EventParticipant::create([
+            'event_id' => $this->event->id, 'event_category_id' => $this->category->id,
+            'community_id' => $this->community->id, 'user_id' => $this->manager->id,
+            'team_name' => 'Tim Terkirim', 'status' => 'registered',
+        ])->id;
+    }
+    RegistrationDraft::create($data);
+    $response = $this->actingAs($this->manager)->get(route('panel.community-events.index'))->assertOk()
+        ->assertDontSee('Draft Harus Tersembunyi')->assertDontSee('id="ongoing-registrations"', false);
+    if ($scenario !== 'unpublished') {
+        expect($response->viewData('events')->pluck('id')->all())->toContain($this->event->id);
+    }
+})->with(['other-user', 'other-community', 'expired', 'submitted', 'tombstone', 'unpublished', 'participant']);
+
+test('sports sidebar follows active community sport or tournament history', function (string $scenario): void {
+    $this->community->update(['sport_category_id' => $scenario === 'sport' ? $this->sport->id : null]);
+    if (in_array($scenario, ['history', 'cancelled', 'other-community'])) {
+        $other = $scenario === 'other-community' ? Community::factory()->create(['sport_category_id' => null]) : $this->community;
+        EventParticipant::create([
+            'event_id' => $this->event->id, 'event_category_id' => $this->category->id,
+            'community_id' => $other->id, 'user_id' => $this->manager->id,
+            'team_name' => 'Tim Riwayat', 'contact_person' => 'DEMO', 'contact_phone' => '081234567890',
+            'status' => $scenario === 'cancelled' ? 'cancelled' : 'registered',
+        ]);
+    }
+    if ($scenario === 'draft-only') {
+        RegistrationDraft::create([
+            'community_id' => $this->community->id, 'user_id' => $this->manager->id,
+            'event_id' => $this->event->id, 'event_category_id' => $this->category->id,
+            'payload' => ['team_name' => 'Tim Draft'], 'revision' => 1,
+        ]);
+    }
+    $visible = in_array($scenario, ['sport', 'history', 'cancelled']);
+    foreach (['panel.community-events.index', 'panel.profile.show'] as $route) {
+        $response = $this->actingAs($this->manager)->withSession(['current_community_id' => $this->community->id])->get(route($route))->assertOk();
+        $html = $response->getContent();
+        $start = strpos($html, 'aria-label="Menu panel"');
+        expect($start)->not->toBeFalse();
+        $sidebar = substr($html, $start, strpos($html, '</nav>', $start) - $start);
+        foreach (['panel.coaches.index', 'panel.athletes.index', 'panel.documents.index'] as $menu) {
+            expect(str_contains($sidebar, 'href="'.route($menu).'"'))->toBe($visible);
+        }
+        expect($sidebar)->toContain('Profil Komunitas')->toContain('Pengurus')->toContain('Turnamen');
+        if ($route === 'panel.community-events.index') {
+            expect(str_contains($html, 'Partisipasi Turnamen Komunitas Saya'))->toBe(in_array($scenario, ['history', 'cancelled']));
+        }
+    }
+})->with(['empty', 'sport', 'history', 'cancelled', 'other-community', 'draft-only']);
 
 test('manager komunitas dapat mengakses halaman daftar turnamen dan form pendaftaran', function (): void {
     $this->actingAs($this->manager)
@@ -410,7 +576,7 @@ test('undangan gratis tetap menunggu verifikasi tanpa invoice', function (): voi
         ->and(Transaction::query()->where('payable_type', 'event_participant')->where('payable_id', $participant->id)->exists())->toBeFalse();
 });
 
-test('user tanpa komunitas dialihkan ke katalog pendaftaran tanpa error route', function (): void {
+test('user tanpa komunitas melengkapi organisasi sebelum mendaftarkan tim', function (): void {
     Role::firstOrCreate(['name' => 'organizer', 'guard_name' => 'web', 'panel_access' => 'external']);
     $organizer = User::factory()->create([
         'is_active' => true,
@@ -420,5 +586,4 @@ test('user tanpa komunitas dialihkan ke katalog pendaftaran tanpa error route', 
     $response = $this->actingAs($organizer)->get(route('panel.community-events.create', $this->event->slug));
 
     $response->assertRedirect(route('panel.community.create'));
-    $response->assertSessionHas('info');
 });

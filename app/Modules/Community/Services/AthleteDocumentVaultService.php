@@ -59,6 +59,7 @@ class AthleteDocumentVaultService implements AthleteDocumentVault
     public function upload(int $userId, string $code, UploadedFile $file): void
     {
         $storedPath = null;
+        $avatarPath = null;
 
         try {
             $storedPath = $file->store('athlete_documents', 'local');
@@ -66,9 +67,19 @@ class AthleteDocumentVaultService implements AthleteDocumentVault
                 throw new \RuntimeException('Gagal menyimpan berkas dokumen atlet.');
             }
 
-            DB::transaction(function () use ($userId, $code, $file, $storedPath): void {
-                $user = User::query()->findOrFail($userId);
+            DB::transaction(function () use ($userId, $code, $file, $storedPath, &$avatarPath): void {
+                $user = User::query()->lockForUpdate()->findOrFail($userId);
                 $userMorph = $user->getMorphClass();
+
+                if ($code === 'photo' && blank($user->image)
+                    && in_array($file->getMimeType(), ['image/jpeg', 'image/png'], true)
+                    && getimagesize($file->getPathname()) !== false) {
+                    $avatarPath = $file->store('avatars', 'public');
+                    if (! $avatarPath) {
+                        throw new \RuntimeException('Gagal menyimpan foto profil.');
+                    }
+                    $user->update(['image' => $avatarPath]);
+                }
 
                 /** @var Document|null $existingDoc */
                 $existingDoc = Document::query()
@@ -115,6 +126,9 @@ class AthleteDocumentVaultService implements AthleteDocumentVault
                 }
             });
         } catch (Throwable $e) {
+            if ($avatarPath) {
+                Storage::disk('public')->delete($avatarPath);
+            }
             if ($storedPath && Storage::disk('local')->exists($storedPath)) {
                 Storage::disk('local')->delete($storedPath);
             }

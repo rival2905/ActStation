@@ -26,7 +26,7 @@ class AthleteDirectoryController extends Controller
     protected function buildQuery(Request $request): Builder
     {
         $query = CommunityAthlete::query()
-            ->with(['community', 'user']);
+            ->with(['community.sportCategory', 'user', 'developmentLevel']);
 
         if ($request->filled('search')) {
             $search = (string) $request->input('search');
@@ -71,7 +71,7 @@ class AthleteDirectoryController extends Controller
     {
         $query = $this->buildQuery($request);
 
-        $athletes = $query->latest()->paginate(15)->withQueryString();
+        $athletes = $query->latest()->paginate(100)->withQueryString();
 
         $sportCategories = DB::table('sport_categories')->where('is_active', true)->get(['id', 'name']);
         $developmentLevels = DB::table('development_levels')->where('is_active', true)->get(['id', 'name']);

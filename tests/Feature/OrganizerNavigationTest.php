@@ -50,6 +50,59 @@ test('public organizer guide states admin review rather than instant verificatio
     }
 });
 
+test('public guide includes screenshot based video for first time event participants', function (): void {
+    $this->get(route('panduan.event'))->assertOk()
+        ->assertSee('id="peserta-baru"', false)
+        ->assertSee('pendaftaran-awal.mp4')->assertSee('pendaftaran-awal.vtt')
+        ->assertSee('Daftar Tim pada Kategori Ini')->assertSee('Daftar Akun')
+        ->assertSee('controls', false)->assertSee('playsinline', false)
+        ->assertSee('preload="none"', false);
+    foreach (['15_event_mulai.png', '16_login_peserta.png', '17_daftar_akun.png', '18_buat_komunitas.png'] as $file) {
+        expect(is_file(public_path('docs/screenshots/'.$file)))->toBeTrue();
+        [$width, $height] = getimagesize(public_path('docs/screenshots/'.$file));
+        expect($width)->toBe(1280)->and($height)->toBe(900);
+    }
+    expect(is_file(public_path('docs/videos/pendaftaran-awal.mp4')))->toBeTrue()
+        ->and(file_get_contents(public_path('docs/videos/pendaftaran-awal.vtt')))->toStartWith('WEBVTT');
+});
+
+test('team guide documents current draft withdrawal and post submission steps with screenshots', function (): void {
+    $this->get(route('panduan.event'))->assertOk()
+        ->assertSee('Pendaftaran Sedang Berjalan')
+        ->assertSee('Simpan &amp; Lengkapi Tim', false)
+        ->assertSee('Tarik Pengajuan ke Draf')
+        ->assertSee('Langkah Berikutnya')
+        ->assertSee('belum memakai slot peserta')
+        ->assertSee('tautan undangan lama tidak aktif kembali')
+        ->assertSee('7 hari')
+        ->assertSee('Kategori gratis tidak memiliki tahap pembayaran.');
+    foreach ([
+        '19_tim_identitas.png', '20_tim_roster.png', '21_tim_tinjau.png',
+        '22_tim_langkah_berikutnya.png', '23_tim_revisi.png', '24_tim_pembayaran.png', '25_tim_terkonfirmasi.png',
+    ] as $file) {
+        $this->get(route('panduan.event'))->assertSee($file);
+        expect(is_file(public_path('docs/screenshots/'.$file)))->toBeTrue();
+        [$width, $height] = getimagesize(public_path('docs/screenshots/'.$file));
+        expect($width)->toBeGreaterThanOrEqual(800)->and($height)->toBeGreaterThanOrEqual(150);
+    }
+});
+
+test('public guide covers empty roster athlete invitations personnel gates and self service documents', function (): void {
+    $this->get(route('panduan.event'))->assertOk()
+        ->assertSee('id="undangan-atlet"', false)->assertSee('id="undangan-personel"', false)->assertSee('id="berkas-atlet"', false)
+        ->assertSee('Belum ada atlet di roster tim ini')->assertSee('Undang Atlet ke Tim Ini')
+        ->assertSee('Link Roster Atlet')->assertSee('Salin Link')->assertSee('bukan link keanggotaan global')
+        ->assertSee('Periksa Kesesuaian')->assertSee('Periksa Akun')->assertSee('Masuk &amp; Lanjutkan', false)
+        ->assertSee('Setujui Keanggotaan')->assertSee('Turnamen Saya')->assertSee('2 MB')
+        ->assertSee('foto profil publik')->assertSee('konfirmasi sebelum pengiriman')
+        ->assertSee('tidak otomatis menjadi atlet')->assertSee('bukan panitia event')
+        ->assertDontSee('Buka <strong>Ikuti Turnamen</strong>', false);
+    $text = file_get_contents(base_path('PANDUAN_OPERASIONAL_EVENT.md'));
+    foreach (['Belum ada atlet di roster tim ini', 'Periksa Akun', 'Turnamen Saya', '2 MB', 'konfirmasi sebelum pengiriman'] as $term) {
+        expect($text)->toContain($term);
+    }
+});
+
 test('organizers can find create and manage event links in sidebar', function (): void {
     Role::firstOrCreate(['name' => 'organizer', 'guard_name' => 'web'], ['panel_access' => 'external']);
     $user = User::factory()->create(['kyc_status' => 'verified']);

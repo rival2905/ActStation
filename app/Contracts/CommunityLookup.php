@@ -13,6 +13,17 @@ interface CommunityLookup
 
     public function findForUser(int $userId): ?CommunitySummary;
 
+    /** @return list<CommunitySummary> */
+    public function athleteCommunities(int $userId): array;
+
+    /** @return list<CommunitySummary> */
+    public function searchableCommunities(string $query): array;
+
+    public function canManage(int $userId, int $communityId): bool;
+
+    /** @return list<int> */
+    public function activeAthleteIds(int $communityId): array;
+
     /**
      * @return array<string, array{id: int, category: string, name: string}>
      */

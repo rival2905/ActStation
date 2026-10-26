@@ -25,6 +25,10 @@ class AthleteEventWorkspace
      */
     public function getWorkspaceData(int $userId): array
     {
+        $cacheKey = 'athlete_workspace_'.$userId;
+        if (request()->attributes->has($cacheKey)) {
+            return request()->attributes->get($cacheKey);
+        }
         /** @var Collection<int, EventParticipant> $participants */
         $participants = EventParticipant::query()
             ->where(function ($q) use ($userId): void {
@@ -43,14 +47,13 @@ class AthleteEventWorkspace
         $drafts = RegistrationDraft::query()
             ->whereNull('participant_id')
             ->unexpired()
-            ->with(['event', 'category'])
+            ->whereHas('event', fn ($query) => $query->where('status', 'published'))
             ->latest('created_at')
-            ->get()
+            ->orderByDesc('id')
+            // ponytail: encrypted payload requires a batched scan; add a transactional roster index when scan latency warrants it.
+            ->lazy(100)
             ->filter(function (RegistrationDraft $draft) use ($userId): bool {
                 if ($draft->isSubmitted() || $draft->isExpired()) {
-                    return false;
-                }
-                if ($draft->event && $draft->event->status !== 'published') {
                     return false;
                 }
                 $payload = $draft->payload ?? [];
@@ -66,16 +69,37 @@ class AthleteEventWorkspace
 
                 return false;
             })
-            ->values();
+            ->collect();
+
+        $drafts = new Collection($drafts->values()->all());
+        $drafts->load(['event', 'category']);
 
         foreach ($drafts as $draft) {
             $draft->tasks = $this->getRequiredAthleteDocumentsForDraft($draft, $userId);
             $draft->can_upload = ! $draft->isExpired() && ! $draft->isSubmitted() && $draft->event?->status === 'published';
         }
 
-        return [
+        $data = [
             'participants' => $participants,
             'drafts' => $drafts,
+        ];
+        request()->attributes->set($cacheKey, $data);
+
+        return $data;
+    }
+
+    /** @return array{event_ids: list<int>, action_event_ids: list<int>, action_count: int} */
+    public function actionSummary(int $userId): array
+    {
+        $data = $this->getWorkspaceData($userId);
+        $registrations = $data['drafts']->concat($data['participants']->whereNotIn('status', ['cancelled', 'rejected']));
+        $actions = $registrations->filter(fn ($registration): bool => (bool) $registration->can_upload
+            && collect($registration->tasks)->contains(fn (array $task): bool => ! $task['exists'] || $task['status'] === 'rejected'));
+
+        return [
+            'event_ids' => $registrations->pluck('event_id')->map(fn ($id): int => (int) $id)->unique()->values()->all(),
+            'action_event_ids' => $actions->pluck('event_id')->map(fn ($id): int => (int) $id)->unique()->values()->all(),
+            'action_count' => $actions->count(),
         ];
     }
 
@@ -228,6 +252,7 @@ class AthleteEventWorkspace
             abort_unless($docType && $docType->scope === 'athlete' && $docType->appliesToEntity($subtype), 422, 'Dokumen tidak valid untuk atlet.');
 
             $this->vault->upload($userId, $code, $file);
+            request()->attributes->remove('athlete_workspace_'.$userId);
 
             return;
         }
@@ -254,5 +279,6 @@ class AthleteEventWorkspace
         abort_unless($docType && $docType->scope === 'athlete' && $docType->appliesToEntity($subtype), 422, 'Dokumen tidak valid untuk atlet.');
 
         $this->vault->upload($userId, $code, $file);
+        request()->attributes->remove('athlete_workspace_'.$userId);
     }
 }

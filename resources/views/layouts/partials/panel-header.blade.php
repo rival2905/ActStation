@@ -65,9 +65,9 @@
                     <span>Kewenangan Sekolah</span>
                 </a>
                 @else
-                <a class="btn btn-outline-primary btn-sm py-1 px-2 fs-11 d-flex align-items-center gap-1" href="{{ Route::has('panel.community.create') ? route('panel.community.create') : url('/panel/community/create') }}">
-                    <span class="fas fa-plus"></span>
-                    <span>Buat Komunitas</span>
+                <a class="btn btn-outline-primary btn-sm py-1 px-2 fs-11 d-flex align-items-center gap-1" href="{{ route('panel.my-communities.index') }}">
+                    <span class="fas fa-users"></span>
+                    <span>Komunitas Saya</span>
                 </a>
                 @endif
             @endif

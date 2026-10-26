@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Event\Http\Controllers\Admin\ScheduleSettingController;
 use App\Modules\Event\Http\Controllers\Admin\TournamentSchedulerController;
+use App\Modules\Event\Http\Controllers\Panel\AthleteEventInterestController;
 use App\Modules\Event\Http\Controllers\Panel\CommunityCheckoutController;
 use App\Modules\Event\Http\Controllers\Panel\CommunityEventRegistrationController;
 use App\Modules\Event\Http\Controllers\Panel\CommunityRosterController;
@@ -30,11 +31,14 @@ Route::middleware(['auth', 'EnsurePanelAccess'])->group(function (): void {
     // 1. Panel Registrasi Komunitas (PRD_EXTERNAL §6.3)
     Route::get('events', [CommunityEventRegistrationController::class, 'index'])->name('community-events.index');
     Route::get('community-events', [CommunityEventRegistrationController::class, 'index'])->name('events.index');
+    Route::get('events/{slug}/interest', [AthleteEventInterestController::class, 'create'])->name('event-interests.create');
+    Route::post('events/{slug}/interest', [AthleteEventInterestController::class, 'store'])->middleware('throttle:10,1')->name('event-interests.store');
     Route::get('events/{slug}/register', [CommunityEventRegistrationController::class, 'create'])->name('community-events.create');
     Route::post('events/{slug}/register', [CommunityEventRegistrationController::class, 'store'])->name('community-events.store');
     Route::get('registrations/{participant}/checkout', [CommunityCheckoutController::class, 'show'])->name('community-events.checkout');
     Route::post('registrations/{participant}/pay-manual', [CommunityCheckoutController::class, 'payManual'])->name('community-events.pay-manual');
     Route::get('registrations/{participant}/roster', [CommunityRosterController::class, 'show'])->name('community-events.roster');
+    Route::post('registrations/{participant}/withdraw', [CommunityRosterController::class, 'withdraw'])->name('community-events.withdraw');
     Route::get('registrations/{participant}/revise', [CommunityRosterController::class, 'revise'])->name('community-events.revise');
     Route::put('registrations/{participant}/revise', [CommunityRosterController::class, 'resubmit'])->name('community-events.resubmit');
 
@@ -135,6 +139,7 @@ Route::middleware(['auth', 'EnsurePanelAccess'])->group(function (): void {
         Route::get('events/{event}/team-inspections/{kind}/{id}/documents/{owner}/{code}/download', [TeamInspectionController::class, 'download'])->name('teams.inspection.download');
         Route::get('events/{event}/team-inspections/{kind}/{id}/personnel-license/{personnelKey}/download', [TeamInspectionController::class, 'downloadPersonnelLicense'])->name('teams.personnel-license.download');
         Route::post('events/{event}/team-inspections/{kind}/{id}/documents/{owner}/{code}/review', [TeamInspectionController::class, 'review'])->name('teams.inspection.review');
+        Route::post('events/{event}/team-inspections/{kind}/{id}/documents/{owner}/verify-all', [TeamInspectionController::class, 'verifyAll'])->name('teams.inspection.verify-all');
 
         // Tim & Roster
         Route::get('events/{event}/teams', [OrganizerTeamController::class, 'index'])->name('teams.index');

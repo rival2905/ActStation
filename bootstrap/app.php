@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Middleware\EnsureInternalRole;
 use App\Http\Middleware\EnsureOrganizerEventOwner;
+use App\Modules\Communication\Exceptions\AssistantUnavailable;
 use App\Modules\Community\Http\Middleware\EnsurePanelAccess;
 use App\Modules\Community\Models\CommunityLinkPage;
 use Illuminate\Foundation\Application;
@@ -22,6 +23,10 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
         then: function (): void {
+            Route::prefix('api/v1/internal/agent-office')
+                ->middleware(\App\Http\Middleware\AgentOfficeGateway::class)
+                ->group(app_path('Modules/Report/Routes/api.php'));
+
             Route::middleware('web')
                 ->group(base_path('routes/admin.php'));
 
@@ -46,6 +51,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
             Route::middleware('web')
                 ->group(app_path('Modules/Communication/Routes/web.php'));
+
+            Route::middleware('web')
+                ->group(app_path('Modules/Communication/Routes/api.php'));
 
             Route::middleware('web')
                 ->prefix('panel')
@@ -77,6 +85,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectUsersTo(fn (Request $request) => $request->user()?->getPanelHomeRoute() ?? route('landing'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->dontFlash(['password', 'password_confirmation', 'current_password', 'otp']);
+        $exceptions->render(function (AssistantUnavailable $e, Request $request) {
+            return response()->json([
+                'message' => $e->publicMessage(),
+                'code' => $e->reason,
+                'errors' => ['assistant' => [$e->publicMessage()]],
+            ], 503);
+        });
         $exceptions->render(function (HttpException $e, Request $request) {
             if ($e->getStatusCode() !== 409 || $request->expectsJson() || ! $request->routeIs('panel.community-links.*') || $request->isMethodSafe()) {
                 return null;

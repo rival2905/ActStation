@@ -5,6 +5,10 @@ Modul Komunitas memfasilitasi manajemen entitas olahraga dari tingkat akar rumpu
 
 Rencana tambahan: **Tautan Komunitas**, halaman link-in-bio dengan tema berganti di menu Kelola Komunitas untuk seluruh subtipe. Rincian pada [PRD Modul 14](14_community_links.md); **baru spesifikasi, belum diimplementasikan**. Kepemilikan mengikuti Community, bukan akun pengurus atau unit ekskul.
 
+### Konsistensi email undangan personel
+- Undangan personel ekstrakurikuler memakai body pesan bisnis tanpa URL tambahan; sapaan nama penerima, tombol dan fallback URL tetap dimiliki template bersama. Payload menyertakan ID/nama penerima dan tipe existing `assignment`; tipe lama `extracurricular_personnel_invite` ditolak kontrak delivery sehingga tidak mencapai HTTP.
+- Regresi melalui route undangan dengan sekolah terverifikasi/disetujui dan HTTP fake membuktikan satu request, satu sapaan, dua anchor ke token URL yang sama, tanpa URL pada body. Hak akses dan token tidak diubah. Gabungan 61 tes email/personel, 363 assertions, Pint dan diff check lulus. Tidak mengirim email nyata atau mengubah workflow n8n.
+
 ## 2. Ragam Subtipe Entitas (`subtype`)
 Platform mendukung 5 jenis subtipe entitas yang selaras dengan kebutuhan multi-cabor:
 1. **Klub Olahraga Resmi (`club`)**: Klub binaan pengurus cabang atau klub liga amatir. Basis legalitas: SK Klub / Terdaftar di Pengda.
@@ -30,8 +34,16 @@ Alur pembuatan komunitas di `/panel/community/create`:
 - Pengurus dicatat pada `community_officials` dengan jabatan (Ketua, Sekretaris, Bendahara, Manajer).
 - **Active Panel Switcher (`current_community_id`)**: Pengguna yang mengelola lebih dari satu entitas dapat beralih konteks komunitas secara instan melalui header/dropdown tanpa logout. Seluruh view profil, atlet, dan pendaftaran turnamen langsung menyesuaikan dengan entitas terpilih.
 
+### Sidebar olahraga sesuai konteks komunitas
+- Menu Pelatih & Tenaga Pendukung, Roster Atlet dan Dokumen Legalitas disembunyikan jika komunitas aktif tidak memiliki `sport_category_id` serta belum memiliki riwayat `EventParticipant`.
+- Menu tetap tampil bila cabor terisi atau ada riwayat pendaftaran, termasuk dibatalkan, selaras panel Partisipasi Turnamen Komunitas Saya. Draft saja tidak dihitung; riwayat komunitas lain tidak membuka menu komunitas aktif.
+- Berlaku melalui composer sidebar di seluruh halaman panel, bukan hanya `/panel/events`. Tidak mengubah izin/endpoint, menu Pengurus/Profil/Undangan maupun akses unit ekskul yang sudah ada.
+- Verifikasi: 51 tes/314 assertions pada registrasi event, event return, personel ekskul dan panel komunitas; Pint/Blade/diff lulus. Tanpa perubahan data runtime.
+
 ## 5. Bank Atlet Komunitas (`community_athletes`)
 - Menyimpan basis data atlet binaan atau anggota komunitas.
+- Pengajuan dari link yang dikirim atlet dengan consent memakai `initiated_by=athlete`: `/panel/my-requests` menampilkan **Menunggu persetujuan pengurus**, tanpa Terima/Tolak, serta tautan **Lengkapi Berkas Turnamen** ke `/my-events`. POST persetujuan/penolakan ulang oleh atlet tetap ditolak. Undangan langsung pengurus (`initiated_by=community`) tetap memerlukan keputusan atlet; pengurus tidak boleh melewati consent tersebut. Browser akun atlet sebelumnya sudah memeriksa halaman read-only; approval/unggahan runtime belum diuji.
+- Pengajuan/undangan ulang ketika masih ada record non-ended yang ditolak menghasilkan validasi `user_id`, bukan insert yang melanggar `comm_athletes_active_unique`. Tidak mengaktifkan ulang, membuat record baru atau mengubah riwayat penolakan; alur pembukaan pengajuan ulang belum ditambahkan. Penerimaan undangan oleh atlet mempertahankan seluruh status, waktu, pemeriksa dan catatan verifikasi wilayah. Regresi gabungan undangan/panel/matriks keanggotaan/workspace: 94 tes, 968 assertions lulus pada `db_actstation_test`, tanpa email atau mutasi data runtime.
 - **Undangan Keanggotaan Global**: Melalui `/panel/athletes`, pengurus menyebarkan link umum untuk bergabung ke komunitas. Link ini tidak meminta atau menyimpan nomor punggung (`jersey_number`).
 - **Verifikasi Wilayah Atlet**: Kolom `region_status` (pending, verified, rejected) disediakan untuk kebutuhan administratif federasi cabor. **Aturan Tegas**: Status wilayah bersifat informasional dan **BUKAN** prasyarat untuk pendaftaran roster turnamen, unggah berkas, kurasi, atau kepesertaan kejuaraan.
 

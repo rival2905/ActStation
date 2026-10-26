@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Contracts\AssistantCommunityContext;
+use App\Contracts\AssistantEventContext;
+use App\Contracts\AssistantEventSearch;
 use App\Contracts\AthleteDocumentVault;
 use App\Contracts\CommunityLookup;
 use App\Contracts\ContextualAthleteInvitation;
@@ -29,6 +32,7 @@ use App\Modules\Community\Models\CommunityOfficial;
 use App\Modules\Community\Models\SchoolExtracurricularAppointment;
 use App\Modules\Community\Models\SchoolRegistration;
 use App\Modules\Community\Policies\CommunityPolicy;
+use App\Modules\Community\Services\AssistantCommunityContextService;
 use App\Modules\Community\Services\AthleteDocumentVaultService;
 use App\Modules\Community\Services\CommunityLookupService;
 use App\Modules\Community\Services\InvitationService;
@@ -38,6 +42,10 @@ use App\Modules\Community\Services\TeamDocumentInspectionService;
 use App\Modules\Community\Services\TeamPersonnelProviderService;
 use App\Modules\Event\Listeners\HandleRegistrationPaymentRefunded as EventPaymentRefunded;
 use App\Modules\Event\Listeners\HandleRegistrationPaymentSucceeded as EventPaymentSucceeded;
+use App\Modules\Event\Models\EventParticipant;
+use App\Modules\Event\Services\AssistantEventContextService;
+use App\Modules\Event\Services\AssistantEventSearchService;
+use App\Modules\Event\Services\AthleteEventWorkspace;
 use App\Modules\Event\Services\EventLocationService;
 use App\Modules\Event\Services\EventLookupService;
 use App\Modules\Event\Services\EventRegistrationEmailService;
@@ -66,6 +74,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(TeamDocumentInspection::class, TeamDocumentInspectionService::class);
         $this->app->bind(AthleteDocumentVault::class, AthleteDocumentVaultService::class);
         $this->app->bind(EventLookup::class, EventLookupService::class);
+        $this->app->bind(AssistantEventSearch::class, AssistantEventSearchService::class);
+        $this->app->bind(AssistantEventContext::class, AssistantEventContextService::class);
+        $this->app->bind(AssistantCommunityContext::class, AssistantCommunityContextService::class);
         $this->app->bind(CommunityLookup::class, CommunityLookupService::class);
         $this->app->bind(SchoolExtracurriculars::class, SchoolExtracurricularService::class);
         $this->app->bind(SchoolOnboardingService::class, \App\Modules\Community\Services\SchoolOnboardingService::class);
@@ -104,6 +115,19 @@ class AppServiceProvider extends ServiceProvider
                 ->where('can_manage_personnel', true)->whereNull('ended_at')->whereNull('communities.deleted_at')->where('communities.is_active', true)
                 ->select('school_extracurriculars.id', 'school_extracurriculars.community_id', 'communities.name', 'sport_categories.name as sport_name')->distinct()->get() : collect();
             $view->with('managedSchoolUnits', $assignments);
+        });
+        View::composer('layouts.partials.panel-sidebar', function (\Illuminate\View\View $view): void {
+            $view->with('athleteActionCount', auth()->user()?->is_active
+                ? app(AthleteEventWorkspace::class)->actionSummary((int) auth()->id())['action_count']
+                : 0);
+            $data = $view->getData();
+            $community = $data['activeCommunity'] ?? $data['community'] ?? (request()->attributes->has('panel_active_community')
+                ? request()->attributes->get('panel_active_community')
+                : (auth()->check() ? app(CommunityLookup::class)->findForUser((int) auth()->id()) : null));
+            $view->with('showCommunitySportsMenus', $community && ($community->sport_category_id !== null
+                || EventParticipant::where('community_id', $community->id)->exists()));
+            $communityModel = $community instanceof Community ? $community : ($community ? Community::find($community->id) : null);
+            $view->with('canManageCommunityLinks', $communityModel && Gate::allows('update', $communityModel));
         });
         Event::subscribe(AuthActivitySubscriber::class);
         Event::listen(SchoolAthleteActivated::class, [RegistrationDraftService::class, 'enrollActivatedSchoolAthlete']);

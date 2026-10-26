@@ -9,6 +9,7 @@ use App\Modules\Community\Models\Community;
 use App\Modules\Community\Models\CommunityAthlete;
 use App\Modules\Community\Models\CommunityOfficial;
 use App\Modules\Community\Models\Document;
+use App\Modules\Community\Services\CommunityLookupService;
 use App\Modules\Event\Exceptions\RegistrationGuardException;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventCategory;
@@ -336,7 +337,7 @@ test('required_entity_documents checks verified legal documents and rejects miss
 
     // Mock CommunityLookup with legalDocumentsForUser method
     $realLookup = app(CommunityLookup::class);
-    $mockLookup = new class($realLookup) implements CommunityLookup
+    $mockLookup = new class($realLookup) extends CommunityLookupService
     {
         public function __construct(private readonly CommunityLookup $inner) {}
 
@@ -378,7 +379,7 @@ test('required_entity_documents checks verified legal documents and rejects miss
     ))->toThrow(RegistrationGuardException::class, 'Dokumen legalitas entitas [sk_kemenkumham] belum diverifikasi atau tidak tersedia.');
 
     // Now test with verified sk_kemenkumham
-    $validMockLookup = new class($realLookup) implements CommunityLookup
+    $validMockLookup = new class($realLookup) extends CommunityLookupService
     {
         public function __construct(private readonly CommunityLookup $inner) {}
 

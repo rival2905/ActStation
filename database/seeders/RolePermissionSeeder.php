@@ -96,6 +96,7 @@ class RolePermissionSeeder extends Seeder
             'setting.payment',
             'setting.email',
             'setting.update',
+            'setting.agent-office-security',
             // Content Management (Modul B - 24)
             'article.view',
             'article.create',

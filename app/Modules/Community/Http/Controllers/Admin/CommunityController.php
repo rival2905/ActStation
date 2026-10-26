@@ -46,7 +46,7 @@ class CommunityController extends Controller
             $query->where('city_id', $request->input('city_id'));
         }
 
-        $communities = $query->latest()->paginate(15)->withQueryString();
+        $communities = $query->latest()->paginate(100)->withQueryString();
         $filters = $request->only(['search', 'status', 'subtype', 'sport_category_id', 'city_id']);
         $sportCategories = DB::table('sport_categories')->where('is_active', true)->get(['id', 'name']);
 

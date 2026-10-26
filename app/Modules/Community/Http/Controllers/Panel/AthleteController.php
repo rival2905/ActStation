@@ -11,6 +11,7 @@ use App\Modules\Community\Models\CommunityAthlete;
 use App\Modules\Community\Services\AthleteMembershipService;
 use App\Modules\Community\Services\SchoolExtracurricularService;
 use DomainException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -123,18 +124,30 @@ class AthleteController extends PanelBaseController
             ->with('success', 'Undangan atlet berhasil dikirim.');
     }
 
-    public function approve(Request $request, CommunityAthlete $athlete): RedirectResponse
+    public function approve(Request $request, CommunityAthlete $athlete): RedirectResponse|JsonResponse
     {
+        abort_unless($request->user()?->is_active, 403);
         $community = $this->currentCommunity($request);
         $this->authorize('update', $community);
         $this->assertBelongsToCommunity($community, $athlete->community_id);
 
         try {
-            $this->membershipService->approveByManager($athlete, $request->user());
+            $athlete = $this->membershipService->approveByManager($athlete, $request->user());
         } catch (DomainException $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $e->getMessage(), 'errors' => ['athlete' => [$e->getMessage()]]], 422);
+            }
+
             return redirect()
                 ->route('panel.athletes.index')
                 ->with('error', $e->getMessage());
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'Keanggotaan disetujui. Roster tim tetap; dokumen mengikuti pemeriksaan terpisah.',
+                'membership_status' => $athlete->status,
+            ]);
         }
 
         return redirect()

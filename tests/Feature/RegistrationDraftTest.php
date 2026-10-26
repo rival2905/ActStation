@@ -200,6 +200,40 @@ test('draft creation stores allowlisted partial payload without secret token or 
         ->and($dbDraft->expires_at->isFuture())->toBeTrue();
 });
 
+test('stored athlete evidence keeps optional replacement control in resumed draft', function (string $status): void {
+    $athlete = $this->athletes[0];
+    Storage::disk('local')->put('vault/old-family.pdf', 'Existing private file');
+    $document = Document::create([
+        'documentable_type' => User::class, 'documentable_id' => $athlete->id,
+        'category' => 'kartu_keluarga', 'name' => 'Kartu Keluarga',
+        'file_path' => 'vault/old-family.pdf', 'status' => $status, 'is_public' => false,
+    ]);
+    $draft = RegistrationDraft::create([
+        'user_id' => $this->manager->id, 'community_id' => $this->community->id,
+        'event_id' => $this->event->id, 'event_category_id' => $this->category->id,
+        'payload' => ['team_name' => 'Restored team', 'revision_notes' => 'Perbaiki berkas.', 'members' => [['user_id' => $athlete->id, 'jersey_number' => 10, 'is_captain' => 1]]],
+        'revision' => 1, 'expires_at' => now()->addDay(),
+    ]);
+    $response = $this->actingAs($this->manager)->get(route('panel.community-events.create', ['slug' => $this->event->slug, 'draft_id' => $draft->id]));
+    $response->assertOk();
+    $dom = new \DOMDocument;
+    @$dom->loadHTML($response->getContent());
+    $xpath = new \DOMXPath($dom);
+    $controls = $xpath->query('//*[@id="roster-cat-'.$this->category->id.'"]//input[@type="file" and @name="athlete_documents['.$athlete->id.'][kartu_keluarga]"]');
+    expect($controls->length)->toBe(1);
+    $input = $controls->item(0);
+    expect($input->getAttribute('data-vault-available'))->toBe($status === 'rejected' ? '0' : '1');
+    expect($input->hasAttribute('required'))->toBe($status === 'rejected');
+    $this->putJson(route('panel.registration-drafts.update', [$this->event->slug, $draft->id]), [
+        'revision' => 1,
+        'athlete_documents' => [$athlete->id => ['kartu_keluarga' => UploadedFile::fake()->create('replacement.pdf', 10, 'application/pdf')]],
+    ])->assertOk()->assertJsonPath('draft.files.athlete_documents.'.$athlete->id.'.kartu_keluarga.name', 'replacement.pdf');
+    expect($document->fresh()->file_path)->toBe('vault/old-family.pdf');
+    expect($document->fresh()->status)->toBe($status);
+    expect($draft->fresh()->isSubmitted())->toBeFalse();
+    Storage::disk('local')->assertExists('vault/old-family.pdf');
+})->with(['pending', 'verified', 'rejected']);
+
 test('draft show returns only for own active community and event scoping', function (): void {
     $draft = RegistrationDraft::create([
         'user_id' => $this->manager->id,

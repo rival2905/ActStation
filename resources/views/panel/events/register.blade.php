@@ -51,6 +51,12 @@
     $selectedCategoryId = $event->categories->contains('id', $requestedCategoryId) ? $requestedCategoryId : null;
     $activeTeamName = old('team_name', $activeDraft ? ($activeDraft->payload['team_name'] ?? $community->name) : $community->name);
     $activeCategoryName = $activeDraft?->category?->name ?? ($selectedCategoryId ? ($event->categories->firstWhere('id', $selectedCategoryId)?->name ?? 'Belum memilih kategori') : 'Belum memilih kategori');
+    $draftCount = $registrationDrafts->count();
+    $draftNumbers = $registrationDrafts
+        ->sortBy([['created_at', 'asc'], ['id', 'asc']])
+        ->values()
+        ->mapWithKeys(fn ($d, $i) => [(string) $d->id => $i + 1]);
+    $activeTeamNumber = $activeDraftId ? $draftNumbers->get($activeDraftId, 1) : ($draftCount + 1);
 @endphp
 <div class="card mb-3 border-primary-subtle">
     <div class="card-body">
@@ -65,6 +71,11 @@
             </div>
         </div>
     </div>
+</div>
+
+<div id="draft-revision-note" class="alert alert-warning mb-3" role="note" @if(empty($activeDraft?->payload['revision_notes'])) hidden @endif>
+    <h6 class="mb-1">Catatan Perbaikan Panitia</h6>
+    <p id="draft-revision-note-text" class="mb-0">{{ $activeDraft?->payload['revision_notes'] ?? '' }}</p>
 </div>
 
 @if(session('error'))
@@ -151,6 +162,7 @@
     data-default-contact-person="{{ Auth::user()?->name }}"
     data-default-contact-phone="{{ Auth::user()?->phone }}"
     data-event-slug="{{ $event->slug }}"
+    data-submit-confirmation="true"
     data-sport-slug="{{ $event->sportCategory?->slug }}"
     data-event-id="{{ $event->id }}"
     data-community-id="{{ $community->id }}"
@@ -181,7 +193,7 @@
             </div>
         </div>
         <div class="card-body py-2">
-            <p class="fs-10 mb-2">Isi dan kirim satu tim setiap kali. Tim lain tetap draft; pembayaran tiap tim terpisah.</p>
+            <p class="fs-10 mb-2" data-registration-team-capacity-note>Isi dan kirim satu tim setiap kali. Tim lain tetap draft; pembayaran tiap tim terpisah.</p>
 
         </div>
     </div>
@@ -191,7 +203,7 @@
         <div class="card-header bg-body-tertiary pt-3 pb-2">
             <ul class="nav nav-wizard justify-content-between">
                 @foreach([['category', 'Kategori & Informasi Tim', 'users'], ['roster', 'Roster & Dokumen', 'file-alt'], ['review', 'Tinjau, Kirim & Pemeriksaan', 'clipboard-check']] as [$step, $label, $icon])
-                    <li class="nav-item flex-fill text-center"><button type="button" id="registration-tab-{{ $step }}" class="nav-link w-100 border-0 bg-transparent fw-semi-bold {{ $step === 'category' ? 'active' : '' }}" data-registration-step-target="{{ $step }}" aria-controls="registration-pane-{{ $step }}" aria-current="{{ $step === 'category' ? 'step' : 'false' }}"><span class="nav-item-circle-parent"><span class="nav-item-circle"><span class="fas fa-{{ $icon }}" aria-hidden="true"></span></span></span><span class="d-block mt-1 fs-11">{{ $loop->iteration }}. {{ $label }}</span></button></li>
+                    <li class="nav-item flex-fill text-center"><button type="button" id="registration-tab-{{ $step }}" class="nav-link w-100 border-0 bg-transparent fw-semi-bold {{ $step === 'category' ? 'active' : '' }}" data-registration-step-target="{{ $step }}" aria-controls="registration-pane-{{ $step }}" aria-current="{{ $step === 'category' ? 'step' : 'false' }}"><span class="nav-item-circle-parent"><span class="nav-item-circle"><span class="fas fa-{{ $icon }}" aria-hidden="true"></span></span></span><span class="d-block mt-1 fs-11" @if($step === 'category') data-registration-identity-label @endif>{{ $loop->iteration }}. {{ $step === 'category' && $activeDraft ? 'Informasi Tim Tersimpan' : $label }}</span></button></li>
                 @endforeach
             </ul>
         </div>
@@ -203,10 +215,10 @@
         <div class="col-12">
             <div class="card mb-3" id="registration-pane-category" role="region" aria-labelledby="registration-tab-category" data-registration-step-pane="category">
                 <div class="card-header bg-body-tertiary d-flex justify-content-between align-items-center py-2">
-                    <div><h6 class="mb-1">1. Kategori & Informasi Tim</h6><p class="fs-10 text-muted mb-0">Pilih kategori, isi identitas, lalu simpan sebelum menambah atlet.</p></div>
+                    <div><h6 class="mb-1" data-registration-identity-label>1. {{ $activeDraft ? 'Informasi Tim Tersimpan' : 'Kategori & Informasi Tim' }}</h6><p class="fs-10 text-muted mb-0" data-registration-identity-hint>{{ $activeDraft ? 'Anda melengkapi tim yang sudah tersimpan, bukan membuat draf tim baru. Simpan hanya jika informasi tim diubah.' : 'Pilih kategori, isi identitas, lalu simpan sebelum menambah atlet.' }}</p></div>
                 </div>
                 <div class="card-body">
-                    <details class="mb-3">
+                    <details class="mb-3" open>
                         <summary class="fw-semi-bold mb-3">Ringkasan pendaftaran: {{ $registrationDrafts->count() }} draft, {{ $registrations->count() }} terkirim</summary>
 {{-- Top Summary: Kuota Kategori, Pendaftaran Diserahkan & Draft Pendaftaran Aktif --}}
 <div class="row g-3 mb-3">
@@ -427,6 +439,7 @@
                         $actualSubtype = $commSubtype;
                         $eligibleCategories = $event->categories->filter(fn($c) => $c->acceptsCommunityType($commSubtype, $commInstType, $commSchoolLevel));
                         $ineligibleCategories = $event->categories->filter(fn($c) => ! $c->acceptsCommunityType($commSubtype, $commInstType, $commSchoolLevel));
+                        $categoryLocked = $activeDraft && ! $eligibleCategories->contains(fn($cat) => (int) $cat->id !== (int) $activeDraft->event_category_id && $activeRegistrations->where('event_category_id', $cat->id)->count() + $registrationDrafts->where('event_category_id', $cat->id)->whereNull('participant_id')->count() < (int) ($maxTeamsPerEntity[$cat->id] ?? 1));
                     @endphp
 
                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
@@ -445,10 +458,13 @@
                     </div>
 
                     <div class="accordion mb-3" id="registration-teams-accordion">
-                        <div class="accordion-item border" id="team-accordion-item-active" data-team-accordion-draft-id="{{ $activeDraftId }}">
+                        <div class="accordion-item border" id="team-accordion-item-active" data-team-accordion-draft-id="{{ $activeDraftId }}" data-team-number="{{ $activeTeamNumber }}">
                             <h2 class="accordion-header" id="heading-active-team" tabindex="-1">
                                 <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-active-team" aria-expanded="true" aria-controls="collapse-active-team" data-registration-lazy-draft="{{ $activeDraftId }}">
                                     <span class="d-flex flex-wrap align-items-center gap-2 w-100 me-2">
+                                        @if($draftCount > 1 || ($draftCount >= 1 && $isNewTeam))
+                                            <span class="badge badge-subtle-dark border border-300 team-header-index">Tim {{ $activeTeamNumber }}</span>
+                                        @endif
                                         <span class="fw-bold team-header-name" data-registration-active-team>{{ $activeTeamName }}</span>
                                         <span class="badge badge-subtle-primary team-header-category" data-registration-active-category>{{ $activeCategoryName }}</span>
                                         <span class="badge badge-subtle-success team-header-status">Draft Aktif</span>
@@ -466,8 +482,9 @@
                                     @endif
 
                                     <div class="mb-3">
-                                        <label class="form-label" for="event_category_id">Pilih Kategori Kompetisi <span class="text-danger">*</span></label>
-                                        <select class="form-select" id="event_category_id" name="event_category_id" required>
+                                        <label class="form-label" for="event_category_id" id="event-category-label">{{ $categoryLocked ? 'Kategori Tim Tersimpan' : 'Pilih Kategori Kompetisi *' }}</label>
+                                        <input type="hidden" id="locked-event-category" name="event_category_id" value="{{ $categoryLocked ? $activeDraft->event_category_id : '' }}" @disabled(! $categoryLocked)>
+                                        <select class="form-select" id="event_category_id" name="event_category_id" required @disabled($categoryLocked) aria-describedby="event-category-locked-note">
                                             <option value="">-- Pilih Kategori --</option>
                                             @foreach($eligibleCategories as $cat)
                                                 @php
@@ -513,6 +530,7 @@
                                                 </option>
                                             @endforeach
                                         </select>
+                                        <small id="event-category-locked-note" class="text-muted mt-1" @if(! $categoryLocked) hidden @endif>Kategori tim ini sudah tersimpan. Kategori lain sudah mencapai batas tim komunitas; tidak dapat memilih kategori baru. Anda tetap dapat memperbaiki informasi dan roster tim ini.</small>
                                         @if($eligibleCategories->isEmpty())
                                             <div class="alert alert-subtle-warning mt-2 mb-0" role="status">Belum ada kategori yang sesuai dengan sub-tipe atau jenjang komunitas {{ $community->name }}. Pilih komunitas yang sesuai atau hubungi penyelenggara; kategori sekolah/universitas tidak bisa didaftarkan memakai komunitas lain.</div>
                                         @endif
@@ -569,14 +587,14 @@
                                     <div class="mt-3 pt-3 border-top">
                                         <div id="save-team-feedback" class="mb-2" style="display: none;"></div>
                                         <div class="d-flex flex-wrap align-items-center gap-2">
-                                            <button type="button" class="btn btn-primary" data-registration-save-team>
-                                                <span class="fas fa-save me-1"></span>{{ $activeDraft ? 'Simpan & Lengkapi Tim' : 'Simpan & Daftarkan Tim' }}
+                                            <button type="button" class="btn btn-primary" data-registration-save-team @if($activeDraft && ! $errors->any()) hidden @endif>
+                                                <span class="fas fa-save me-1"></span>{{ $activeDraft ? 'Simpan Perubahan Tim' : 'Simpan & Daftarkan Tim' }}
                                             </button>
                                             <button type="button" class="btn btn-sm btn-outline-danger" id="btn-delete-active-team" onclick="deleteDraft(window.registrationDraftManager?.draftId)" style="display: {{ $activeDraft ? 'inline-block' : 'none' }};">
                                                 <span class="fas fa-trash-alt me-1"></span>Hapus Tim
                                             </button>
                                         </div>
-                                        <small class="text-muted fs-11 mt-1 d-block">Menyimpan draft pendaftaran tim, bukan pendaftaran final peserta.</small>
+                                        <small class="text-muted fs-11 mt-1 d-block">{{ $activeDraft ? 'Tim ini sudah tersimpan. Tombol simpan muncul jika informasi tim diubah; tidak membuat tim tambahan.' : 'Menyimpan draft pendaftaran tim, bukan pendaftaran final peserta.' }}</small>
                                     </div>
                                     </div>
                                 </div>
@@ -587,10 +605,13 @@
                             @if((string) $draft->id === $activeDraftId)
                                 @continue
                             @endif
-                            <div class="accordion-item border" id="team-accordion-item-{{ $draft->id }}" data-team-accordion-draft-id="{{ $draft->id }}">
+                            <div class="accordion-item border" id="team-accordion-item-{{ $draft->id }}" data-team-accordion-draft-id="{{ $draft->id }}" data-team-number="{{ $draftNumbers->get((string) $draft->id) }}">
                                 <h2 class="accordion-header" id="heading-draft-{{ $draft->id }}">
                                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-draft-{{ $draft->id }}" aria-expanded="false" aria-controls="collapse-draft-{{ $draft->id }}" data-registration-lazy-draft="{{ $draft->id }}">
                                         <span class="d-flex flex-wrap align-items-center gap-2 w-100 me-2">
+                                            @if($draftCount > 1 || ($draftCount >= 1 && $isNewTeam))
+                                                <span class="badge badge-subtle-dark border border-300 team-header-index">Tim {{ $draftNumbers->get((string) $draft->id) }}</span>
+                                            @endif
                                             <span class="fw-bold text-900 team-header-name">{{ $draft->payload['team_name'] ?? 'Tim belum diberi nama' }}</span>
                                             <span class="badge badge-subtle-secondary team-header-category">{{ $draft->category?->name ?? 'Belum memilih kategori' }}</span>
                                             <span class="badge badge-subtle-secondary team-header-status">Draft</span>
@@ -629,10 +650,13 @@
                 <div class="card-body p-3">
                     <p class="fs-10 text-muted">Lengkapi satu tim tersimpan pada satu waktu. Roster, dokumen dan tautan undangan setiap tim terpisah.</p>
                     <div class="accordion" id="registration-roster-teams-accordion">
-                        <div class="accordion-item border" id="roster-accordion-item-active" data-team-accordion-draft-id="{{ $activeDraftId }}">
+                        <div class="accordion-item border" id="roster-accordion-item-active" data-team-accordion-draft-id="{{ $activeDraftId }}" data-team-number="{{ $activeTeamNumber }}">
                             <h2 class="accordion-header" id="heading-roster-active-team">
                                 <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-roster-active-team" aria-expanded="true" aria-controls="collapse-roster-active-team" data-registration-lazy-draft="{{ $activeDraftId }}">
                                     <span class="d-flex flex-wrap align-items-center gap-2 w-100 me-2">
+                                        @if($draftCount > 1 || ($draftCount >= 1 && $isNewTeam))
+                                            <span class="badge badge-subtle-dark border border-300 team-header-index">Tim {{ $activeTeamNumber }}</span>
+                                        @endif
                                         <span class="fw-bold team-header-name" data-registration-active-team>{{ $activeTeamName }}</span>
                                         <span class="badge badge-subtle-primary team-header-category" data-registration-active-category>{{ $activeCategoryName }}</span>
                                         <span class="badge badge-subtle-success team-header-status">Draft Aktif</span>
@@ -690,23 +714,43 @@
                     </div>
                     <div class="p-3 bg-light border-bottom">
                         <h6 class="mb-1">Roster Atlet</h6><p class="text-muted fs-10 mb-3">Pilih anggota aktif atau bagikan link agar atlet melengkapi data sendiri.</p>
+                        <div class="alert alert-info fs-10 mb-3" data-registration-empty-roster role="status" hidden>
+                            <h6 class="alert-heading mb-2">Belum ada atlet di roster tim ini</h6>
+                            <p class="mb-2">Mulai dengan mengundang atlet. Link khusus tim ini dapat dipakai beberapa atlet yang dituju, bukan link keanggotaan global.</p>
+                            <ol class="ps-3 mb-2">
+                                <li>Klik <strong>Undang Atlet ke Tim Ini</strong>, lalu <strong>Salin Link</strong> di bawah.</li>
+                                <li>Kirim lewat WhatsApp pribadi. Minta atlet login/daftar dengan akun sendiri, melengkapi data dan menyetujui formulir sampai berhasil dikirim.</li>
+                                <li>Kembali ke halaman ini untuk melihat roster. Jika keanggotaan masih pending, periksa dan setujui sebelum tim dikirim.</li>
+                            </ol>
+                            <p class="mb-2" data-registration-empty-roster-members hidden>Sudah ada anggota aktif tersedia? Klik <strong>Tambah Atlet dari Anggota Aktif</strong> di bawah untuk memilih mereka tanpa undangan baru.</p>
+                            <button type="button" class="btn btn-sm btn-primary" data-registration-athlete-invite-link>Undang Atlet ke Tim Ini</button>
+                            <p class="fs-11 mt-2 mb-0">Link tidak dikirim otomatis. Jangan bagikan di grup publik atau gunakan untuk tim lain. Masuk roster draft belum berarti peserta resmi.</p>
+                        </div>
                         <div class="d-flex flex-wrap gap-2 mb-2">
                             <button type="button" class="btn btn-sm btn-primary" data-registration-add-athlete aria-expanded="false">Tambah Atlet dari Anggota Aktif</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" data-registration-athlete-invite-link>Link Roster Atlet</button>
                         </div>
                         <div class="input-group input-group-sm mb-2">
-                            <input id="registration-team-invitation-url" class="form-control" type="url" aria-label="Link roster tim" readonly hidden>
+                            <input id="registration-team-invitation-url" class="form-control" type="url" aria-label="Link roster tim" aria-describedby="registration-athlete-invitation-guide" readonly hidden>
                             <button type="button" class="btn btn-outline-primary" data-registration-copy-invitation hidden>Salin Link</button>
                         </div>
                         <div id="registration-invitation-message" class="fs-11 mb-2" role="status" aria-live="polite"></div>
-                        <p class="fs-11 text-muted mb-2">Link tim dan kategori ini dipakai ulang sampai pendaftaran ditutup. Klik kembali tidak membuat link baru.</p>
+                        <div id="registration-athlete-invitation-guide" class="border rounded bg-white p-3 mb-3 fs-10">
+                            <h6 class="mb-2">Sudah dapat link? Lakukan ini</h6>
+                            <ol class="ps-3 mb-2">
+                                <li class="mb-2"><strong>Salin dan kirim.</strong> Klik <strong>Link Roster Atlet</strong>, lalu <strong>Salin Link</strong>. Tempel di WhatsApp pribadi atlet yang ingin diajak. Membuat link saja belum mengirim undangan kepada siapa pun.</li>
+                                <li class="mb-2"><strong>Minta atlet mengisi sendiri.</strong> Atlet membuka link, login atau daftar akun, melengkapi data yang diminta, lalu menyetujui dan mengirim formulir. Membuka link saja belum memasukkan atlet ke roster.</li>
+                                <li class="mb-2"><strong>Cek hasilnya di sini.</strong> Setelah formulir berhasil dikirim, atlet masuk roster draft tim tujuan pada link. Kembali ke halaman ini untuk memuat pembaruan. Jika muncul <strong>Setujui Keanggotaan</strong>, periksa atlet lalu klik tombol tersebut; atlet tidak perlu menyetujui undangan yang sama lagi.</li>
+                                <li><strong>Lengkapi sebelum kirim tim.</strong> Minta atlet membuka <strong>Turnamen Saya</strong> untuk melengkapi berkas pribadinya. Pengurus memeriksa nomor punggung, posisi, kapten dan berkas tim, lalu melanjutkan ke <strong>Tinjau &amp; Kirim</strong>. Masuk roster draft belum menjadi peserta resmi.</li>
+                            </ol>
+                            <p class="text-muted mb-2">Contoh pesan: “Silakan buka link ini untuk bergabung ke roster tim kami. Login/daftar dengan akunmu sendiri, lengkapi formulir sampai berhasil, lalu kabari saya. Setelah itu, cek berkas di Turnamen Saya.” Tempel link yang sudah disalin setelah pesan ini.</p>
+                            <p class="text-muted mb-0">Link khusus tim dan kategori ini dapat dikirim ke beberapa atlet yang dituju; jangan bagikan di grup publik. Gunakan link berbeda untuk tim lain. Klik kembali memakai link yang sama, bukan membuat link baru.</p>
+                        </div>
                         <div data-registration-athlete-picker hidden class="fs-11 mb-2">Pilih anggota aktif tersedia pada tabel. Hapus centang untuk mengeluarkan atlet dari roster tim.</div>
                         <p class="fs-10 text-muted mb-0">
                             Pilih atlet aktif dari komunitas Anda. Berkas pribadi atlet yang tersimpan di <strong>Digital Vault</strong> dapat digunakan ulang, tetapi tetap mengikuti verifikasi dan persyaratan kategori. Berkas ditolak atau tidak tersedia perlu diperbaiki.
                         </p>
-                        <div class="alert alert-subtle-info py-2 px-3 fs-11 mt-2 mb-0" role="note">
-                            Atlet yang menerima tautan ini otomatis masuk roster draft tim aktif. Keanggotaan, verifikasi dan kelengkapan tetap harus terpenuhi sebelum tim dikirim.
-                        </div>
+
                     </div>
 
                     @foreach($event->categories as $category)
@@ -715,20 +759,13 @@
                             $athletes = $eligibleRosterByCategory[$category->id] ?? collect();
                         @endphp
 
-                        @if($athletes->isEmpty())
-                            <div class="p-4 text-center text-muted">
-                                <span class="fas fa-user-slash fa-2x mb-2"></span>
-                                <p class="mb-0 fs-10">Belum ada anggota komunitas aktif yang tersedia. Gunakan Link Roster Tim untuk mengundang atlet.</p>
-
-                            </div>
-                        @endif
                             <div class="table-responsive">
                                 <table class="table table-sm table-hover align-middle mb-0 fs-10">
                                     <thead class="bg-200">
                                         <tr>
                                             <th style="width: 40px;" class="text-center">Pilih</th>
                                             <th>Nama Atlet</th>
-                                            <th>Gender / Usia</th>
+                                            <th>Gender / Usia saat event <small class="d-block text-muted">{{ $event->starts_at?->format('d/m/Y') ?? '-' }}</small></th>
                                             <th style="width: 80px;">No. Punggung</th>
                                             <th style="width: 70px;" class="text-center">Kapten</th>
                                             <th style="width: 100px;">Posisi</th>
@@ -757,7 +794,7 @@
                                             </td>
                                             <td>
                                                 <span class="badge badge-subtle-secondary">{{ ucfirst($athlete->gender ?? '-') }}</span>
-                                                <small class="text-muted ms-1">{{ $athlete->birthDate ? \Carbon\Carbon::parse($athlete->birthDate)->age . ' thn' : '-' }}</small>
+                                                <small class="text-muted ms-1">{{ $athlete->birthDate && $event->starts_at && \Carbon\Carbon::parse($athlete->birthDate)->startOfDay()->lessThanOrEqualTo($event->starts_at) ? (int) \Carbon\Carbon::parse($athlete->birthDate)->startOfDay()->diffInYears($event->starts_at->copy()->startOfDay()) . ' thn' : '-' }}</small>
                                             </td>
                                             <td>
                                                 <input type="number" class="form-control form-control-sm jersey-input" name="members[{{ $index }}][jersey_number]" min="0" max="99" placeholder="0-99" required disabled>
@@ -807,6 +844,7 @@
                                                             @endphp
                                                             <div class="d-flex align-items-center justify-content-between p-1 border rounded bg-white fs-11">
                                                                 <span>{{ $docTitle }}:</span>
+                                                                <div class="d-flex flex-column align-items-end gap-1">
                                                                 @if($isVaultValid)
                                                                     @if($athleteDoc->status === 'verified')
                                                                         <span class="badge bg-success-subtle text-success">
@@ -818,15 +856,13 @@
                                                                         </span>
                                                                     @endif
                                                                 @elseif($isRejected)
-                                                                    <div class="d-flex flex-column align-items-end gap-1">
                                                                         <span class="badge bg-danger-subtle text-danger">
                                                                             <span class="fas fa-times-circle me-1"></span>Ditolak (Unggah Ulang)
                                                                         </span>
-                                                                        <input type="file" class="form-control form-control-xs py-0 px-1 doc-upload-input" name="athlete_documents[{{ $athlete->userId }}][{{ $docCode }}]" style="width: 140px; font-size: 10px;" accept="image/*,.pdf" required disabled>
-                                                                    </div>
-                                                                @else
-                                                                    <input type="file" class="form-control form-control-xs py-0 px-1 doc-upload-input" name="athlete_documents[{{ $athlete->userId }}][{{ $docCode }}]" style="width: 140px; font-size: 10px;" accept="image/*,.pdf" required disabled>
                                                                 @endif
+                                                                    <label class="fs-11 mb-0" for="athlete-doc-{{ $category->id }}-{{ $athlete->userId }}-{{ $docCode }}">{{ $isVaultValid ? 'Ganti berkas (opsional)' : 'Unggah berkas' }}</label>
+                                                                    <input type="file" id="athlete-doc-{{ $category->id }}-{{ $athlete->userId }}-{{ $docCode }}" class="form-control form-control-xs py-0 px-1 doc-upload-input" name="athlete_documents[{{ $athlete->userId }}][{{ $docCode }}]" data-user-id="{{ $athlete->userId }}" data-doc-code="{{ $docCode }}" data-vault-available="{{ $isVaultValid ? '1' : '0' }}" aria-label="{{ $docTitle }} — {{ $athlete->name }}" style="width: 140px; font-size: 10px;" accept="image/*,.pdf" @required(! $isVaultValid) disabled>
+                                                                </div>
                                                             </div>
                                                         @endforeach
                                                     </div>
@@ -859,10 +895,13 @@
 
                         @foreach($registrationDrafts as $draft)
                             @continue((string) $draft->id === $activeDraftId)
-                            <div class="accordion-item border" id="roster-accordion-item-{{ $draft->id }}" data-team-accordion-draft-id="{{ $draft->id }}">
+                            <div class="accordion-item border" id="roster-accordion-item-{{ $draft->id }}" data-team-accordion-draft-id="{{ $draft->id }}" data-team-number="{{ $draftNumbers->get((string) $draft->id) }}">
                                 <h2 class="accordion-header" id="heading-roster-draft-{{ $draft->id }}">
                                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-roster-draft-{{ $draft->id }}" aria-expanded="false" aria-controls="collapse-roster-draft-{{ $draft->id }}" data-registration-lazy-draft="{{ $draft->id }}">
                                         <span class="d-flex flex-wrap align-items-center gap-2 w-100 me-2">
+                                            @if($draftCount > 1 || ($draftCount >= 1 && $isNewTeam))
+                                                <span class="badge badge-subtle-dark border border-300 team-header-index">Tim {{ $draftNumbers->get((string) $draft->id) }}</span>
+                                            @endif
                                             <span class="fw-bold text-900 team-header-name">{{ $draft->payload['team_name'] ?? 'Tim belum diberi nama' }}</span>
                                             <span class="badge badge-subtle-secondary team-header-category">{{ $draft->category?->name ?? 'Kategori belum dipilih' }}</span>
                                             <span class="badge badge-subtle-secondary team-header-status">Draft</span>
@@ -897,10 +936,13 @@
                     </div>
 
                     <div class="accordion" id="registration-review-teams-accordion">
-                        <div class="accordion-item border" id="review-accordion-item-active" data-team-accordion-draft-id="{{ $activeDraftId }}">
+                        <div class="accordion-item border" id="review-accordion-item-active" data-team-accordion-draft-id="{{ $activeDraftId }}" data-team-number="{{ $activeTeamNumber }}">
                             <h2 class="accordion-header" id="heading-review-active-team">
                                 <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-review-active-team" aria-expanded="true" aria-controls="collapse-review-active-team" data-registration-lazy-draft="{{ $activeDraftId }}">
                                     <span class="d-flex flex-wrap align-items-center gap-2 w-100 me-2">
+                                        @if($draftCount > 1 || ($draftCount >= 1 && $isNewTeam))
+                                            <span class="badge badge-subtle-dark border border-300 team-header-index">Tim {{ $activeTeamNumber }}</span>
+                                        @endif
                                         <span class="fw-bold team-header-name" data-registration-active-team>{{ $activeTeamName }}</span>
                                         <span class="badge badge-subtle-primary team-header-category" data-registration-active-category>{{ $activeCategoryName }}</span>
                                         <span class="badge badge-subtle-success team-header-status">Draft Aktif</span>
@@ -926,10 +968,13 @@
 
                         @foreach($registrationDrafts as $draft)
                             @continue((string) $draft->id === $activeDraftId)
-                            <div class="accordion-item border" id="review-accordion-item-{{ $draft->id }}" data-team-accordion-draft-id="{{ $draft->id }}">
+                            <div class="accordion-item border" id="review-accordion-item-{{ $draft->id }}" data-team-accordion-draft-id="{{ $draft->id }}" data-team-number="{{ $draftNumbers->get((string) $draft->id) }}">
                                 <h2 class="accordion-header" id="heading-review-draft-{{ $draft->id }}">
                                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-review-draft-{{ $draft->id }}" aria-expanded="false" aria-controls="collapse-review-draft-{{ $draft->id }}" data-registration-lazy-draft="{{ $draft->id }}">
                                         <span class="d-flex flex-wrap align-items-center gap-2 w-100 me-2">
+                                            @if($draftCount > 1 || ($draftCount >= 1 && $isNewTeam))
+                                                <span class="badge badge-subtle-dark border border-300 team-header-index">Tim {{ $draftNumbers->get((string) $draft->id) }}</span>
+                                            @endif
                                             <span class="fw-bold text-900 team-header-name">{{ $draft->payload['team_name'] ?? 'Tim belum diberi nama' }}</span>
                                             <span class="badge badge-subtle-secondary team-header-category">{{ $draft->category?->name ?? 'Kategori belum dipilih' }}</span>
                                             <span class="badge badge-subtle-secondary team-header-status">Draft</span>
@@ -971,6 +1016,13 @@
     $registrationResultMessage = session('error') ?: ($errors->any() ? implode("\n", $errors->all()) : (session('success') ?: session('info')));
     $registrationResultSuccess = !session('error') && !$errors->any() && (session('success') || session('info'));
 @endphp
+<div class="modal fade" id="registration-submit-confirmation" tabindex="-1" aria-labelledby="registration-submit-confirmation-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" id="registration-submit-confirmation-title">Kirim pendaftaran tim ini?</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Batal"></button></div>
+        <div class="modal-body">Pendaftaran baru dikirim setelah Anda menekan Ya, Kirim Pendaftaran. Batal tetap menyimpan tim sebagai draf. Pengiriman bukan persetujuan peserta; pemeriksaan mengikuti aturan kategori.</div>
+        <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button><button type="button" class="btn btn-primary" id="registration-confirm-submit">Ya, Kirim Pendaftaran</button></div>
+    </div></div>
+</div>
 <div class="modal fade" id="registration-result-modal" tabindex="-1" aria-labelledby="registration-result-title" aria-describedby="registration-result-message" aria-hidden="true" data-result-pending="{{ $registrationResultMessage ? '1' : '0' }}">
     <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
         <div class="modal-header"><h5 class="modal-title" id="registration-result-title">{{ $registrationResultSuccess ? 'Hasil pendaftaran tim' : 'Pendaftaran belum terkirim' }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button></div>
@@ -1053,7 +1105,8 @@ function filterAthletesByCategory(categoryId) {
                 grp.style.display = 'block';
                 grp.querySelectorAll('input').forEach(input => {
                     input.disabled = false;
-                    input.required = true;
+                    const staged = window.registrationDraftManager?.serverFiles?.team_documents?.[code];
+                    input.required = !staged || staged.status === 'rejected';
                 });
                 hasAnyTeamDoc = true;
             }
@@ -1112,9 +1165,9 @@ function toggleAthleteRow(checkbox) {
             input.disabled = false;
             const uid = checkbox.value;
             const code = input.getAttribute('data-doc-code') || input.name?.match(/\[([^\]]+)\]$/)?.[1];
-            input.required = !window.registrationDraftManager?.serverFiles?.athlete_documents?.[uid]?.[code];
+            input.required = !window.registrationDraftManager?.serverFiles?.athlete_documents?.[uid]?.[code] && input.dataset?.vaultAvailable !== '1';
         });
-        if (!jersey.value) jersey.value = Math.floor(Math.random() * 99);
+
     } else {
         jersey.disabled = true;
         captainRadio.disabled = true;

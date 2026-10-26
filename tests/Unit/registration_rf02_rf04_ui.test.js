@@ -262,6 +262,7 @@ test('review uses selected real data and step changes preserve inputs', () => {
     h.ui.updateReview();
     assert.match(h.review.textContent, /Tim & <unsafe>/);
     assert.match(h.review.textContent, /Rani/);
+    assert.doesNotMatch(h.review.textContent, /Keluarkan dari Tim/);
     h.ui.showStep('team');
     assert.equal(h.team.value, 'Tim & <unsafe>');
 });

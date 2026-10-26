@@ -16,6 +16,7 @@ use App\Modules\Event\Models\RegistrationDraftCandidate;
 use App\Modules\MasterData\Models\DevelopmentLevel;
 use App\Modules\MasterData\Models\DocumentType;
 use App\Modules\MasterData\Models\SportCategory;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -81,6 +82,15 @@ beforeEach(function (): void {
     ]);
 });
 
+test('empty draft renders team invitation guidance without creating invitation or membership', function (): void {
+    $counts = [CommunityInvitation::count(), CommunityAthlete::count(), $this->draft->revision];
+    $this->actingAs($this->manager)->get(route('panel.community-events.create', ['slug' => $this->event->slug, 'draft_id' => $this->draft->id, 'step' => 'roster']))
+        ->assertOk()->assertSee('Belum ada atlet di roster tim ini')->assertSee('Undang Atlet ke Tim Ini')
+        ->assertSee('data-registration-empty-roster', false)->assertSee('data-registration-athlete-invite-link', false)
+        ->assertSee('bukan link keanggotaan global')->assertSee('Tambah Atlet dari Anggota Aktif');
+    expect([CommunityInvitation::count(), CommunityAthlete::count(), $this->draft->fresh()->revision])->toBe($counts);
+});
+
 function rf02CreateInvite(object $test, ?RegistrationDraft $draft = null): array
 {
     $draft ??= $test->draft;
@@ -94,6 +104,131 @@ function rf02CreateInvite(object $test, ?RegistrationDraft $draft = null): array
         ->assertJsonStructure(['invite_url', 'draft_id', 'event_category_id'])
         ->json();
 }
+
+test('roster invite approval activates membership once without changing selected draft or quota', function (): void {
+    $athlete = User::factory()->create(['is_active' => true, 'birth_place' => 'Bandung', 'birth_date' => '2010-01-01', 'gender' => 'male', 'identity_number' => '3273010101100001']);
+    $token = basename(rf02CreateInvite($this)['invite_url']);
+    $this->actingAs($athlete)->post(route('invitations.public.join', $token), ['consent' => '1', 'jersey_number' => 88, 'position' => 'Center'])
+        ->assertRedirect()->assertSessionHasNoErrors();
+    $membership = CommunityAthlete::where('community_id', $this->community->id)->where('user_id', $athlete->id)->firstOrFail();
+    $membership->update(['region_status' => 'rejected']);
+    $before = $this->draft->fresh()->getAttributes();
+    $quota = CommunityInvitation::where('token', hash('sha256', $token))->value('registrations_count');
+    $candidateUrl = route('panel.registration-drafts.candidates.index', [$this->event->slug, $this->draft->id]);
+    $approvalUrl = route('panel.athletes.approve', $membership);
+    $this->actingAs($this->manager)->getJson($candidateUrl)->assertOk()
+        ->assertJsonPath('candidates.0.is_selected', true)
+        ->assertJsonPath('candidates.0.approval_url', $approvalUrl);
+    $this->postJson($approvalUrl)->assertOk()->assertJsonPath('membership_status', 'active');
+    $afterApproval = $membership->fresh()->getAttributes();
+    $this->postJson($approvalUrl)->assertOk()->assertJsonPath('membership_status', 'active');
+    expect($membership->fresh()->getAttributes())->toBe($afterApproval)
+        ->and($membership->fresh()->region_status)->toBe('rejected')
+        ->and($this->draft->fresh()->getAttributes())->toBe($before)
+        ->and(CommunityInvitation::where('token', hash('sha256', $token))->value('registrations_count'))->toBe($quota);
+    $this->getJson($candidateUrl)->assertOk()->assertJsonPath('candidates.0.approval_url', null)
+        ->assertJsonPath('candidates.0.meets_membership_requirements', true);
+});
+
+test('athlete application waits for manager without a second athlete decision', function (): void {
+    $athlete = User::factory()->create(['is_active' => true, 'birth_place' => 'Bandung', 'birth_date' => '2010-01-01', 'gender' => 'male', 'identity_number' => '3273010101100001']);
+    $athlete->assignRole('athlete');
+    $token = basename(rf02CreateInvite($this)['invite_url']);
+    $this->actingAs($athlete)->post(route('invitations.public.join', $token), ['consent' => '1', 'jersey_number' => 88, 'position' => 'Center'])
+        ->assertRedirect()->assertSessionHasNoErrors();
+    $membership = CommunityAthlete::where('community_id', $this->community->id)->where('user_id', $athlete->id)->firstOrFail();
+    expect($membership->initiated_by)->toBe('athlete');
+    $before = $membership->getAttributes();
+    $this->actingAs($athlete)->get(route('panel.my-requests.index'))->assertOk()
+        ->assertSee('Menunggu persetujuan pengurus')
+        ->assertSee('Persetujuan Anda sudah diberikan saat mengirim pengajuan.')
+        ->assertSee('>Lengkapi Berkas Turnamen</a>', false)
+        ->assertDontSee(route('panel.my-requests.approve', $membership), false)
+        ->assertDontSee(route('panel.my-requests.reject', $membership), false);
+    $this->post(route('panel.my-requests.approve', $membership))->assertRedirect()->assertSessionHas('error');
+    $this->post(route('panel.my-requests.reject', $membership))->assertRedirect()->assertSessionHas('error');
+    $this->postJson(route('panel.athletes.approve', $membership))->assertForbidden();
+    expect($membership->fresh()->getAttributes())->toBe($before);
+});
+
+test('community initiated invitation still needs athlete consent and manager cannot bypass it', function (): void {
+    $athlete = User::factory()->create(['is_active' => true]);
+    $athlete->assignRole('athlete');
+    $membership = CommunityAthlete::create(['community_id' => $this->community->id, 'user_id' => $athlete->id, 'status' => 'pending', 'initiated_by' => 'community', 'region_status' => 'pending', 'joined_at' => now()]);
+    $this->actingAs($athlete)->get(route('panel.my-requests.index'))->assertOk()
+        ->assertSee(route('panel.my-requests.approve', $membership), false);
+    $this->actingAs($this->manager)->postJson(route('panel.athletes.approve', $membership))->assertUnprocessable();
+    expect($membership->fresh()->status)->toBe('pending');
+    $other = Community::factory()->create(['is_active' => true]);
+    $foreign = CommunityAthlete::create(['community_id' => $other->id, 'user_id' => $athlete->id, 'status' => 'pending', 'initiated_by' => 'athlete', 'region_status' => 'pending', 'joined_at' => now()]);
+    $this->postJson(route('panel.athletes.approve', $foreign))->assertForbidden();
+    expect($foreign->fresh()->status)->toBe('pending');
+});
+
+test('candidate and existing roster ages use event date rather than current date', function (): void {
+    $this->travelTo(Carbon::parse('2026-10-25 10:00:00'));
+    $this->event->update(['starts_at' => '2027-02-10 08:00:00']);
+    $athlete = User::factory()->create(['is_active' => true, 'birth_date' => '2010-01-01', 'gender' => 'male']);
+    CommunityAthlete::create(['community_id' => $this->community->id, 'user_id' => $athlete->id, 'status' => 'active', 'region_status' => 'pending', 'joined_at' => now()]);
+    rf02CreateInvite($this);
+    RegistrationDraftCandidate::create(['registration_draft_id' => $this->draft->id, 'user_id' => $athlete->id, 'community_invitation_id' => CommunityInvitation::where('registration_draft_id', $this->draft->id)->value('id')]);
+    $this->getJson(route('panel.registration-drafts.candidates.index', [$this->event->slug, $this->draft->id]))->assertOk()
+        ->assertJsonPath('candidates.0.age_at_event', 17)->assertJsonPath('candidates.0.event_starts_at', '2027-02-10')
+        ->assertJsonPath('candidates.0.is_selected', false)->assertJsonPath('candidates.0.approval_url', null);
+    $this->get(route('panel.community-events.create', ['slug' => $this->event->slug, 'draft_id' => $this->draft->id, 'step' => 'roster']))
+        ->assertOk()->assertSee('Usia saat event')->assertSee('17 thn');
+    $this->travelBack();
+});
+
+test('invitation initial gate checks category without provisioning accounts or consuming roster capacity', function (): void {
+    $this->category->update(['gender' => 'male', 'min_age' => 15, 'max_age' => 17]);
+    $invite = rf02CreateInvite($this);
+    auth()->forgetGuards();
+    $users = User::count();
+    $memberships = CommunityAthlete::count();
+    $before = $this->draft->fresh()->getRawOriginal('payload');
+    $token = basename($invite['invite_url']);
+    $data = ['email' => 'gate@example.invalid', 'birth_date' => $this->event->starts_at->copy()->subYears(16)->format('Y-m-d'), 'gender' => 'male'];
+    $this->postJson('/invite/'.$token.'/check', $data)->assertOk()->assertJsonPath('eligible', true);
+    $this->postJson('/invite/'.$token.'/check', array_replace($data, ['gender' => 'female']))->assertUnprocessable()->assertJsonValidationErrors('gender');
+    $this->postJson('/invite/'.$token.'/check', array_replace($data, ['birth_date' => $this->event->starts_at->copy()->subYears(18)->format('Y-m-d')]))->assertUnprocessable()->assertJsonValidationErrors('birth_date');
+    expect(User::count())->toBe($users);
+    expect(CommunityAthlete::count())->toBe($memberships);
+    expect($this->draft->fresh()->getRawOriginal('payload'))->toBe($before);
+    expect($this->draft->fresh()->revision)->toBe(1);
+    expect(RegistrationDraftCandidate::where('registration_draft_id', $this->draft->id)->count())->toBe(0);
+});
+
+test('partial existing account reuses valid own identity but asks playing details for target team', function (): void {
+    $this->community->update(['subtype' => 'school']);
+    $athlete = User::factory()->create(['is_active' => true, 'birth_place' => null, 'birth_date' => '2010-01-01', 'gender' => 'male']);
+    CommunityAthlete::create(['community_id' => $this->community->id, 'user_id' => $athlete->id, 'nisn' => '0012345678', 'status' => 'active', 'region_status' => 'pending', 'joined_at' => now()]);
+    $token = basename(rf02CreateInvite($this)['invite_url']);
+    $this->actingAs($athlete)->get(route('invitations.public.show', $token))->assertOk()
+        ->assertSee('name="jersey_number"', false)->assertSee('name="position"', false)
+        ->assertDontSee('name="identity_number"', false)->assertSee('name="birth_place"', false);
+    $this->post(route('invitations.public.join', $token), ['consent' => 1, 'birth_place' => 'Bandung', 'jersey_number' => 23, 'position' => 'Forward'])
+        ->assertRedirect()->assertSessionHasNoErrors();
+    expect($this->draft->fresh()->payload['members'][0]['jersey_number'])->toBe(23);
+    expect($this->draft->fresh()->payload['members'][0]['position'])->toBe('Forward');
+    expect($athlete->fresh()->birth_place)->toBe('Bandung');
+});
+
+test('initial gate never reveals existing guest account and rejects profile spoof or stale token', function (): void {
+    $token = basename(rf02CreateInvite($this)['invite_url']);
+    $athlete = User::factory()->create(['is_active' => true, 'gender' => 'male', 'birth_date' => '2010-01-01']);
+    auth()->forgetGuards();
+    $data = ['email' => $athlete->email, 'birth_date' => '2010-01-01', 'gender' => 'male'];
+    $known = $this->postJson('/invite/'.$token.'/check', $data)->assertOk()->json();
+    $unknown = $this->postJson('/invite/'.$token.'/check', array_replace($data, ['email' => 'not-registered@example.invalid']))->assertOk()->json();
+    expect($known)->toBe($unknown);
+    $this->actingAs($athlete)->postJson('/invite/'.$token.'/check', array_replace($data, ['gender' => 'female']))->assertUnprocessable()->assertJsonValidationErrors('gender');
+    $this->postJson('/invite/'.$token.'/check', array_replace($data, ['birth_date' => '2000-01-01']))->assertUnprocessable()->assertJsonValidationErrors('birth_date');
+    $this->draft->update(['expires_at' => now()->subMinute()]);
+    $this->postJson('/invite/'.$token.'/check', $data)->assertNotFound();
+    expect($athlete->fresh()->gender)->toBe('male');
+    expect($this->draft->fresh()->revision)->toBe(1);
+});
 
 test('candidate gender mismatch stays visible but cannot be selected or saved', function (): void {
     $this->category->update(['gender' => 'female']);
@@ -558,13 +693,28 @@ test('saved academic member records education detail without repeating identity 
     expect($athlete->educations()->firstOrFail()->education_detail)->toBe('Detail Institusi')
         ->and($athlete->educations()->firstOrFail()->identifier_value)->toBe($identifier)
         ->and($this->draft->fresh()->revision)->toBe(2);
-    $this->get(route('invitations.public.show', $token))->assertOk()->assertSee('Simpan Detail Pendidikan')->assertDontSee('name="birth_place"', false);
-    $this->post(route('invitations.public.join', $token), ['consent' => '1', 'education_detail' => 'Detail Diperbarui'])->assertRedirect()->assertSessionHasNoErrors();
-    expect($athlete->educations()->firstOrFail()->education_detail)->toBe('Detail Diperbarui')
+    $this->get(route('invitations.public.show', $token))->assertOk()
+        ->assertSee('Anda sudah terdaftar pada roster tim ini.')
+        ->assertDontSee('name="education_detail"', false)
+        ->assertDontSee('name="consent"', false)
+        ->assertDontSee('name="birth_place"', false)
+        ->assertDontSee('<form', false)
+        ->assertSee('>Lengkapi Berkas Turnamen</a>', false)
+        ->assertSee('href="'.route('panel.login').'"', false)->assertSee('Kembali ke Panel');
+    $profileBefore = $athlete->fresh()->getAttributes();
+    $rosterBefore = $this->draft->fresh()->payload;
+    $this->post(route('invitations.public.join', $token), [
+        'consent' => '1', 'education_detail' => 'Detail Diperbarui',
+        'birth_place' => 'Jakarta', 'birth_date' => '2006-01-01', 'gender' => 'female',
+        'identity_number' => '0098765432', 'jersey_number' => 99, 'position' => 'Forward',
+    ])->assertRedirect()->assertSessionHasNoErrors();
+    expect($athlete->fresh()->getAttributes())->toBe($profileBefore)
+        ->and($this->draft->fresh()->payload)->toBe($rosterBefore);
+    expect($athlete->educations()->firstOrFail()->education_detail)->toBe('Detail Institusi')
         ->and($this->draft->fresh()->revision)->toBe(2)
         ->and(CommunityInvitation::where('token', hash('sha256', $token))->value('registrations_count'))->toBe(1);
     $this->post(route('invitations.public.join', $token), ['consent' => '1'])->assertRedirect();
-    expect($athlete->educations()->firstOrFail()->education_detail)->toBe('Detail Diperbarui');
+    expect($athlete->educations()->firstOrFail()->education_detail)->toBe('Detail Institusi');
     $this->postJson(route('invitations.public.join', $token), ['consent' => '1', 'education_detail' => str_repeat('x', 151)])
         ->assertUnprocessable()->assertJsonValidationErrors('education_detail');
 })->with([['school', 'nisn', '0012345678'], ['university', 'nim', 'M2026-001']]);

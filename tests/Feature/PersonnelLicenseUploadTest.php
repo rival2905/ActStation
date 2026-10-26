@@ -198,8 +198,10 @@ test('final submission moves staged license into participant personnel and revie
     $this->event->update(['user_id' => $organizer->id]);
 
     $inspectUrl = route('panel.organizer.teams.inspection.show', [$this->event, 'participant', $participant->id]);
-    $this->actingAs($organizer)->get($inspectUrl)->assertOk()->assertSee('Unduh Lisensi');
+    $this->actingAs($organizer)->get($inspectUrl)->assertOk()->assertSee('Unduh Lisensi')->assertSee('Lihat lisensi');
 
     $downloadUrl = route('panel.organizer.teams.personnel-license.download', [$this->event, 'participant', $participant->id, $personnel->id]);
     $this->actingAs($organizer)->get($downloadUrl)->assertOk()->assertDownload();
+    $preview = $this->get($downloadUrl.'?preview=1')->assertOk()->assertHeader('X-Content-Type-Options', 'nosniff');
+    expect($preview->headers->get('Content-Disposition'))->toStartWith('inline;');
 });

@@ -229,6 +229,40 @@ class InvitationService implements ContextualAthleteInvitation
         }
     }
 
+    private function reusableInvitationDetails(CommunityInvitation $invitation, ?User $actor): array
+    {
+        if ($actor === null || ! $actor->is_active || $invitation->registration_draft_id === null) {
+            return [];
+        }
+        $details = [];
+        if (is_string($actor->birth_place) && trim($actor->birth_place) !== '') {
+            $details['birth_place'] = $actor->birth_place;
+        }
+        $type = $this->invitationFormContext($invitation)['identity_type'];
+        $membership = CommunityAthlete::query()->where('community_id', $invitation->community_id)
+            ->where('user_id', $actor->id)->whereIn('status', ['pending', 'active'])->whereNull('left_at')->first();
+        $identity = match ($type) {
+            'nisn' => $membership?->nisn,
+            'nim' => $membership?->nim,
+            'nik' => $actor->identity_number,
+            default => null,
+        };
+        $pattern = match ($type) {
+            'nisn' => '/^[0-9]{10}$/', 'nik' => '/^[0-9]{16}$/',
+            'nim' => '/^[A-Za-z0-9.\/-]{1,50}$/', default => null,
+        };
+        if (is_string($identity) && $pattern !== null && preg_match($pattern, $identity) === 1) {
+            $details['identity_number'] = $identity;
+        }
+
+        return $details;
+    }
+
+    public function savedInvitationFields(CommunityInvitation $invitation, ?User $actor): array
+    {
+        return array_fill_keys(array_keys($this->reusableInvitationDetails($invitation, $actor)), true);
+    }
+
     public function invitationFormContext(CommunityInvitation $invitation): array
     {
         $isRoster = $invitation->registration_draft_id !== null;
@@ -349,7 +383,7 @@ class InvitationService implements ContextualAthleteInvitation
             }
 
             if ($existing && $this->alreadyJoined($invitation, $actor)) {
-                if (array_key_exists('education_detail', $data)) {
+                if ($invitation->registration_draft_id === null && array_key_exists('education_detail', $data)) {
                     $this->saveEducationDetail($invitation, $actor, $existing, $data);
                 }
 
@@ -367,7 +401,7 @@ class InvitationService implements ContextualAthleteInvitation
                 return $existing;
             }
 
-            $data = $this->validatedAthleteDetails($invitation, $data, $actor);
+            $data = $this->validatedAthleteDetails($invitation, array_replace($this->reusableInvitationDetails($invitation, $actor), $data), $actor);
             $actorUpdates = ['birth_place' => $data['birth_place'], 'birth_date' => $data['birth_date']];
             if (! empty($data['gender'])) {
                 $actorUpdates['gender'] = $data['gender'];
@@ -396,7 +430,20 @@ class InvitationService implements ContextualAthleteInvitation
         });
     }
 
-    private function validatedAthleteDetails(CommunityInvitation $invitation, array $data, ?User $actor = null): array
+    public function checkEligibility(string $token, array $data, ?User $actor = null): void
+    {
+        $invitation = $this->findValidInvitation($token, $actor);
+        if ($invitation->registration_draft_id === null) {
+            throw new InvalidInvitationException;
+        }
+        if ((! $invitation->is_global && strcasecmp($data['email'], (string) $invitation->email) !== 0)
+            || ($actor !== null && strcasecmp($data['email'], $actor->email) !== 0)) {
+            throw ValidationException::withMessages(['email' => 'Email tidak sesuai dengan undangan atau akun yang digunakan.']);
+        }
+        $this->validatedEligibility($invitation, $data, $actor);
+    }
+
+    private function validatedEligibility(CommunityInvitation $invitation, array $data, ?User $actor): array
     {
         $context = $this->invitationFormContext($invitation);
         if ($context['is_roster'] && $actor !== null) {
@@ -409,6 +456,42 @@ class InvitationService implements ContextualAthleteInvitation
                 }
                 $data[$field] = $existing;
             }
+        }
+        $validated = Validator::make($data, [
+            'birth_date' => ['required', 'date_format:Y-m-d', 'before:today'],
+            'gender' => $context['is_roster'] ? ['required', 'string', 'in:'.($context['gender'] === 'mixed' ? 'male,female' : $context['gender'])] : ['nullable', 'string', 'in:male,female'],
+        ], [
+            'gender.in' => 'Jenis kelamin tidak sesuai persyaratan kategori turnamen.',
+            'gender.required' => 'Jenis kelamin wajib diisi sesuai kategori turnamen.',
+        ])->validate();
+        if ($context['is_roster']) {
+            $rules = $this->registrationDraftProvider->validInvitationContext((string) $invitation->registration_draft_id, (int) $invitation->community_id, (int) $invitation->event_category_id);
+            if ($rules === null) {
+                throw new InvalidInvitationException;
+            }
+            $birth = Carbon::parse($validated['birth_date'])->startOfDay();
+            if ($rules->minAge !== null || $rules->maxAge !== null) {
+                if ($rules->eventStartsAt === null) {
+                    throw ValidationException::withMessages(['birth_date' => 'Tanggal mulai event belum tersedia untuk pemeriksaan usia.']);
+                }
+                $eventDate = Carbon::parse($rules->eventStartsAt)->startOfDay();
+                $age = (int) $birth->diffInYears($eventDate);
+                if ($birth->greaterThan($eventDate) || ($rules->minAge !== null && $age < $rules->minAge) || ($rules->maxAge !== null && $age > $rules->maxAge)) {
+                    throw ValidationException::withMessages(['birth_date' => 'Usia pada tanggal mulai event tidak sesuai batas kategori turnamen.']);
+                }
+            } elseif ($rules->developmentLevelId !== null && $this->developmentLevelLookup->findForBirthDate($birth, $rules->sportCategoryId)?->id !== $rules->developmentLevelId) {
+                throw ValidationException::withMessages(['birth_date' => 'Usia tidak sesuai jenjang pembinaan kategori turnamen.']);
+            }
+        }
+
+        return array_replace($data, $validated);
+    }
+
+    private function validatedAthleteDetails(CommunityInvitation $invitation, array $data, ?User $actor = null): array
+    {
+        $context = $this->invitationFormContext($invitation);
+        if ($context['is_roster']) {
+            $data = $this->validatedEligibility($invitation, $data, $actor);
         }
         $identityType = $context['identity_type'] ?? null;
         $identityRules = match ($identityType) {
@@ -466,29 +549,7 @@ class InvitationService implements ContextualAthleteInvitation
             'jersey_number' => $context['is_roster'] ? ['nullable', 'integer', 'between:0,99'] : ['exclude'],
         ], $messages, $customAttributes)->validate();
 
-        if ($context['is_roster']) {
-            $rules = $this->registrationDraftProvider->validInvitationContext(
-                (string) $invitation->registration_draft_id, (int) $invitation->community_id, (int) $invitation->event_category_id,
-            );
-            if ($rules === null) {
-                throw new InvalidInvitationException;
-            }
-            $birth = Carbon::parse($validated['birth_date'])->startOfDay();
-            if ($rules->minAge !== null || $rules->maxAge !== null) {
-                if ($rules->eventStartsAt === null) {
-                    throw ValidationException::withMessages(['birth_date' => 'Tanggal mulai event belum tersedia untuk pemeriksaan usia.']);
-                }
-                $eventDate = Carbon::parse($rules->eventStartsAt)->startOfDay();
-                $age = (int) $birth->diffInYears($eventDate);
-                if ($birth->greaterThan($eventDate) || ($rules->minAge !== null && $age < $rules->minAge)
-                    || ($rules->maxAge !== null && $age > $rules->maxAge)) {
-                    throw ValidationException::withMessages(['birth_date' => 'Usia pada tanggal mulai event tidak sesuai batas kategori turnamen.']);
-                }
-            } elseif ($rules->developmentLevelId !== null
-                && $this->developmentLevelLookup->findForBirthDate($birth, $rules->sportCategoryId)?->id !== $rules->developmentLevelId) {
-                throw ValidationException::withMessages(['birth_date' => 'Usia tidak sesuai jenjang pembinaan kategori turnamen.']);
-            }
-        } else {
+        if (! $context['is_roster']) {
             unset($data['jersey_number']);
         }
         if ($identityType === null) {

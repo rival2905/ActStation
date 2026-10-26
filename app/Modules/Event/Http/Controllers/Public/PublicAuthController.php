@@ -6,6 +6,7 @@ namespace App\Modules\Event\Http\Controllers\Public;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\EventRegistrationReturn;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -86,6 +87,11 @@ class PublicAuthController extends Controller
         $committeeToken = $request->session()->pull('committee_registration_return');
         if (is_string($committeeToken) && preg_match('/^[A-Za-z0-9]{64}$/D', $committeeToken)) {
             return redirect()->route('committee-invitations.show', $committeeToken)->with('success', 'Akun siap. Tinjau jabatan lalu setujui pengajuan panitia.');
+        }
+
+        $eventDestination = app(EventRegistrationReturn::class)->publicDestinationFromIntended($request);
+        if ($eventDestination !== null) {
+            return redirect()->to($eventDestination)->with('success', 'Akun siap. Silakan lanjutkan pendaftaran event.');
         }
 
         return redirect()

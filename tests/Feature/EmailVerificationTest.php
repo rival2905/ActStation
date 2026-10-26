@@ -9,6 +9,8 @@ use App\Modules\Event\Models\EventCategory;
 use App\Modules\MasterData\Models\SportCategory;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\URL;
 
 uses(RefreshDatabase::class);
@@ -156,6 +158,47 @@ test('resend verification queues via EmailDelivery without real HTTP or SMTP', f
     expect($capturedPayload['attachments'])->toBe([]);
     expect($capturedPayload['action_label'])->toBe('Verifikasi Email');
     expect($capturedPayload['action_url'])->toContain('/email/verify/'.$user->id.'/'.sha1('johndoe@example.com'));
+});
+
+test('resent verification HTML contains one greeting and only the button and fallback link', function (): void {
+    $this->freezeTime();
+    config([
+        'services.n8n.email_enabled' => true,
+        'services.n8n.webhook_url' => 'https://email.example.test/webhook/actstation-email',
+        'services.n8n.webhook_secret' => 'test-only-secret',
+        'services.n8n.allowed_host' => 'email.example.test',
+    ]);
+    Http::preventStrayRequests();
+    Http::fake([
+        'https://email.example.test/webhook/actstation-email' => Http::response(['success' => true]),
+    ]);
+    $user = User::factory()->create(['name' => 'Demo & Peserta', 'email_verified_at' => null, 'is_active' => true]);
+    $user->assignRole('member');
+
+    $this->actingAs($user)->from('/email/verify')->post(route('verification.send'))
+        ->assertRedirect('/email/verify')->assertSessionHas('status', 'verification-link-sent');
+
+    Http::assertSentCount(1);
+    Http::assertSent(function (Illuminate\Http\Client\Request $request): bool {
+        $data = $request['data'];
+        expect($data['body'])->not->toContain('Halo', $data['url'])
+            ->and($data['body'])->toContain('60 menit');
+        $dom = new DOMDocument;
+        @$dom->loadHTML($data['html']);
+        $xpath = new DOMXPath($dom);
+        $text = preg_replace('/\s+/', ' ', $dom->textContent);
+        expect(substr_count($text, 'Halo Demo & Peserta,'))->toBe(1);
+        $links = array_values(array_filter(iterator_to_array($dom->getElementsByTagName('a')), fn ($link) => $link->getAttribute('href') === $data['url']));
+        expect($links)->toHaveCount(2)
+            ->and(trim($links[0]->textContent))->toContain('Verifikasi Email')
+            ->and(trim($links[1]->textContent))->toBe($data['url'])
+            ->and($xpath->query('//div[contains(@style, "word-break: break-word")]')->item(0)->textContent)->not->toContain($data['url']);
+        expect(URL::hasValidSignature(Request::create($data['url'])))->toBeTrue();
+        parse_str(parse_url($data['url'], PHP_URL_QUERY), $query);
+        expect((int) $query['expires'])->toBe(now()->addMinutes(60)->getTimestamp());
+
+        return true;
+    });
 });
 
 test('already verified user resend does not queue duplicate email', function (): void {

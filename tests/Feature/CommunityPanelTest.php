@@ -14,10 +14,12 @@ use App\Modules\Community\Services\AthleteMembershipService;
 use App\Modules\Community\Services\InvitationService;
 use App\Modules\Event\Models\Event;
 use App\Modules\Event\Models\EventCategory;
+use App\Services\EventRegistrationReturn;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -485,6 +487,48 @@ test('resend undangan atlet memiliki cooldown 15 menit', function (): void {
         ->toThrow(ValidationException::class);
 });
 
+test('rejected membership returns validation without recreating or changing history', function (string $initiatedBy): void {
+    Http::preventStrayRequests();
+    $membership = CommunityAthlete::create([
+        'community_id' => $this->communityA->id,
+        'user_id' => $this->athleteUser->id,
+        'initiated_by' => $initiatedBy,
+        'status' => 'pending',
+        'region_status' => 'verified',
+        'joined_at' => now()->toDateString(),
+    ]);
+    $service = app(AthleteMembershipService::class);
+    if ($initiatedBy === 'community') {
+        $service->rejectByAthlete($membership, $this->athleteUser);
+    } else {
+        $service->rejectByManager($membership, $this->managerA);
+    }
+    $before = $membership->fresh()->getAttributes();
+    expect(fn () => $service->addOrInviteAthlete($this->communityA, $this->athleteUser->id, [], $initiatedBy))
+        ->toThrow(ValidationException::class, 'Permohonan sebelumnya telah ditolak. Hubungi pengurus komunitas sebelum mengajukan kembali.');
+    expect($membership->fresh()->getAttributes())->toBe($before)
+        ->and(CommunityAthlete::where('community_id', $this->communityA->id)->where('user_id', $this->athleteUser->id)->count())->toBe(1);
+})->with(['community', 'athlete']);
+
+test('athlete acceptance preserves regional verification', function (string $regionStatus): void {
+    Http::preventStrayRequests();
+    $membership = CommunityAthlete::create([
+        'community_id' => $this->communityA->id,
+        'user_id' => $this->athleteUser->id,
+        'initiated_by' => 'community',
+        'status' => 'pending',
+        'region_status' => $regionStatus,
+        'region_verified_at' => now()->subDay(),
+        'region_verified_by' => $this->internalUser->id,
+        'region_notes' => 'Catatan wilayah tetap',
+        'joined_at' => now()->toDateString(),
+    ]);
+    $regionBefore = $membership->only(['region_status', 'region_verified_at', 'region_verified_by', 'region_notes']);
+    app(AthleteMembershipService::class)->approveByAthlete($membership, $this->athleteUser);
+    expect($membership->fresh()->status)->toBe('active')
+        ->and($membership->fresh()->only(array_keys($regionBefore)))->toEqual($regionBefore);
+})->with(['pending', 'verified', 'rejected']);
+
 test('manager approve atlet ber-initiated_by=community ditolak dan status tetap pending', function (): void {
     $membershipService = app(AthleteMembershipService::class);
 
@@ -544,23 +588,23 @@ test('akun tanpa komunitas tidak melihat menu manajemen komunitas dan melihat ct
     // CTA and available options
     $response->assertSee('Buat Komunitas');
     $response->assertSee('panel/community/create');
-    $response->assertSee('Ikuti Turnamen');
+    $response->assertSee('Turnamen');
     $response->assertSee('Permintaan Saya');
 
     // Management menus MUST NOT be present
     $response->assertDontSee('Profil Komunitas');
-    $response->assertDontSee('Pengurus');
+    $response->assertDontSee('href="'.route('panel.officials.index').'"', false);
     $response->assertDontSee('Pelatih');
     $response->assertDontSee('Roster Atlet');
     $response->assertDontSee('Dokumen');
     $response->assertDontSee('Undangan');
 
     // Visibly informs user to create community before registration
-    $response->assertSee('Anda belum memiliki komunitas terdaftar');
-    $response->assertSee('Buat Komunitas Sekarang');
+    $response->assertDontSee('Anda belum memiliki komunitas terdaftar');
+    $response->assertDontSee('Buat Komunitas Sekarang');
 });
 
-test('akun tanpa komunitas melihat tombol buat komunitas untuk mendaftar dan tidak bisa daftar turnamen', function (): void {
+test('akun baru mendapat pendaftaran langsung dan melengkapi organisasi sebelum wizard', function (): void {
     $rival = User::factory()->create([
         'email' => 'rival2@gmail.com',
         'is_active' => true,
@@ -582,15 +626,17 @@ test('akun tanpa komunitas melihat tombol buat komunitas untuk mendaftar dan tid
         ->get(route('panel.community-events.index'));
 
     $response->assertOk();
-    $response->assertSee('Buat Komunitas untuk Mendaftar');
-    $response->assertDontSee('Daftar Sekarang');
+    $response->assertDontSee('Buat Komunitas untuk Mendaftar');
+    $response->assertDontSee('Daftarkan Tim');
+    $response->assertSee('Daftar Sekarang')->assertDontSee('Saya Ingin Ikut');
 
-    // Direct access to registration page is denied without community
+    // Explicit team entry preserves event intent while completing the organization.
     $regResponse = $this->actingAs($rival)
         ->get(route('panel.community-events.create', $event->slug));
 
     $regResponse->assertRedirect(route('panel.community.create'));
     $regResponse->assertSessionHas('info');
+    $regResponse->assertSessionHas(EventRegistrationReturn::SESSION_KEY, ['event_id' => $event->id, 'category_id' => null]);
 });
 
 test('manager komunitas yang sah mempertahankan seluruh menu dan dapat mendaftar event', function (): void {
@@ -617,7 +663,7 @@ test('manager komunitas yang sah mempertahankan seluruh menu dan dapat mendaftar
     $response->assertSee('Roster Atlet');
     $response->assertSee('Dokumen');
     $response->assertSee('Undangan');
-    $response->assertSee('Ikuti Turnamen');
+    $response->assertSee('Turnamen');
     $response->assertSee('Permintaan Saya');
 
     // No CTA Buat Komunitas
@@ -625,7 +671,7 @@ test('manager komunitas yang sah mempertahankan seluruh menu dan dapat mendaftar
 
     // Registration allowed
     $response->assertDontSee('Anda belum memiliki komunitas terdaftar');
-    $response->assertSee('Daftar Sekarang');
+    $response->assertSee('Daftarkan Tim');
 });
 
 test('menu organizer kelola event tetap terlihat untuk role organizer', function (): void {

@@ -108,9 +108,14 @@
             </div>
             <div class="col-12 col-md-4 text-md-end mt-2 mt-md-0">
                 <div class="d-flex d-md-block gap-2">
+                    @if(in_array((int) $event->id, $athleteSummary['event_ids'], true))
+                    <a href="{{ route('my-events.index') }}" class="btn btn-primary btn-sm flex-fill">{{ in_array((int) $event->id, $athleteSummary['action_event_ids'], true) ? 'Lengkapi Berkas' : 'Lihat Tim Saya' }}</a>
+                    @endif
+                    @if($event->registration_open && $event->status === 'published' && (! $event->registration_deadline || $event->registration_deadline->isFuture()))
                     <a href="{{ route('events.register', $event->slug) }}" class="btn btn-primary btn-sm flex-fill">
-                        <span class="fas fa-clipboard-check me-1"></span>Daftar Event
+                        <span class="fas fa-clipboard-check me-1"></span>Daftar Sekarang
                     </a>
+                    @endif
 @if($event->ticketSalesAreOpen())
                     <a href="{{ route('events.tickets', $event->slug) }}" class="btn btn-outline-success btn-sm flex-fill">
                         <span class="fas fa-ticket-alt me-1"></span>Beli Tiket
@@ -254,7 +259,7 @@
                                 <span class="badge bg-primary-subtle text-primary border">{{ $category->registrationPriceLabel() }}</span>
                                 <span class="badge bg-100 text-dark border">
                                     @if($category->registration_flow === 'screening_first')
-                                        {{ $category->participants->count() }} Pendaftar / Kuota: {{ $category->max_teams ?? '∞' }}
+                                        {{ $category->occupied_slots_count }} Slot terpakai / Kuota: {{ $category->max_teams ?? '∞' }}
                                     @else
                                         {{ $category->participants->count() }} Tim / Kuota: {{ $category->max_teams ?? '∞' }}
                                     @endif
