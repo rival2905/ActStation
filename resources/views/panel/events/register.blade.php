@@ -34,6 +34,10 @@
 @endpush
 @section('content')
 <div class="registration-workspace">
+<div class="d-flex gap-2 flex-wrap mb-3">
+    <a class="btn btn-sm btn-falcon-default" href="{{ route('events.activities.index',$event->slug) }}">Kegiatan Pendamping</a>
+    <a class="btn btn-sm btn-falcon-default" href="{{ route('panel.event-questions.edit',[$event,'institution',$community->id]) }}">Pertanyaan Instansi (sekali per event)</a>
+</div>
 @php
     $activeRegistrations = $registrations->filter(fn ($r) => in_array($r->status, ['registered', 'revision_needed', 'verified', 'confirmed', 'waiting_list'], true)
         || ($r->status === 'pending_payment' && ($r->payment_deadline_at === null || $r->payment_deadline_at->isFuture())));
@@ -202,8 +206,8 @@
     <nav class="card mb-3" aria-label="Tahap pendaftaran tim">
         <div class="card-header bg-body-tertiary pt-3 pb-2">
             <ul class="nav nav-wizard justify-content-between">
-                @foreach([['category', 'Kategori & Informasi Tim', 'users'], ['roster', 'Roster & Dokumen', 'file-alt'], ['review', 'Tinjau, Kirim & Pemeriksaan', 'clipboard-check']] as [$step, $label, $icon])
-                    <li class="nav-item flex-fill text-center"><button type="button" id="registration-tab-{{ $step }}" class="nav-link w-100 border-0 bg-transparent fw-semi-bold {{ $step === 'category' ? 'active' : '' }}" data-registration-step-target="{{ $step }}" aria-controls="registration-pane-{{ $step }}" aria-current="{{ $step === 'category' ? 'step' : 'false' }}"><span class="nav-item-circle-parent"><span class="nav-item-circle"><span class="fas fa-{{ $icon }}" aria-hidden="true"></span></span></span><span class="d-block mt-1 fs-11" @if($step === 'category') data-registration-identity-label @endif>{{ $loop->iteration }}. {{ $step === 'category' && $activeDraft ? 'Informasi Tim Tersimpan' : $label }}</span></button></li>
+                @foreach([['category', 'Kategori & Informasi Tim', 'users'], ['roster', 'Roster & Dokumen', 'file-alt'], ['additional', 'Informasi Tambahan', 'list-alt'], ['review', 'Tinjau, Kirim & Pemeriksaan', 'clipboard-check']] as [$step, $label, $icon])
+                    <li class="nav-item flex-fill text-center" @if($step === 'additional') hidden @endif><button type="button" id="registration-tab-{{ $step }}" class="nav-link w-100 border-0 bg-transparent fw-semi-bold {{ $step === 'category' ? 'active' : '' }}" data-registration-step-target="{{ $step }}" aria-controls="registration-pane-{{ $step }}" aria-current="{{ $step === 'category' ? 'step' : 'false' }}"><span class="nav-item-circle-parent"><span class="nav-item-circle"><span class="fas fa-{{ $icon }}" aria-hidden="true"></span></span></span><span class="d-block mt-1 fs-11" @if($step === 'category') data-registration-identity-label @endif>{{ $loop->iteration }}. {{ $step === 'category' && $activeDraft ? 'Informasi Tim Tersimpan' : $label }}</span></button></li>
                 @endforeach
             </ul>
         </div>
@@ -919,13 +923,20 @@
                 </div>
             </div>
 
+            <div class="card mt-3" id="registration-pane-additional" role="region" aria-labelledby="registration-tab-additional" data-registration-step-pane="additional" hidden>
+                <div class="card-header bg-body-tertiary"><h6 class="mb-0">3. Informasi Tambahan</h6></div>
+                <div class="card-body">
+                    <div id="registration-additional-status" class="alert alert-info" role="status" hidden></div>
+                    <div class="accordion" id="registration-additional-teams-accordion"><div id="additional-form-body-content">Informasi tambahan dimuat setelah identitas tim tersimpan.</div></div>
+                </div>
+            </div>
             <div class="card mt-3" id="registration-pane-review" role="region" aria-labelledby="registration-tab-review" data-registration-step-pane="review" hidden>
                 <div class="card-header bg-body-tertiary d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <div class="d-flex flex-wrap align-items-center gap-2">
                         <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" onclick="window.registrationDraftUI?.navigateStep('roster')">
                             <span class="fas fa-arrow-left me-1"></span>Kembali ke Roster
                         </button>
-                        <h6 class="mb-0">3. Tinjau, Kirim &amp; Pemeriksaan</h6>
+                        <h6 class="mb-0" id="registration-review-heading">3. Tinjau, Kirim &amp; Pemeriksaan</h6>
                     </div>
                     <span class="badge badge-subtle-primary">Kirim satu tim</span>
                 </div>

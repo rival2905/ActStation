@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Event\Observers;
 
 use App\Modules\Event\Models\EventParticipant;
+use App\Modules\Event\Services\EventActivityService;
 use App\Modules\Event\Services\EventRegistrationEmailService;
 use Illuminate\Support\Facades\DB;
 
@@ -30,6 +31,9 @@ class EventParticipantObserver
 
     public function updated(EventParticipant $participant): void
     {
+        if ($participant->wasChanged('status')) {
+            app(EventActivityService::class)->reconcileParent($participant);
+        }
         if (! $participant->wasChanged()) {
             return;
         }
@@ -64,6 +68,7 @@ class EventParticipantObserver
 
     public function deleted(EventParticipant $participant): void
     {
+        app(EventActivityService::class)->reconcileParent($participant, true);
         $snapshot = $this->emailService->createSnapshot($participant, 'deleted');
 
         DB::afterCommit(function () use ($snapshot): void {

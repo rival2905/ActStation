@@ -14,6 +14,7 @@ use App\Contracts\TeamPersonnelProvider;
 use App\Events\SchoolAthleteActivated;
 use App\Models\User;
 use App\Modules\Event\Models\Event;
+use App\Modules\Event\Models\EventAnswer;
 use App\Modules\Event\Models\EventCategory;
 use App\Modules\Event\Models\EventParticipant;
 use App\Modules\Event\Models\RegistrationDraft;
@@ -510,6 +511,9 @@ class RegistrationDraftService implements RegistrationDraftProvider
 
                 $payload = $participant->only(['team_name', 'contact_person', 'contact_phone', 'notes', 'event_category_id']);
                 $payload['revision_notes'] = $participant->revision_notes;
+                $payload['additional_team_answers'] = EventAnswer::where('event_id', $participant->event_id)->where('target', 'team')->where('subject_id', $participant->id)->first()?->answers ?? [];
+                $previousDraft = RegistrationDraft::where('participant_id', $participant->id)->latest()->first();
+                $payload['additional_activity_ids'] = $previousDraft?->payload['additional_activity_ids'] ?? [];
                 $payload['members'] = $participant->members()->get(['user_id', 'jersey_number', 'is_captain', 'position', 'team_role'])->toArray();
                 $payload['personnel'] = $participant->personnel()->get(['user_id', 'role_id'])->toArray();
                 $files = ['team_documents' => [], 'athlete_documents' => [], 'personnel_licenses' => []];
@@ -540,6 +544,7 @@ class RegistrationDraftService implements RegistrationDraftProvider
                 $snapshot = app(EventRegistrationEmailService::class)->createSnapshot($participant, 'withdrawn');
                 $participant->recordActivity('deleted');
                 $participant->deleteQuietly();
+                app(EventActivityService::class)->reconcileParent($participant, true);
                 DB::table('documents')->where('documentable_type', EventParticipant::class)->where('documentable_id', $participant->id)->delete();
                 DB::afterCommit(fn () => app(EventRegistrationEmailService::class)->sendNotification($snapshot));
 

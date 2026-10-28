@@ -34,6 +34,12 @@
 
 @section('content')
 <div class="registration-roster">
+@if($isManager && $participant->event)
+<div class="d-flex gap-2 flex-wrap mb-3">
+    <a class="btn btn-sm btn-falcon-default" href="{{ route('panel.event-questions.edit',[$participant->event,'team',$participant->id]) }}">Pertanyaan Tambahan Tim</a>
+    <a class="btn btn-sm btn-falcon-default" href="{{ route('events.activities.index',$participant->event->slug) }}">Kegiatan Pendamping</a>
+</div>
+@endif
 <div class="card mb-3">
     <div class="card-body">
         <div class="row g-3 align-items-center">

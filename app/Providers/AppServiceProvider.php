@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Contracts\ActivityBilling;
 use App\Contracts\AssistantCommunityContext;
 use App\Contracts\AssistantEventContext;
 use App\Contracts\AssistantEventSearch;
@@ -55,6 +56,7 @@ use App\Modules\Marketplace\Listeners\HandlePaymentSucceeded as MarketplacePayme
 use App\Modules\MasterData\Services\DevelopmentLevelLookupService;
 use App\Modules\MasterData\Services\SchoolLookupService;
 use App\Modules\MasterData\Services\VenueCatalogService;
+use App\Modules\Payment\Services\ActivityBillingService;
 use App\Modules\Ticketing\Listeners\HandlePaymentRefunded;
 use App\Modules\Ticketing\Listeners\HandlePaymentSucceeded;
 use App\Services\OfficialDirectoryService;
@@ -70,6 +72,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(ActivityBilling::class, ActivityBillingService::class);
         $this->app->bind(TeamPersonnelProvider::class, TeamPersonnelProviderService::class);
         $this->app->bind(TeamDocumentInspection::class, TeamDocumentInspectionService::class);
         $this->app->bind(AthleteDocumentVault::class, AthleteDocumentVaultService::class);

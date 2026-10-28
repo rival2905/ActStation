@@ -133,7 +133,7 @@ class RegistrationDraftController extends Controller
                 'event_category_id' => $draft->event_category_id,
                 'revision' => $draft->revision,
                 'expires_at' => $draft->expires_at?->toIso8601String(),
-                'payload' => $draft->payload,
+                'payload' => $this->publicPayload((array) $draft->payload),
                 'files' => $this->draftService->sanitizeFilesForResponse($draft->files),
             ],
         ], 201);
@@ -165,7 +165,7 @@ class RegistrationDraftController extends Controller
                 'expires_at' => $draftModel->expires_at?->toIso8601String(),
                 'participant_id' => $draftModel->participant_id ?? ($payload['_participant_id'] ?? null),
                 'is_submitted' => $draftModel->isSubmitted(),
-                'payload' => $sanitizedPayload,
+                'payload' => $this->publicPayload($sanitizedPayload),
                 'files' => $this->draftService->sanitizeFilesForResponse($draftModel->files),
             ],
         ]);
@@ -205,10 +205,17 @@ class RegistrationDraftController extends Controller
                 'event_category_id' => $updatedDraft->event_category_id,
                 'revision' => $updatedDraft->revision,
                 'expires_at' => $updatedDraft->expires_at?->toIso8601String(),
-                'payload' => $updatedDraft->payload,
+                'payload' => $this->publicPayload((array) $updatedDraft->payload),
                 'files' => $this->draftService->sanitizeFilesForResponse($updatedDraft->files),
             ],
         ]);
+    }
+
+    private function publicPayload(array $payload): array
+    {
+        unset($payload['additional_team_answers']);
+
+        return $payload;
     }
 
     public function destroy(Request $request, string $slug, string $draft): JsonResponse

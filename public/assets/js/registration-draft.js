@@ -180,7 +180,7 @@ export class RegistrationDraftManager {
                 this.setStatus('offline');
             });
             this.window.addEventListener('beforeunload', (e) => {
-                if (this.hasUnuploadedFiles() || (!this.autosaveEnabled && this.manualDirty)) {
+                if (this.window?.registrationDraftUI?.additionalDirty || this.hasUnuploadedFiles() || (!this.autosaveEnabled && this.manualDirty)) {
                     e.preventDefault();
                     e.returnValue = 'Terdapat berkas yang belum diunggah ke server. Berkas harus dipilih ulang jika halaman ditutup.';
                     return e.returnValue;
@@ -377,6 +377,8 @@ export class RegistrationDraftManager {
         this.manualDirty = false;
         this.window?.registrationDraftUI?.refreshCategoryCapacity();
         if (this.autosaveEnabled) this.saveToStorage(true);
+        const ui = this.window?.registrationDraftUI;
+        if (ui?.loadAdditional && !ui.isSwitchingDraft && !ui.additionalDirty) ui.loadAdditional().then(ok => { if (ok) ui.refreshAdditionalNavigation(); });
         this.setStatus('idle');
         const requestedStep = new URLSearchParams(this.window?.location?.search || '').get('step');
         if (!this.autosaveEnabled && !this.window?.registrationDraftUI?.isSwitchingDraft && requestedStep === 'roster') this.window?.registrationDraftUI?.navigateStep('roster');
@@ -1266,6 +1268,7 @@ export class RegistrationDraftManager {
                 this.isSubmittingFinal = false;
                 return false;
             }
+            if (this.window?.registrationDraftUI?.saveAdditional && !await this.window.registrationDraftUI.saveAdditional(true)) return false;
             if (this.form?.dataset.submitConfirmation === 'true') {
                 const draftId = this.draftId;
                 const revision = this.revision;
@@ -1372,7 +1375,7 @@ export class RegistrationDraftUI {
         });
         this.document.querySelectorAll('[data-registration-step-prev], [data-registration-step-next]').forEach(button => {
             button.addEventListener('click', () => {
-                const steps = ['category', 'roster', 'review'];
+                const steps = this.wizardSteps();
                 const direction = button.hasAttribute('data-registration-step-prev') ? -1 : 1;
                 this.navigateStep(steps[steps.indexOf(this.selectedStep) + direction]);
             });
@@ -1427,7 +1430,7 @@ export class RegistrationDraftUI {
         this.form.addEventListener('input', () => this.updateActiveTeam());
         this.form.addEventListener('change', () => this.updateActiveTeam());
         this.form.addEventListener('submit', event => {
-            if (!this.validateStep('category') || !this.validateStep('roster')) {
+            if (!this.validateStep('category') || !this.validateStep('roster') || (this.additional?.enabled && !this.validateStep('additional'))) {
                 event.preventDefault();
                 event.stopImmediatePropagation();
                 const message = this.document.getElementById('registration-wizard-errors')?.textContent || 'Lengkapi data tim dan roster sebelum mengirim.';
@@ -1481,6 +1484,158 @@ export class RegistrationDraftUI {
         this.showStep(this.form.dataset.errorStep || this.selectedStep);
         this.updateFlowPreview();
         this.updateActiveTeam();
+    }
+
+    refreshAdditionalNavigation() {
+        const button = this.document?.getElementById?.('registration-tab-additional');
+        if (button?.closest?.('li')) button.closest('li').hidden = !this.additional?.enabled;
+    }
+
+    wizardSteps() {
+        return this.additional?.enabled ? ['category', 'roster', 'additional', 'review'] : ['category', 'roster', 'review'];
+    }
+
+    async loadAdditional() {
+        const id = this.manager?.draftId;
+        if (!id || !this.document?.getElementById?.('additional-form-body-content')) return true;
+        if (this.additionalDraftId === id) return true;
+        if (this.additionalLoading) return this.additionalLoading;
+        this.additionalLoading = this.fetchAdditional(id);
+        try { return await this.additionalLoading; } finally { this.additionalLoading = null; }
+    }
+
+    async fetchAdditional(id) {
+        try {
+            const response = await this.fetch(`${this.draftBaseUrl()}/additional`, { headers: { Accept: 'application/json' } });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || 'Informasi tambahan gagal dimuat.');
+            if (id !== this.manager.draftId) return false;
+            this.additional = data.additional;
+            this.additionalDraftId = id;
+            this.renderAdditional();
+            return true;
+        } catch (error) {
+            this.setMessage('registration-wizard-errors', error.message);
+            return false;
+        }
+    }
+
+    renderAdditional() {
+        const root = this.document.getElementById('additional-form-body-content');
+        if (!root) return;
+        root.replaceChildren();
+        this.additionalControls = [];
+        const node = (tag, text, parent = root) => { const el = this.document.createElement(tag); el.textContent = text; parent.appendChild(el); return el; };
+        node('p', 'Jawaban instansi dipakai bersama antar-tim. Pilihan kegiatan hanya minat, bukan pendaftaran, jatah aktif atau consent.');
+        for (const document of this.additional.documents) {
+            const link = node('a', document.name); link.href = document.url; link.target = '_blank'; link.rel = 'noopener'; link.className = 'd-block mb-2';
+        }
+        for (const scope of ['institution', 'team']) {
+            const section = this.additional[scope];
+            if (section.questions.length) node('h6', scope === 'institution' ? 'Informasi Instansi' : 'Informasi Tim');
+            for (const q of section.questions) {
+                const row = node('div', ''); row.className = 'mb-3';
+                const label = node('label', q.label + (q.is_required ? ' *' : ''), row); label.className = 'form-label';
+                const input = node(q.type === 'select' ? 'select' : 'input', '', row);
+                input.id = `additional-${scope}-${q.id}`; label.htmlFor = input.id;
+                input.className = q.type === 'select' ? 'form-select' : 'form-control';
+                if (q.type === 'select') for (const option of ['', ...(q.options || [])]) { const el = node('option', option || 'Pilih jawaban', input); el.value = option; }
+                else input.type = q.type === 'file' ? 'file' : q.type === 'number' ? 'number' : 'text';
+                const saved = section.answers[q.id];
+                if (q.type === 'file') {
+                    input.accept = '.pdf,.jpg,.jpeg,.png';
+                    if (saved?.name) node('small', `Tersimpan: ${saved.name}`, row);
+                } else input.value = saved ?? '';
+                if (q.type === 'number') { input.min = '0'; input.max = '1000000'; }
+                if (q.type === 'text') input.maxLength = 5000;
+                if (q.help_text) node('small', q.help_text, row);
+                this.additionalControls.push({ scope, q, row, input, saved });
+            }
+        }
+        this.activityControls = [];
+        if (this.additional.activities.length) node('h6', 'Kegiatan Pendamping — Opsional');
+        for (const activity of this.additional.activities) {
+            const label = node('label', ''); label.className = 'd-block mb-2';
+            const input = node('input', '', label); input.type = 'checkbox'; input.className = 'form-check-input me-2';
+            input.disabled = activity.is_open === false;
+            input.checked = !input.disabled && this.additional.selected_activity_ids.map(String).includes(String(activity.id));
+            node('span', `${activity.name}${activity.is_open === false ? ' (belum dibuka)' : ''} — ${activity.fee_mode === 'separate' ? `Biaya Rp ${activity.fee}` : `${activity.included_slots} jatah termasuk; aktif setelah tim olahraga terkonfirmasi`}`, label);
+            this.activityControls.push({ activity, input });
+        }
+        const button = node('button', 'Simpan Informasi Tambahan'); button.type = 'button'; button.className = 'btn btn-outline-primary';
+        button.addEventListener('click', () => this.saveAdditional(false));
+        const change = event => { event.stopPropagation(); this.additionalDirty = true; this.refreshAdditionalBranches(); };
+        root.oninput = change; root.onchange = change;
+        this.refreshAdditionalBranches();
+        this.syncAdditionalAccordion();
+    }
+
+    refreshAdditionalBranches() {
+        const values = {};
+        for (const entry of this.additionalControls || []) {
+            const { scope, q, row, input, saved } = entry;
+            const visible = !q.depends_on_question_id || values[`${scope}-${q.depends_on_question_id}`] === q.conditional_value;
+            row.hidden = !visible; input.disabled = !visible;
+            input.required = visible && q.is_required && !(q.type === 'file' && saved?.name);
+            input.setCustomValidity(q.type === 'file' && input.files?.[0]?.size > 2 * 1024 * 1024 ? 'Berkas maksimal 2 MB.' : '');
+            if (visible) values[`${scope}-${q.id}`] = input.value;
+        }
+    }
+
+    async saveAdditional(complete = false) {
+        if (!await this.loadAdditional()) return false;
+        if (!this.additional?.enabled || (!complete && !this.additionalDirty)) return true;
+        if (this.additionalSaving || this.additionalDraftId !== this.manager?.draftId || this.manager?.isSaving) return false;
+        if (complete && !this.validateStep('additional')) return false;
+        this.additionalSaving = true;
+        const root = this.document.getElementById('additional-form-body-content');
+        root.inert = true;
+        this.form.inert = true;
+        try {
+            const body = new (this.window?.FormData || FormData)();
+            body.append('revision', this.manager.revision);
+            body.append('institution_version', this.additional.institution_version);
+            body.append('complete', complete ? '1' : '0');
+            body.append('selected_activity_ids[]', '');
+            for (const { activity, input } of this.activityControls || []) if (input.checked) body.append('selected_activity_ids[]', activity.id);
+            for (const { scope, q, input } of this.additionalControls || []) {
+                if (input.disabled) continue;
+                if (q.type === 'file') { if (input.files?.[0]) body.append(`${scope}_answers[${q.id}]`, input.files[0]); }
+                else body.append(`${scope}_answers[${q.id}]`, input.value);
+            }
+            const response = await this.fetch(`${this.draftBaseUrl()}/additional`, { method: 'POST', headers: { Accept: 'application/json', 'X-CSRF-TOKEN': this.manager.csrfToken }, body });
+            const data = await response.json();
+            if (!response.ok) throw new Error(Object.values(data.errors || {}).flat().join('\n') || data.message || 'Penyimpanan gagal.');
+            this.manager.revision = data.draft.revision;
+            this.manager.updateHiddenInputs();
+            this.additional = data.additional;
+            this.additionalDirty = false;
+            this.renderAdditional();
+            this.setMessage('registration-additional-status', 'Informasi tambahan tersimpan.');
+            return true;
+        } catch (error) {
+            this.setMessage('registration-wizard-errors', error.message);
+            return false;
+        } finally { this.additionalSaving = false; root.inert = false; this.form.inert = false; }
+    }
+
+    syncAdditionalAccordion() {
+        const root = this.document.getElementById('additional-form-body-content');
+        const accordion = this.document.getElementById('registration-additional-teams-accordion');
+        const source = this.document.getElementById('registration-teams-accordion');
+        if (!root || !accordion || !source) return;
+        root.remove(); accordion.replaceChildren();
+        source.querySelectorAll('.accordion-item').forEach((item, index) => {
+            const id = item.getAttribute('data-team-accordion-draft-id') || '';
+            const wrapper = this.document.createElement('div'); wrapper.className = 'accordion-item'; wrapper.setAttribute('data-team-accordion-draft-id', id);
+            const heading = this.document.createElement('h2'); heading.className = 'accordion-header';
+            const button = this.document.createElement('button'); button.type = 'button'; button.className = 'accordion-button'; button.setAttribute('data-registration-lazy-draft', id);
+            button.textContent = `Tim ${index + 1}: ${item.querySelector('.team-header-name')?.textContent || 'Tim baru'}`;
+            button.setAttribute('aria-expanded', String(id === (this.manager?.draftId || '')));
+            heading.appendChild(button); wrapper.appendChild(heading); accordion.appendChild(wrapper);
+            if (id === (this.manager?.draftId || '')) { const body = this.document.createElement('div'); body.className = 'accordion-body'; body.appendChild(root); wrapper.appendChild(body); }
+        });
+        if (!root.parentNode) accordion.appendChild(root);
     }
 
     refreshCategoryCapacity() {
@@ -2422,7 +2577,8 @@ export class RegistrationDraftUI {
     }
 
     async lazySwitchDraft(draftId, discardConfirmed = false) {
-        if (!draftId || draftId === this.manager?.draftId) return;
+        if (!draftId || draftId === this.manager?.draftId || this.additionalSaving || this.additionalLoading) return;
+        if (this.additionalDirty && !await this.saveAdditional(false)) return false;
         if (!await this.flushRosterBeforeAction()) return false;
 
         if (!discardConfirmed && this.manager?.autosaveEnabled === false && this.manager?.manualDirty) {
@@ -2434,14 +2590,27 @@ export class RegistrationDraftUI {
         if (this.isSwitchingDraft || this.manager?.isSaving || this.manager?.isSubmittingFinal) return false;
         this.isSwitchingDraft = true;
         this.form.inert = true;
+        let nextAdditional = null;
         try {
+            if (this.document?.getElementById?.('additional-form-body-content')) {
+                const url = this.draftBaseUrl().replace(/[^/]+$/, encodeURIComponent(draftId));
+                const response = await this.fetch(`${url}/additional`, { headers: { Accept: 'application/json' } });
+                const data = await response.json();
+                if (!response.ok) { this.setMessage('registration-wizard-errors', data.message || 'Informasi tim tujuan gagal dimuat.'); return false; }
+                nextAdditional = data.additional;
+            }
             const loaded = await this.manager.fetchDraft(draftId);
             if (loaded === false || this.manager.draftId !== draftId) return false;
+        } catch (error) {
+            this.setMessage('registration-wizard-errors', error.message); return false;
         } finally {
             this.isSwitchingDraft = false;
             this.form.inert = false;
         }
 
+        this.additionalDraftId = nextAdditional ? draftId : null;
+        this.additional = nextAdditional;
+        if (nextAdditional) this.renderAdditional();
         const teamFormFields = this.document.getElementById('team-form-body-content');
         const targetTeamBody = this.document.querySelector?.(`#registration-teams-accordion [data-team-accordion-draft-id="${draftId}"] .accordion-body`)
             || this.document.getElementById(`team-draft-body-${draftId}`)
@@ -2515,6 +2684,8 @@ export class RegistrationDraftUI {
         if (feedback) feedback.style.display = 'none';
         this.document.querySelectorAll('[data-registration-save-team]').forEach(element => { element.textContent = 'Simpan & Lengkapi Tim'; });
         this.updateTopActionsVisibility();
+        if (this.selectedStep === 'additional' && !this.additional?.enabled) this.showStep('roster');
+        this.refreshAdditionalNavigation();
         if (this.selectedStep === 'review') {
             this.updateReview();
         }
@@ -2554,7 +2725,13 @@ export class RegistrationDraftUI {
         return true;
     }
 
-    startNewTeam() {
+    startNewTeam(additionalSaved = false) {
+        if (this.additionalDirty && !additionalSaved) return this.saveAdditional(false).then(saved => saved ? this.startNewTeam(true) : false);
+        this.additionalDraftId = null;
+        this.additional = null;
+        this.additionalControls = [];
+        this.activityControls = [];
+        this.document?.getElementById?.('additional-form-body-content')?.replaceChildren?.();
         if (this.manager?.autosaveEnabled === false && this.manager?.manualDirty) {
             if (this.window?.confirm && !this.window.confirm('Perubahan pada tim aktif belum disimpan. Beralih dan buat tim baru?')) {
                 return;
@@ -2708,11 +2885,22 @@ export class RegistrationDraftUI {
         });
     }
 
-    navigateStep(step, rosterFlushed = false) {
+    navigateStep(step, rosterFlushed = false, additionalReady = false) {
+        if (!additionalReady && this.document?.getElementById?.('additional-form-body-content') && this.manager?.draftId) {
+            return (async () => {
+                if (!await this.flushRosterBeforeAction()) return false;
+                if (!await this.loadAdditional()) return false;
+                if (step === 'review' && this.additional?.enabled && this.selectedStep === 'roster') step = 'additional';
+                if (this.selectedStep === 'additional' || step === 'review') {
+                    if (!await this.saveAdditional(step === 'review')) return false;
+                }
+                return this.navigateStep(step, true, true);
+            })();
+        }
         if (!rosterFlushed && step !== this.selectedStep && this.selectedStep === 'roster' && this.manager?.draftId) {
             return this.flushRosterBeforeAction().then(saved => saved ? this.navigateStep(step, true) : false);
         }
-        const steps = ['category', 'roster', 'review'];
+        const steps = this.wizardSteps();
         const target = steps.indexOf(step);
         if (target < 0) return false;
         if (target > 0 && this.manager?.autosaveEnabled === false && !this.manager.draftId && this.previousDraftId) {
@@ -2781,7 +2969,7 @@ export class RegistrationDraftUI {
                 this.updatePersonnelPicker();
             }
             this.showStep(step);
-            const content = this.document.getElementById(step === 'category' ? 'team-form-body-content' : 'roster-form-body-content');
+            const content = this.document.getElementById(step === 'additional' ? 'additional-form-body-content' : step === 'category' ? 'team-form-body-content' : 'roster-form-body-content');
             const collapse = content?.closest?.('.accordion-collapse') || this.document.getElementById(step === 'category' ? 'collapse-active-team' : 'collapse-roster-active-team');
             if (collapse) {
                 const controller = this.window?.bootstrap?.Collapse;
@@ -2906,7 +3094,7 @@ export class RegistrationDraftUI {
 
     showStep(step) {
         this.updateTopActionsVisibility();
-        const allowed = ['category', 'roster', 'review'];
+        const allowed = this.wizardSteps();
         this.selectedStep = allowed.includes(step) ? step : 'category';
         const index = allowed.indexOf(this.selectedStep);
         this.document?.querySelectorAll('[data-registration-step-pane]').forEach(pane => {
@@ -2920,15 +3108,25 @@ export class RegistrationDraftUI {
         });
         const progress = this.document?.querySelector('[data-registration-progress]');
         if (progress) {
-            progress.style.width = `${(index + 1) / 3 * 100}%`;
+            progress.style.width = `${(index + 1) / allowed.length * 100}%`;
             progress.setAttribute('aria-valuenow', String(index + 1));
+            progress.setAttribute('aria-valuemax', String(allowed.length));
         }
         const status = this.document?.querySelector('[data-registration-step-status]');
-        if (status) status.textContent = `Langkah ${index + 1} dari 3 — ${[this.manager?.draftId ? 'Informasi Tim Tersimpan' : 'Kategori & Informasi Tim', 'Roster & Dokumen', 'Tinjau, Kirim & Pemeriksaan'][index]}`;
+        const labels = { category: this.manager?.draftId ? 'Informasi Tim Tersimpan' : 'Kategori & Informasi Tim', roster: 'Roster & Dokumen', additional: 'Informasi Tambahan', review: 'Tinjau, Kirim & Pemeriksaan' };
+        if (status) status.textContent = `Langkah ${index + 1} dari ${allowed.length} — ${labels[this.selectedStep]}`;
+        this.document.querySelectorAll('[data-registration-step-target]').forEach(button => {
+            const target = button.dataset.registrationStepTarget;
+            if (target === 'additional' && button.closest?.('li')) button.closest('li').hidden = !allowed.includes(target);
+            const label = button.querySelector?.('.d-block');
+            if (label) label.textContent = `${allowed.indexOf(target) + 1}. ${labels[target]}`;
+        });
+        const reviewHeading = this.document.getElementById('registration-review-heading');
+        if (reviewHeading) reviewHeading.textContent = `${allowed.length}. Tinjau, Kirim & Pemeriksaan`;
         const previous = this.document?.querySelector('[data-registration-step-prev]');
         const next = this.document?.querySelector('[data-registration-step-next]');
         if (previous) previous.disabled = index === 0;
-        if (next) { next.hidden = index === 2; next.textContent = index === 1 ? 'Tinjau Tim Ini' : 'Lanjut ke Roster & Dokumen'; }
+        if (next) { next.hidden = index === allowed.length - 1; next.textContent = `Lanjut ke ${labels[allowed[index + 1]] || ''}`; }
         this.updateActiveTeam();
         if (this.selectedStep === 'roster') {
             this.updateRosterPicker();
@@ -2947,6 +3145,16 @@ export class RegistrationDraftUI {
         const review = this.document?.getElementById('registration-review-summary');
         if (!review) return;
         while (review.firstChild) review.removeChild(review.firstChild);
+        for (const { q, input, saved } of this.additionalControls || []) {
+            if (input.disabled) continue;
+            const line = this.document.createElement('p');
+            line.textContent = `${q.label}: ${q.type === 'file' ? (input.files?.[0]?.name || saved?.name || '-') : (input.value || '-')}`;
+            review.appendChild(line);
+        }
+        for (const { activity, input } of this.activityControls || []) {
+            if (!input.checked) continue;
+            const line = this.document.createElement('p'); line.textContent = `Minat kegiatan: ${activity.name} (belum terdaftar)`; review.appendChild(line);
+        }
         const category = this.document.getElementById('event_category_id');
         const title = this.document.createElement('p');
         title.textContent = `Kategori: ${category?.selectedOptions?.[0]?.textContent || category?.value || '-'}`;

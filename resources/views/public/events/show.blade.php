@@ -134,6 +134,9 @@
         <a class="nav-link active fw-bold text-nowrap" href="{{ route('events.show', $event->slug) }}">Deskripsi</a>
     </li>
     <li class="nav-item">
+        <a class="nav-link text-nowrap" href="{{ route('events.activities.index', $event->slug) }}">Kegiatan Pendamping</a>
+    </li>
+    <li class="nav-item">
         <a class="nav-link text-nowrap" href="{{ route('events.tournament', $event->slug) }}">Bagan</a>
     </li>
     <li class="nav-item">

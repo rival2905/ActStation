@@ -10,9 +10,11 @@ use App\Modules\Community\Models\CommunityAthlete;
 use App\Modules\Community\Models\CommunityOfficial;
 use App\Modules\Community\Models\Document;
 use App\Modules\Event\Models\Event;
+use App\Modules\Event\Models\EventAnswer;
 use App\Modules\Event\Models\EventCategory;
 use App\Modules\Event\Models\EventParticipant;
 use App\Modules\Event\Models\RegistrationDraft;
+use App\Modules\Event\Services\EventQuestionService;
 use App\Modules\Event\Services\RegistrationDraftService;
 use App\Modules\MasterData\Models\DocumentType;
 use App\Modules\MasterData\Models\SportCategory;
@@ -872,6 +874,55 @@ test('submitted draft files cleared from DB atomically and show reports no tombs
     expect($payload)->not->toHaveKey('_tombstone')
         ->and($payload)->not->toHaveKey('_submitted')
         ->and($payload)->not->toHaveKey('_participant_id');
+});
+
+test('additional required answers cannot be skipped on final POST and team answers transfer atomically', function (): void {
+    CommunityAthlete::where('community_id', $this->community->id)->update(['region_status' => 'pending']);
+    $file = UploadedFile::fake()->createWithContent('mandat.pdf', '%PDF-1.4 fake pdf content');
+    $athleteFile = UploadedFile::fake()->createWithContent('kk.pdf', '%PDF-1.4 athlete kk content');
+
+    $createResponse = $this->actingAs($this->manager)
+        ->post(route('panel.registration-drafts.store', $this->event->slug), [
+            'event_category_id' => $this->category->id,
+            'team_name' => 'Tim Final Files Empty',
+            'team_documents' => [
+                'surat_mandat' => $file,
+            ],
+            'athlete_documents' => [
+                $this->athletes[0]->id => [
+                    'kartu_keluarga' => $athleteFile,
+                ],
+            ],
+            'members' => [
+                ['user_id' => $this->athletes[0]->id, 'jersey_number' => 10, 'is_captain' => 1],
+            ],
+        ], ['Accept' => 'application/json']);
+
+    $createResponse->assertStatus(201);
+    $draftId = $createResponse->json('draft.id');
+
+    $question = app(EventQuestionService::class)->save($this->event, $this->event->user, ['target' => 'team', 'type' => 'text', 'label' => 'Informasi wajib', 'is_required' => true]);
+    $finalPayload = ['draft_id' => $draftId, 'draft_revision' => 1, 'event_category_id' => $this->category->id, 'team_name' => 'Tim Final Files Empty', 'contact_person' => 'Budi', 'contact_phone' => '081234567890', 'members' => [['user_id' => $this->athletes[0]->id, 'jersey_number' => 10, 'is_captain' => 1]]];
+    $this->postJson(route('panel.community-events.store', $this->event->slug), $finalPayload)->assertUnprocessable();
+    expect(EventParticipant::where('event_id', $this->event->id)->count())->toBe(0);
+    $this->postJson(route('panel.registration-drafts.additional.save', [$this->event->slug, $draftId]), ['revision' => 1, 'complete' => true, 'team_answers' => [$question->id => 'DEMO lengkap']])->assertOk();
+    $submitResponse = $this->actingAs($this->manager)
+        ->post(route('panel.community-events.store', $this->event->slug), [
+            'draft_id' => $draftId,
+            'draft_revision' => 2,
+            'event_category_id' => $this->category->id,
+            'team_name' => 'Tim Final Files Empty',
+            'contact_person' => 'Budi',
+            'contact_phone' => '081234567890',
+            'members' => [
+                ['user_id' => $this->athletes[0]->id, 'jersey_number' => 10, 'is_captain' => 1],
+            ],
+        ]);
+
+    $submitResponse->assertSessionHasNoErrors()->assertRedirect();
+    $draft = RegistrationDraft::findOrFail($draftId);
+    expect($draft->participant_id)->not->toBeNull();
+    expect(EventAnswer::where('event_id', $this->event->id)->where('target', 'team')->where('subject_id', $draft->participant_id)->firstOrFail()->answers)->toBe([$question->id => 'DEMO lengkap']);
 });
 
 test('deleting finalized draft is rejected with 409 finaldraftdelete409', function (): void {

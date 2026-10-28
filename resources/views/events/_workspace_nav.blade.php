@@ -5,6 +5,8 @@
     $eventOwner = $committeeAccess->owner($event, auth()->user());
     $workspaceRoutePrefix = $isAdminWorkspace ? 'admin.events.workspace.' : 'panel.organizer.';
     $currentTab = $activeTab ?? match (true) {
+        request()->routeIs('*activities*') => 'activities',
+        request()->routeIs('*questions*') => 'questions',
         request()->routeIs('*personnel*') => 'personnel',
         request()->routeIs('*committee*') => 'committee',
         request()->routeIs('*venues*') => 'venues',
@@ -34,6 +36,8 @@
             ['committee', $eventOwner ? 'Panitia & Hak Akses' : 'Tugas Panitia Saya', 'Pembagian tugas dan izin menu', 'panel.organizer.committee.index', ! $isAdminWorkspace],
         ],
         'Peserta' => [
+            ['questions', 'Pertanyaan Tambahan', 'Form bersyarat dan rekap jawaban', 'panel.organizer.questions.index', ! $isAdminWorkspace && $eventOwner],
+            ['activities', 'Kegiatan Pendamping', 'Pendaftaran individu dan tim non-atlet', 'panel.organizer.activities.index', ! $isAdminWorkspace && $committeeAccess->allows($event, auth()->user(), 'teams.view')],
             ['teams', 'Tim Peserta', 'Pendaftaran, pemeriksaan dan pembayaran', $workspaceRoutePrefix.'teams.index', $allowed('event-participant.view', 'teams.view')],
         ],
         'Pertandingan' => [

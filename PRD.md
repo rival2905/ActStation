@@ -14,6 +14,8 @@ ActStation membutuhkan sistem back-office terpadu untuk staf, administrator, pen
 
 ## 2. Arsitektur Inti & Database Law
 
+Kegiatan pendamping non-atlet dan pertanyaan tambahan bersyarat disetujui; spesifikasi, invarian jatah paket tim/instansi, consent dan acceptance ada pada Modul 03 (`docs/prd/03_event_registration.md`). Implementasi berjalan, bukan klaim fitur selesai. Pendaftaran olahraga existing tetap terpisah; jangan menggandakan jatah instansi atau menagih biaya yang sudah termasuk.
+
 ### 2.1 Database Law
 - **Single Connection Database**: Seluruh data hidup mandiri di `db_actstation` (`mysql`). Tidak ada ketergantungan runtime ke database eksternal.
 - **Spatie RBAC**: Paket `spatie/laravel-permission:6.25.0` dimigrasikan ke `db_actstation`. Tabel `roles` memiliki kolom `panel_access` (boolean) untuk menentukan hak akses internal secara dinamis.

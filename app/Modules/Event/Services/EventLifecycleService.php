@@ -8,6 +8,7 @@ use App\Modules\Event\Events\EventCancelled;
 use App\Modules\Event\Events\EventCompleted;
 use App\Modules\Event\Events\EventPublished;
 use App\Modules\Event\Exceptions\InvalidLifecycleTransitionException;
+use App\Modules\Event\Models\ActivityRegistration;
 use App\Modules\Event\Models\Event;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -148,6 +149,8 @@ class EventLifecycleService
             ]);
 
             event(new EventCancelled($event, $trimmedReason));
+            ActivityRegistration::whereHas('activity', fn ($query) => $query->where('event_id', $event->id))
+                ->whereNotIn('status', ['cancelled', 'rejected'])->update(['status' => 'needs_review']);
         });
     }
 

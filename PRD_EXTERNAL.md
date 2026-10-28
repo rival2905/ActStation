@@ -27,6 +27,10 @@ Prinsip Operasional Utama:
 
 ## 3. Matriks Navigasi Fitur Eksternal (Hub ke `docs/prd/`)
 
+Kegiatan pendamping fotografi/content creator dan pertanyaan tambahan disetujui (implementasi berjalan, belum seluruh acceptance): event utama pintu masuk individu/tim non-atlet, biaya terpisah/termasuk tim/termasuk instansi, jatah tidak ganda, consent peserta dan rekap organizer. Pertanyaan instansi/tim/peserta mendukung lanjutan bersyarat; minat opening bukan penunjukan tampil. Detail dan checkpoint: `docs/prd/03_event_registration.md`.
+
+Wizard Informasi Tambahan terpasang lokal (175 tes fitur/908 assertions dan 191 Node lulus; UAT akun belum dilakukan): langkah kondisional setelah Roster & Dokumen untuk dokumen event publik, pertanyaan instansi/tim, serta minat kegiatan pendamping. Tanpa konten relevan tetap tiga langkah. Jawaban instansi dibagi antar-tim; minat bukan pendaftaran, konsumsi jatah atau consent. Detail acceptance dan verifikasi pada Modul 03.
+
 Seluruh alur antarmuka, spesifikasi interaksi, kontrak payload, dan acceptance criteria di-breakdown ke dokumen modular berikut:
 
 Revisi pengajuan screening sebelum lolos kini kembali ke wizard draf melalui konfirmasi POST, bukan mengedit langsung pengajuan di form revisi terpisah. Data dan catatan panitia dipertahankan; pengiriman ulang tetap melewati validasi. Jalur pembayaran yang sudah terikat invoice tidak dikonversi otomatis. Rincian dan verifikasi: `docs/prd/03_event_registration.md`.

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Middleware\AgentOfficeGateway;
 use App\Http\Middleware\EnsureInternalRole;
 use App\Http\Middleware\EnsureOrganizerEventOwner;
 use App\Modules\Communication\Exceptions\AssistantUnavailable;
@@ -23,8 +24,11 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
         then: function (): void {
+            Route::middleware('web')->group(app_path('Modules/Event/Routes/activities.php'));
+            Route::middleware('web')->group(app_path('Modules/Event/Routes/questions.php'));
+            Route::middleware('web')->group(app_path('Modules/Event/Routes/activity_payment.php'));
             Route::prefix('api/v1/internal/agent-office')
-                ->middleware(\App\Http\Middleware\AgentOfficeGateway::class)
+                ->middleware(AgentOfficeGateway::class)
                 ->group(app_path('Modules/Report/Routes/api.php'));
 
             Route::middleware('web')

@@ -19,6 +19,7 @@ use App\Modules\Event\Models\RegistrationDraft;
 use App\Modules\Event\Services\AthleteEventInterestService;
 use App\Modules\Event\Services\AthleteEventWorkspace;
 use App\Modules\Event\Services\EventInvitationService;
+use App\Modules\Event\Services\RegistrationAdditionalInformationService;
 use App\Modules\Event\Services\RegistrationDraftService;
 use App\Modules\Event\Services\RegistrationGuard;
 use App\Modules\Event\Services\RosterValidator;
@@ -517,6 +518,7 @@ class CommunityEventRegistrationController extends Controller
                         ]);
                     }
                 }
+                app(RegistrationAdditionalInformationService::class)->assertComplete($event, $community, $lockedDraft);
                 $invitation = null;
                 if ($lockedCategory->registration_flow === 'by_invitation') {
                     $invitation = $this->eventInvitationService->authorize(
@@ -577,6 +579,7 @@ class CommunityEventRegistrationController extends Controller
                     'registered_at' => now(),
                 ]);
 
+                app(RegistrationAdditionalInformationService::class)->finalize($event, $request->user(), $lockedDraft, $participant);
                 $this->rosterValidator->validate($participant, $validated['members']);
                 $licensePaths = [];
                 $uploadedLicenses = $request->file('personnel_licenses') ?? [];
