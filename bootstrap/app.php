@@ -8,6 +8,7 @@ use App\Http\Middleware\EnsureOrganizerEventOwner;
 use App\Modules\Communication\Exceptions\AssistantUnavailable;
 use App\Modules\Community\Http\Middleware\EnsurePanelAccess;
 use App\Modules\Community\Models\CommunityLinkPage;
+use App\Modules\Scoreboard\Exceptions\ScoreboardConflict;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -24,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
         then: function (): void {
+            Route::middleware('web')->group(app_path('Modules/Scoreboard/Routes/api.php'));
             Route::middleware('web')->group(app_path('Modules/Event/Routes/activities.php'));
             Route::middleware('web')->group(app_path('Modules/Event/Routes/questions.php'));
             Route::middleware('web')->group(app_path('Modules/Event/Routes/activity_payment.php'));
@@ -65,6 +67,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->group(function (): void {
                     require app_path('Modules/Community/Routes/panel.php');
                     require app_path('Modules/MasterData/Routes/panel.php');
+                    require app_path('Modules/Scoreboard/Routes/panel.php');
                     if (file_exists(app_path('Modules/Event/Routes/panel.php'))) {
                         require app_path('Modules/Event/Routes/panel.php');
                     }
@@ -89,6 +92,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectUsersTo(fn (Request $request) => $request->user()?->getPanelHomeRoute() ?? route('landing'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(function (ScoreboardConflict $e, Request $request) {
+            return response()->json(['message' => $e->getMessage(), 'errors' => ['revision' => [$e->getMessage()]]], 409);
+        });
         $exceptions->dontFlash(['password', 'password_confirmation', 'current_password', 'otp']);
         $exceptions->render(function (AssistantUnavailable $e, Request $request) {
             return response()->json([

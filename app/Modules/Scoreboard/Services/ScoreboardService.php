@@ -1,0 +1,259 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Scoreboard\Services;
+
+use App\Contracts\CommunityLookup;
+use App\Contracts\DTOs\CommunitySummary;
+use App\Contracts\ScoreboardSports;
+use App\Modules\Scoreboard\Exceptions\ScoreboardConflict;
+use App\Modules\Scoreboard\Models\ScoreboardCommand;
+use App\Modules\Scoreboard\Models\ScoreboardSession;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+
+class ScoreboardService
+{
+    public function __construct(private CommunityLookup $communities, private ScoreboardSports $sports, private BasketballEngine $engine) {}
+
+    public function community(Request $request): CommunitySummary
+    {
+        $user = $request->user();
+        abort_unless($user?->is_active, 403);
+        $community = $this->communities->findForUser((int) $user->id);
+        abort_unless($community?->is_active && $this->communities->canManage((int) $user->id, $community->id), 403, 'Pengurus komunitas aktif diperlukan.');
+        if (! $request->isMethodSafe()) {
+            $context = $request->input('panel_community_id');
+            abort_unless(is_scalar($context) && (string) $community->id === (string) $context, 422, 'Konteks komunitas berubah. Muat ulang halaman.');
+        }
+
+        return $community;
+    }
+
+    public function listing(Request $request): array
+    {
+        $community = $this->community($request);
+        $filter = $request->query('sport_category_id');
+        abort_if($filter !== null && (! is_string($filter) || ! ctype_digit($filter)), 422);
+        $query = ScoreboardSession::where('community_id', $community->id)->when($filter !== null, fn ($q) => $q->where('sport_category_id', (int) $filter));
+
+        return [
+            'community' => $community, 'sports' => $this->sports->all(),
+            'activeSessions' => (clone $query)->where('status', 'active')->latest()->get(),
+            'history' => (clone $query)->where('status', 'finished')->whereNotNull('result')->latest('finished_at')->paginate(20)->withQueryString(),
+        ];
+    }
+
+    public function create(Request $request, array $input): ScoreboardSession
+    {
+        $community = $this->community($request);
+        if (! $this->sports->supports((int) $input['sport_category_id'])) {
+            throw ValidationException::withMessages(['sport_category_id' => 'Scoreboard cabor ini belum tersedia.']);
+        }
+
+        return DB::transaction(function () use ($request, $input, $community) {
+            $id = (string) Str::uuid();
+            $home = $input['home_name'] ?? 'Home';
+            $away = $input['away_name'] ?? 'Away';
+
+            return ScoreboardSession::create([
+                'id' => $id, 'community_id' => $community->id, 'sport_category_id' => $input['sport_category_id'],
+                'created_by' => $request->user()->id, 'mode' => $input['mode'], 'kind' => $input['kind'],
+                'home_name' => $home, 'away_name' => $away, 'location' => $input['location'] ?? null,
+                'state' => $this->engine->initial($id, $home, $away, $this->nowMs()), 'started_at' => now(),
+                'status' => 'active',
+            ]);
+        });
+    }
+
+    public function read(Request $request, string $id): ScoreboardSession
+    {
+        $community = $this->community($request);
+
+        return DB::transaction(function () use ($community, $id) {
+            $session = $this->locked($community->id, $id);
+            $this->materialize($session);
+
+            return $session;
+        });
+    }
+
+    public function command(Request $request, string $id, array $input): array
+    {
+        $community = $this->community($request);
+
+        return DB::transaction(function () use ($request, $community, $id, $input) {
+            $session = $this->locked($community->id, $id);
+            $fingerprint = $this->fingerprint($input);
+            if ($receipt = $this->duplicate($session, $input['command_id'], $fingerprint)) {
+                return $receipt;
+            }
+            $now = $this->nowMs();
+            $this->materialize($session, $now);
+            $state = $session->state;
+            $reason = null;
+            $status = 'rejected';
+            $expiry = (int) Carbon::parse($input['expires_at'])->getTimestampMs();
+            if ($input['session_id'] !== $session->id || $input['authority_epoch'] !== $state['authority_epoch'] || $input['schema_version'] !== $state['schema_version']) {
+                $reason = 'Kontrak atau authority sesi tidak cocok.';
+            } elseif ($session->status !== 'active') {
+                $reason = 'Sesi sudah ditutup.';
+            } elseif ($expiry <= $now) {
+                $status = 'expired';
+                $reason = 'Command kedaluwarsa; tinjau snapshot terbaru.';
+            } elseif ($expiry > $now + 5000) {
+                $reason = 'Masa berlaku command melebihi 5 detik.';
+            } elseif ($input['expected_revision'] !== $state['revision']) {
+                $reason = 'Revision berubah; tinjau snapshot terbaru.';
+            } else {
+                try {
+                    $session->state = $this->engine->apply($state, $input['type'], $input['payload'], $now);
+                    $session->save();
+                    $status = 'applied';
+                } catch (ValidationException $e) {
+                    $reason = collect($e->errors())->flatten()->first() ?? 'Command tidak sah.';
+                }
+            }
+            $response = ['command_id' => $input['command_id'], 'status' => $status, 'reason' => $reason,
+                'revision' => $session->state['revision'], 'snapshot' => $this->snapshot($session)];
+            $this->receipt($session, $request, $input['command_id'], $input['type'], $fingerprint, $response,
+                ['reason' => $input['payload']['reason'] ?? null, 'expected_revision' => $input['expected_revision']]);
+
+            return $response;
+        });
+    }
+
+    public function finish(Request $request, string $id, array $input): array
+    {
+        $community = $this->community($request);
+
+        return DB::transaction(function () use ($request, $community, $id, $input) {
+            $session = $this->locked($community->id, $id);
+            $fingerprint = $this->fingerprint(['operation' => 'finish'] + $input);
+            if ($receipt = $this->duplicate($session, $input['command_id'], $fingerprint)) {
+                return $receipt;
+            }
+            $this->materialize($session);
+            $state = $session->state;
+            if ($session->status !== 'active' || $input['expected_revision'] !== $state['revision']) {
+                throw new ScoreboardConflict('Sesi sudah ditutup atau revision berubah. Muat ulang sebelum meninjau hasil.');
+            }
+            if ($state['game_clock']['running'] || $state['shot_clock']['running'] || $state['timeout_clock']['running']) {
+                throw ValidationException::withMessages(['clocks' => 'Hentikan semua clocks sebelum menyelesaikan sesi.']);
+            }
+            $record = (bool) $input['record_result'];
+            if ($session->mode === 'recorded' && ! $record) {
+                throw ValidationException::withMessages(['record_result' => 'Pertandingan Tercatat wajib menyimpan hasil.']);
+            }
+            if ($record) {
+                $session->home_name = $input['home_name'];
+                $session->away_name = $input['away_name'];
+                $session->kind = $input['kind'];
+                $session->location = $input['location'] ?? $session->location;
+                $state['home']['name'] = $input['home_name'];
+                $state['away']['name'] = $input['away_name'];
+                $session->result = [
+                    'home' => ['name' => $session->home_name, 'score' => $state['home']['score']],
+                    'away' => ['name' => $session->away_name, 'score' => $state['away']['score']],
+                    'kind' => $session->kind, 'location' => $session->location, 'source' => 'virtual',
+                    'status' => 'recorded', 'visibility' => 'private', 'recorded_by' => $request->user()->id,
+                    'recorded_at' => now()->toISOString(),
+                ];
+            }
+            $state['revision']++;
+            $session->state = $state;
+            $session->status = 'finished';
+            $session->finished_at = now();
+            $session->save();
+            $response = $this->snapshot($session);
+            $this->receipt($session, $request, $input['command_id'], 'session.finish', $fingerprint, $response);
+
+            return $response;
+        });
+    }
+
+    public function getReceipt(Request $request, string $id, string $command): array
+    {
+        $community = $this->community($request);
+        $session = ScoreboardSession::where('community_id', $community->id)->findOrFail($id);
+
+        return ScoreboardCommand::where('session_id', $session->id)->where('command_id', $command)->firstOrFail()->response;
+    }
+
+    public function snapshot(ScoreboardSession $session): array
+    {
+        $state = $session->state;
+        foreach (['game_clock', 'shot_clock', 'timeout_clock'] as $clock) {
+            unset($state[$clock]['deadline_ms']);
+        }
+        $time = $this->nowMs();
+        $state['sample'] = ['authority_boot_id' => 'virtual-1', 'sample_sequence' => $time,
+            'sampled_at' => now()->toISOString()];
+
+        return ['id' => $session->id, 'community_id' => $session->community_id, 'sport_category_id' => $session->sport_category_id,
+            'mode' => $session->mode, 'kind' => $session->kind, 'status' => $session->status,
+            'home_name' => $session->home_name, 'away_name' => $session->away_name, 'location' => $session->location,
+            'result' => $session->result, 'finished_at' => $session->finished_at?->toISOString(),
+            'server_time_ms' => $time, 'state' => $state];
+    }
+
+    private function nowMs(): int
+    {
+        return (int) now()->getTimestampMs();
+    }
+
+    private function locked(int $communityId, string $id): ScoreboardSession
+    {
+        return ScoreboardSession::where('community_id', $communityId)->whereKey($id)->lockForUpdate()->firstOrFail();
+    }
+
+    private function materialize(ScoreboardSession $session, ?int $nowMs = null): void
+    {
+        if ($session->status === 'active') {
+            $previousRevision = $session->state['revision'];
+            $session->state = $this->engine->materialize($session->state, $nowMs ?? $this->nowMs());
+            // ponytail: polling materializes deadlines; persist expiry, never elapsed ticks.
+            if ($session->state['revision'] !== $previousRevision) {
+                $session->save();
+            }
+        }
+    }
+
+    private function duplicate(ScoreboardSession $session, string $id, string $fingerprint): ?array
+    {
+        $receipt = ScoreboardCommand::where('session_id', $session->id)->where('command_id', $id)->first();
+        if ($receipt && ! hash_equals($receipt->fingerprint, $fingerprint)) {
+            throw new ScoreboardConflict('Command ID sudah dipakai dengan isi berbeda.');
+        }
+
+        return $receipt?->response;
+    }
+
+    private function receipt(ScoreboardSession $session, Request $request, string $id, string $type, string $fingerprint, array $response, array $audit = []): void
+    {
+        ScoreboardCommand::create(['session_id' => $session->id, 'command_id' => $id, 'actor_id' => $request->user()->id,
+            'type' => $type, 'fingerprint' => $fingerprint, 'response' => $response, 'audit' => $audit]);
+    }
+
+    private function fingerprint(array $input): string
+    {
+        $canonical = function (array $value) use (&$canonical): array {
+            if (! array_is_list($value)) {
+                ksort($value);
+            }
+            foreach ($value as &$item) {
+                if (is_array($item)) {
+                    $item = $canonical($item);
+                }
+            }
+
+            return $value;
+        };
+
+        return hash('sha256', json_encode($canonical($input), JSON_THROW_ON_ERROR));
+    }
+}

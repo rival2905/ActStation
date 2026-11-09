@@ -56,6 +56,7 @@ Rincian alur teknis, skema tabel, FormRequest, dan kriteria penerimaan di-breakd
 | 11 | **Report & Analytics** | `/admin/reports/revenue`, `/admin/coverage-map` | `report.view` | [`docs/prd/11_report_analytics.md`](docs/prd/11_report_analytics.md) |
 | 12 | **System Settings & Configuration** | `/admin/settings`, `/admin/activity-logs` | `setting.view`, `activity-log.view` | [`docs/prd/12_settings.md`](docs/prd/12_settings.md) |
 | 13 | **Agent Office Internal Gateway** | `/api/v1/internal/agent-office/*` | `agent:health-read`, `agent:metrics-read` (MVP read-only) | [`docs/prd/13_agent_office_api.md`](docs/prd/13_agent_office_api.md) *(Pendukung prioritas Karyawan AI Office)* |
+| 15 | **Alat & Scoreboard Multi-Cabor — basket pertama** | `/api/v1/scoreboard/sessions*` | `auth:sanctum`, `can:scoreboard.use` + pengurus/konteks komunitas aktif | [`docs/prd/15_scoreboard.md`](docs/prd/15_scoreboard.md) — Implementasi lokal Alat, konsol utama/shot, tiga display/paket demo. Main Cepat dengan Catat Hasil opsional, finalisasi revision/idempotency; hasil privat/nonresmi. Kontrak basket `basketball.v1`, hardware opsional. Migration baru hanya DB test; runtime belum diaktifkan. |
 
 ---
 

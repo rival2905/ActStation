@@ -4,9 +4,11 @@ Folder ini berisi dokumen spesifikasi produk (PRD) yang di-breakdown per modul t
 - `PRD.md` (Spesifikasi Internal Panel, Arsitektur Domain, dan Database Core)
 - `PRD_EXTERNAL.md` (Spesifikasi Eksternal Portal, Workspace Organizer, dan Registrasi Publik)
 
-Seluruh dokumen di sini telah diselaraskan 100% dengan implementasi kode aplikasi saat ini (*as-built specification*).
+Dokumen mencakup implementasi lokal dan rencana pengembangan; status serta batas verifikasi mengikuti checkpoint tiap modul. Rencana route/schema bukan bukti fitur tersedia.
 
 ## Indeks Modul
+
+Scoreboard virtual basket dan kontrak hardware: [Modul 15](15_scoreboard.md), spesifikasi virtual-first, belum implementasi; namespace rencana `App\Modules\Scoreboard`.
 
 | No | Modul / Dokumen | Namespace Kode | Lingkup Fitur Utama |
 |---|---|---|---|

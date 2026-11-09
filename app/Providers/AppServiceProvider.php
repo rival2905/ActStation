@@ -21,6 +21,7 @@ use App\Contracts\RosterProvider;
 use App\Contracts\SchoolExtracurriculars;
 use App\Contracts\SchoolLookup;
 use App\Contracts\SchoolOnboardingService;
+use App\Contracts\ScoreboardSports;
 use App\Contracts\TeamDocumentInspection;
 use App\Contracts\TeamPersonnelProvider;
 use App\Contracts\VenueCatalog;
@@ -55,6 +56,7 @@ use App\Modules\Marketplace\Listeners\HandlePaymentRefunded as MarketplacePaymen
 use App\Modules\Marketplace\Listeners\HandlePaymentSucceeded as MarketplacePaymentSucceeded;
 use App\Modules\MasterData\Services\DevelopmentLevelLookupService;
 use App\Modules\MasterData\Services\SchoolLookupService;
+use App\Modules\MasterData\Services\ScoreboardSportsService;
 use App\Modules\MasterData\Services\VenueCatalogService;
 use App\Modules\Payment\Services\ActivityBillingService;
 use App\Modules\Ticketing\Listeners\HandlePaymentRefunded;
@@ -81,6 +83,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(AssistantEventContext::class, AssistantEventContextService::class);
         $this->app->bind(AssistantCommunityContext::class, AssistantCommunityContextService::class);
         $this->app->bind(CommunityLookup::class, CommunityLookupService::class);
+        $this->app->bind(ScoreboardSports::class, ScoreboardSportsService::class);
         $this->app->bind(SchoolExtracurriculars::class, SchoolExtracurricularService::class);
         $this->app->bind(SchoolOnboardingService::class, \App\Modules\Community\Services\SchoolOnboardingService::class);
         $this->app->bind(ContextualAthleteInvitation::class, InvitationService::class);
@@ -102,6 +105,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Gate::define('scoreboard.use', function (User $user): bool {
+            $community = app(CommunityLookup::class)->findForUser((int) $user->id);
+
+            return $user->is_active && $community?->is_active && app(CommunityLookup::class)->canManage((int) $user->id, $community->id);
+        });
         View::composer(['layouts.partials.panel-sidebar', 'layouts.partials.panel-header'], function ($view): void {
             $activeId = auth()->check() ? CommunityLookupService::resolveActiveCommunityId((int) auth()->id()) : null;
             $registration = auth()->check() ? SchoolRegistration::where('user_id', auth()->id())
@@ -131,6 +139,8 @@ class AppServiceProvider extends ServiceProvider
                 || EventParticipant::where('community_id', $community->id)->exists()));
             $communityModel = $community instanceof Community ? $community : ($community ? Community::find($community->id) : null);
             $view->with('canManageCommunityLinks', $communityModel && Gate::allows('update', $communityModel));
+            $view->with('canUseScoreboard', auth()->user()?->is_active && $community?->is_active
+                && app(CommunityLookup::class)->canManage((int) auth()->id(), (int) $community->id));
         });
         Event::subscribe(AuthActivitySubscriber::class);
         Event::listen(SchoolAthleteActivated::class, [RegistrationDraftService::class, 'enrollActivatedSchoolAthlete']);

@@ -111,18 +111,6 @@
                     </a>
                 </li>
 
-                @if(Route::has('panel.community-links.index'))
-                @if($canManageCommunityLinks)
-                <li class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('panel.community-links.*') ? 'active' : '' }}" href="{{ route('panel.community-links.index') }}">
-                        <div class="d-flex align-items-center">
-                            <span class="nav-link-icon"><span class="fas fa-link"></span></span>
-                            <span class="nav-link-text ps-1">Link Tree</span>
-                        </div>
-                    </a>
-                </li>
-                @endif
-                @endif
                 <!-- Pengurus -->
                 <li class="nav-item">
                     <a class="nav-link {{ request()->routeIs('panel.officials.*') ? 'active' : '' }}" href="{{ Route::has('panel.officials.index') ? route('panel.officials.index') : '#' }}" role="button">
@@ -188,6 +176,20 @@
                         </div>
                     </a>
                 </li>
+                @endif
+                @endif
+                @if(($canManageCommunityLinks && Route::has('panel.community-links.index')) || $canUseScoreboard)
+                <li class="nav-item">
+                    <div class="row navbar-vertical-label-wrapper mt-3 mb-2">
+                        <div class="col-auto navbar-vertical-label">Alat</div>
+                        <div class="col ps-0"><hr class="mb-0 navbar-vertical-divider" /></div>
+                    </div>
+                </li>
+                @if($canManageCommunityLinks && Route::has('panel.community-links.index'))
+                <li class="nav-item"><a class="nav-link {{ request()->routeIs('panel.community-links.*') ? 'active' : '' }}" href="{{ route('panel.community-links.index') }}"><span class="nav-link-icon"><span class="fas fa-link"></span></span><span class="nav-link-text ps-1">Link Tree</span></a></li>
+                @endif
+                @if($canUseScoreboard)
+                <li class="nav-item"><a class="nav-link {{ request()->routeIs('panel.scoreboard.*') ? 'active' : '' }}" href="{{ route('panel.scoreboard.index') }}"><span class="nav-link-icon"><span class="fas fa-stopwatch"></span></span><span class="nav-link-text ps-1">Scoreboard</span></a></li>
                 @endif
                 @endif
                 <li class="nav-item">
