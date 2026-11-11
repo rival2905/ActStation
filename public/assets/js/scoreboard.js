@@ -191,6 +191,7 @@ export class ScoreboardClient {
     this.sessionId = options.sessionId;
     this.communityId = options.communityId;
     this.apiBaseUrl = options.apiBaseUrl || '/api/v1/scoreboard';
+    this.snapshotUrl = options.snapshotUrl || null;
     this.csrfToken = options.csrfToken || '';
     this.session = options.initialSession || null;
     this.state = null;
@@ -207,6 +208,7 @@ export class ScoreboardClient {
     this.inFlightCommandId = null;
     this.isOffline = false;
     this.pollIntervalId = null;
+    this.snapshotRequest = null;
 
     this.signalManager = new ScoreboardSignalManager({ silent: options.silent });
 
@@ -322,7 +324,7 @@ export class ScoreboardClient {
   startPolling(intervalMs = 1000) {
     this.stopPolling();
     this.pollIntervalId = setInterval(async () => {
-      await this.fetchLatestSnapshot();
+      if (!this.inFlight) await this.fetchLatestSnapshot();
       this.notify('status', {
         isStale: this.isStale(),
         isOffline: this.isOffline,
@@ -339,9 +341,17 @@ export class ScoreboardClient {
     }
   }
 
-  async fetchLatestSnapshot() {
+  fetchLatestSnapshot() {
+    if (this.snapshotRequest) return this.snapshotRequest;
+    this.snapshotRequest = this.fetchSnapshot().finally(() => { this.snapshotRequest = null; });
+    return this.snapshotRequest;
+  }
+
+  async fetchSnapshot() {
     try {
-      const res = await fetch(`${this.apiBaseUrl}/sessions/${this.sessionId}`, {
+      const res = await fetch(this.snapshotUrl || `${this.apiBaseUrl}/sessions/${this.sessionId}`, {
+        credentials: this.snapshotUrl ? 'omit' : 'same-origin',
+        cache: 'no-store',
         headers: {
           'Accept': 'application/json',
           'X-Requested-With': 'XMLHttpRequest'
@@ -598,7 +608,8 @@ export function initScoreboardConsole(options) {
         timeoutEl.textContent = formatTimeoutClock(clocks.timeout_clock_ms);
         timeoutEl.classList.remove('d-none');
       } else {
-        timeoutEl.classList.add('d-none');
+        timeoutEl.textContent = '0';
+        timeoutEl.classList.remove('d-none');
       }
     }
 
@@ -649,9 +660,11 @@ export function initScoreboardConsole(options) {
     const posHome = document.getElementById('possessionHome');
     const posAway = document.getElementById('possessionAway');
     if (posHome) {
+      posHome.style.visibility = state.possession === 'home' ? 'visible' : 'hidden';
       posHome.className = state.possession === 'home' ? 'text-warning fw-bold' : 'text-muted opacity-25';
     }
     if (posAway) {
+      posAway.style.visibility = state.possession === 'away' ? 'visible' : 'hidden';
       posAway.className = state.possession === 'away' ? 'text-warning fw-bold' : 'text-muted opacity-25';
     }
 
@@ -801,10 +814,13 @@ export function initScoreboardDisplay(options) {
         el.textContent = formatTimeoutClock(clocks.timeout_clock_ms);
         el.style.display = '';
       } else {
-        el.style.display = 'none';
+        el.textContent = '0';
+        el.style.display = '';
       }
     });
 
+    document.querySelectorAll('.display-game-status').forEach(el => { el.textContent = clocks.game_running ? 'RUN' : 'STOP'; });
+    document.querySelectorAll('.display-shot-status').forEach(el => { el.textContent = !clocks.shot_display_enabled ? 'BLANK' : (clocks.shot_running ? 'RUN' : 'STOP'); });
     rafId = requestAnimationFrame(updateDisplayClocks);
   }
 
@@ -830,7 +846,7 @@ export function initScoreboardDisplay(options) {
       el.textContent = String(state.away?.team_fouls ?? 0);
     });
     document.querySelectorAll('.display-period').forEach((el) => {
-      const type = state.period?.type === 'overtime' ? 'OT ' : 'P ';
+      const type = state.period?.type === 'overtime' ? 'OT ' : 'PERIOD ';
       el.textContent = `${type}${state.period?.number ?? 1}`;
     });
 
@@ -895,11 +911,12 @@ function renderTimeoutDots(containerId, timeoutsUsed) {
   const container = document.getElementById(containerId);
   if (!container) return;
   const total = 5;
-  let html = '';
+  let html = `<span style="display:inline-block;margin-right:8px">${timeoutsUsed} / ${total}</span>`;
+  container.setAttribute('aria-label', `Timeout terpakai ${timeoutsUsed} dari ${total}`);
   for (let i = 0; i < total; i++) {
     const isUsed = i < timeoutsUsed;
-    const color = isUsed ? 'bg-danger' : 'bg-success';
-    html += `<span class="badge rounded-circle p-1 me-1 ${color}" style="width: 12px; height: 12px; display: inline-block;"></span>`;
+    const color = isUsed ? '#f43f5e' : '#34d399';
+    html += `<span aria-hidden="true" style="width:12px;height:12px;display:inline-block;border-radius:50%;margin-right:4px;background:${color}"></span>`;
   }
   container.innerHTML = html;
 }
@@ -933,7 +950,7 @@ export function initScoreboardPage() {
   const root = document.getElementById('scoreboard-page');
   if (!root) return null;
   const readonly = root.dataset.readonly === 'true';
-  const options = {sessionId: root.dataset.session, communityId: Number(root.dataset.community), csrfToken: document.querySelector('meta[name="csrf-token"]')?.content || '', silent: readonly || root.dataset.view === 'shot'};
+  const options = {sessionId: root.dataset.session, snapshotUrl: root.dataset.snapshotUrl, communityId: Number(root.dataset.community), csrfToken: document.querySelector('meta[name="csrf-token"]')?.content || '', silent: readonly || root.dataset.view === 'shot'};
   const binding = readonly ? initScoreboardDisplay(options) : initScoreboardConsole(options);
   const { client } = binding;
   const message = document.getElementById('sb-message');
@@ -941,9 +958,10 @@ export function initScoreboardPage() {
   const command = async (type, payload = {}) => {
     const ack = await client.sendCommand(type, payload);
     if (ack?.status !== 'applied') throw new Error(ack?.reason || 'Perintah tidak diterapkan. Tinjau state terbaru.');
+    report('Perubahan tersimpan.');
     return ack;
   };
-  client.on('update', () => { if (client.isFinished()) report(client.session.result ? 'Sesi selesai. Hasil privat tercatat.' : 'Sesi selesai tanpa pencatatan histori.'); });
+  client.on('update', () => { if (client.isFinished()) report(readonly ? 'Sesi selesai.' : (client.session.result ? 'Sesi selesai. Hasil privat tercatat.' : 'Sesi selesai tanpa pencatatan histori.')); });
   if (!readonly) {
     const controls = document.getElementById('sb-control-fields');
     const refreshControls = () => { controls.disabled = !client.canAcceptCommands(); };
@@ -958,7 +976,7 @@ export function initScoreboardPage() {
       if (client.state.shot_clock.running) throw new Error('Hentikan shot dahulu sebelum koreksi.');
       await command('shot_clock.set', {remaining_ms: client.state.shot_clock.remaining_ms + Number(button.dataset.shotAdjust) * 1000});
     })));
-    document.getElementById('sb-period')?.addEventListener('submit', guard(async event => {
+    document.querySelector('#sb-period:not([data-focus-period])')?.addEventListener('submit', guard(async event => {
       const values = new FormData(event.currentTarget);
       await command('period.set', {type: values.get('type'), number: Number(values.get('number'))});
     }));
@@ -986,6 +1004,15 @@ export function initScoreboardPage() {
       finishForm.elements.kind.value = client.session.kind;
       finishForm.elements.location.value = client.session.location || '';
       document.getElementById('sb-review-score').textContent = `${client.state.home.name} ${client.state.home.score} : ${client.state.away.score} ${client.state.away.name}`;
+      const recap = document.getElementById('sb-review-periods');
+      if (recap) {
+        const state = client.state;
+        const rows = [...(state.period_history || [])];
+        if (state.period_active && !rows.some(r => r.period.type === state.period.type && r.period.number === state.period.number)) rows.push(state.period_active);
+        recap.textContent = rows.map(r => `${r.period.type === 'overtime' ? 'OT' : 'P'}${r.period.number}: poin ${r.home.score}–${r.away.score} · foul ${r.home.team_fouls}–${r.away.team_fouls}`).join('\n');
+        if (state.unallocated_score?.home || state.unallocated_score?.away) recap.textContent += `\nSkor lama belum teralokasi: ${state.unallocated_score.home}–${state.unallocated_score.away}`;
+      }
+      root.querySelectorAll('dialog[open]').forEach(open => open.close());
       document.getElementById('sb-finish-error').textContent = '';
       dialog.showModal();
     })));

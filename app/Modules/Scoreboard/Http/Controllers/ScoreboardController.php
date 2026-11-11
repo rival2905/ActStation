@@ -9,6 +9,7 @@ use App\Modules\Scoreboard\Http\Requests\ScoreboardRequest;
 use App\Modules\Scoreboard\Http\Resources\ScoreboardResource;
 use App\Modules\Scoreboard\Services\ScoreboardService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\URL;
 
 class ScoreboardController extends Controller
 {
@@ -19,7 +20,7 @@ class ScoreboardController extends Controller
 
     public function show(Request $request, string $session, ScoreboardService $service)
     {
-        return view('panel.scoreboard.console', ['session' => $service->read($request, $session),
+        return view($request->boolean('focus') ? 'panel.scoreboard.focus' : 'panel.scoreboard.console', ['session' => $service->read($request, $session),
             'community' => $service->community($request), 'viewMode' => $request->query('console') === 'shot' ? 'shot' : 'console']);
     }
 
@@ -27,8 +28,15 @@ class ScoreboardController extends Controller
     {
         abort_unless(in_array($viewMode, ['main', 'shot-left', 'shot-right', 'demo'], true), 404);
 
-        return view('panel.scoreboard.display', ['session' => $service->read($request, $session),
-            'community' => $service->community($request), 'viewMode' => $viewMode]);
+        return response()->view('panel.scoreboard.display', ['session' => $service->readDisplay($session),
+            'snapshotUrl' => URL::signedRoute('scoreboard.sessions.display-snapshot', ['session' => $session]),
+            'viewMode' => $viewMode])->withHeaders(['Cache-Control' => 'no-store, private', 'Referrer-Policy' => 'no-referrer']);
+    }
+
+    public function displaySnapshot(string $session, ScoreboardService $service)
+    {
+        return (new ScoreboardResource($service->displaySnapshot($service->readDisplay($session))))
+            ->response()->withHeaders(['Cache-Control' => 'no-store, private', 'Referrer-Policy' => 'no-referrer']);
     }
 
     public function store(ScoreboardRequest $request, ScoreboardService $service)

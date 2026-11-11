@@ -11,6 +11,7 @@ use App\Modules\Scoreboard\Exceptions\ScoreboardConflict;
 use App\Modules\Scoreboard\Models\ScoreboardCommand;
 use App\Modules\Scoreboard\Models\ScoreboardSession;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -82,6 +83,30 @@ class ScoreboardService
         });
     }
 
+    public function readDisplay(string $id): ScoreboardSession
+    {
+        return DB::transaction(function () use ($id) {
+            $session = ScoreboardSession::whereKey($id)->lockForUpdate()->firstOrFail();
+            $this->materialize($session);
+
+            return $session;
+        });
+    }
+
+    public function displaySnapshot(ScoreboardSession $session): array
+    {
+        $snapshot = Arr::only($this->snapshot($session), ['id', 'status', 'server_time_ms']);
+        $snapshot['state'] = Arr::only($session->state, ['revision', 'period', 'possession', 'signal']);
+        foreach (['home', 'away'] as $team) {
+            $snapshot['state'][$team] = Arr::only($session->state[$team], ['name', 'score', 'team_fouls', 'timeouts_used']);
+        }
+        foreach (['game_clock', 'shot_clock', 'timeout_clock'] as $clock) {
+            $snapshot['state'][$clock] = Arr::only($session->state[$clock], ['remaining_ms', 'running', 'display_enabled']);
+        }
+
+        return $snapshot;
+    }
+
     public function command(Request $request, string $id, array $input): array
     {
         $community = $this->community($request);
@@ -111,7 +136,26 @@ class ScoreboardService
                 $reason = 'Revision berubah; tinjau snapshot terbaru.';
             } else {
                 try {
-                    $session->state = $this->engine->apply($state, $input['type'], $input['payload'], $now);
+                    $before = $state;
+                    $state = $this->restoreLegacyPeriod($session, $state, $input['type'], $input['payload']);
+                    $next = $this->engine->apply($state, $input['type'], $input['payload'], $now);
+                    $index = fn (array $p): int => $p['number'] + ($p['type'] === 'overtime' ? 4 : 0);
+                    $rollback = $input['type'] === 'period.set' && $index($next['period']) < $index($before['period']);
+                    if ($rollback || ($input['type'] === 'period.correct' && $next['revision'] !== $before['revision'])) {
+                        $summary = fn (array $s): array => [
+                            'period' => $s['period'], 'active' => $s['period_active'],
+                            'home' => Arr::only($s['home'], ['score', 'team_fouls']),
+                            'away' => Arr::only($s['away'], ['score', 'team_fouls']),
+                            'records' => array_map(fn (array $r): array => Arr::only($r, ['period', 'home', 'away']), $s['period_history']),
+                        ];
+                        $next['period_changes'] = $before['period_changes'] ?? [];
+                        $next['period_changes'][] = ['action' => $rollback ? 'rollback' : 'correction',
+                            'at' => now()->toISOString(), 'operator' => $request->user()->name,
+                            'reason' => $input['payload']['reason'] ?? 'Kembali ke periode sebelumnya',
+                            'note' => $input['payload']['note'] ?? '',
+                            'before' => $summary($before), 'after' => $summary($next)];
+                    }
+                    $session->state = $next;
                     $session->save();
                     $status = 'applied';
                 } catch (ValidationException $e) {
@@ -161,6 +205,8 @@ class ScoreboardService
                     'away' => ['name' => $session->away_name, 'score' => $state['away']['score']],
                     'kind' => $session->kind, 'location' => $session->location, 'source' => 'virtual',
                     'status' => 'recorded', 'visibility' => 'private', 'recorded_by' => $request->user()->id,
+                    'period_history' => [...$state['period_history'], $state['period_active']],
+                    'unallocated_score' => $state['unallocated_score'],
                     'recorded_at' => now()->toISOString(),
                 ];
             }
@@ -186,7 +232,7 @@ class ScoreboardService
 
     public function snapshot(ScoreboardSession $session): array
     {
-        $state = $session->state;
+        $state = $this->engine->withLedger($session->state);
         foreach (['game_clock', 'shot_clock', 'timeout_clock'] as $clock) {
             unset($state[$clock]['deadline_ms']);
         }
@@ -199,6 +245,47 @@ class ScoreboardService
             'home_name' => $session->home_name, 'away_name' => $session->away_name, 'location' => $session->location,
             'result' => $session->result, 'finished_at' => $session->finished_at?->toISOString(),
             'server_time_ms' => $time, 'state' => $state];
+    }
+
+    private function restoreLegacyPeriod(ScoreboardSession $session, array $state, string $type, array $payload): array
+    {
+        if ($type !== 'period.set' || count($payload) !== 2 || ! isset($payload['type'], $payload['number']) || ! is_int($payload['number']) || ! in_array($payload['type'], ['regulation', 'overtime'], true)) {
+            return $state;
+        }
+        $index = fn (array $p): int => $p['number'] + ($p['type'] === 'overtime' ? 4 : 0);
+        if ($index($state['period']) - $index($payload) !== 1 || $state['period_history'] !== [] || $state['game_clock']['running'] || $state['shot_clock']['running'] || $state['timeout_clock']['running']) {
+            return $state;
+        }
+        // ponytail: legacy sessions lack period records; restore receipts, never invent a split.
+        foreach (ScoreboardCommand::where('session_id', $session->id)->latest('id')->cursor() as $command) {
+            $response = $command->response;
+            if (($response['status'] ?? null) !== 'applied') {
+                continue;
+            }
+            if ($command->type === 'session.reset') {
+                break;
+            }
+            $saved = $response['snapshot']['state'] ?? null;
+            if (! $saved || $saved['revision'] >= $state['revision'] || $index($saved['period']) !== $index($payload)) {
+                continue;
+            }
+            $restored = $this->engine->withLedger($saved);
+            foreach (['revision', 'authority_epoch', 'authority', 'ruleset', 'ruleset_id', 'ruleset_version', 'session_id'] as $key) {
+                $restored[$key] = $state[$key];
+            }
+            foreach (['game_clock', 'shot_clock', 'timeout_clock'] as $key) {
+                $restored[$key]['running'] = false;
+                $restored[$key]['deadline_ms'] = null;
+            }
+            $restored['period_changes'] = $state['period_changes'] ?? [];
+            $restored['signal'] = null;
+            unset($restored['sample']);
+            $restored['revision']++;
+
+            return $restored;
+        }
+
+        return $state;
     }
 
     private function nowMs(): int

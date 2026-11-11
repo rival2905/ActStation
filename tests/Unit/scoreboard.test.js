@@ -15,11 +15,127 @@ import {
   buildScoreboardCommand,
   buildFinishPayload,
   ScoreboardSignalManager,
-  ScoreboardClient
+  ScoreboardClient,
+  initScoreboardConsole,
+  initScoreboardDisplay
 } from '../../resources/js/scoreboard.js';
 
 it('client without confirmed snapshot never enables commands', () => {
   assert.equal(new ScoreboardClient({sessionId:'demo'}).canAcceptCommands(), false);
+});
+
+it('display polling uses signed snapshot URL without login credentials', async () => {
+  const saved = globalThis.fetch;
+  const url = '/api/v1/scoreboard/sessions/demo/display-snapshot?signature=test';
+  const client = new ScoreboardClient({sessionId:'demo', snapshotUrl:url, silent:true});
+  globalThis.fetch = async (target, options) => {
+    assert.equal(target, url);
+    assert.equal(options.credentials, 'omit');
+    assert.equal(options.cache, 'no-store');
+    return {ok:true, json:async () => ({data:{id:'demo', status:'active', server_time_ms:Date.now(), state:{revision:0}}})};
+  };
+  try { await client.fetchLatestSnapshot(); assert.equal(client.session?.id, 'demo'); assert.equal(client.isOffline, false); }
+  finally { globalThis.fetch = saved; }
+});
+
+it('slow snapshot requests never overlap across polling and manual refresh', async () => {
+  const saved = globalThis.fetch;
+  let release;
+  let calls = 0;
+  const client = new ScoreboardClient({sessionId:'demo'});
+  globalThis.fetch = () => { calls++; return new Promise(resolve => { release = resolve; }); };
+  try {
+    const first = client.fetchLatestSnapshot();
+    const second = client.fetchLatestSnapshot();
+    assert.equal(calls, 1);
+    assert.equal(first, second);
+    release({ok:true, json:async () => ({data:{id:'demo', status:'active', state:{revision:0}}})});
+    await Promise.all([first, second]);
+    const next = client.fetchLatestSnapshot();
+    assert.equal(calls, 2);
+    release({ok:false});
+    await next;
+    assert.equal(client.isOffline, true);
+  } finally { globalThis.fetch = saved; }
+});
+
+it('polling does not compete with an in-flight command', async () => {
+  const savedFetch = globalThis.fetch;
+  const savedInterval = globalThis.setInterval;
+  const savedClear = globalThis.clearInterval;
+  let tick;
+  let calls = 0;
+  const client = new ScoreboardClient({sessionId:'demo'});
+  globalThis.setInterval = callback => { tick = callback; return 1; };
+  globalThis.clearInterval = () => {};
+  globalThis.fetch = async () => { calls++; return {ok:false}; };
+  try {
+    client.startPolling();
+    client.inFlight = true;
+    await tick();
+    assert.equal(calls, 0);
+    client.inFlight = false;
+    await tick();
+    assert.equal(calls, 1);
+  } finally {
+    client.stopPolling();
+    globalThis.fetch = savedFetch;
+    globalThis.setInterval = savedInterval;
+    globalThis.clearInterval = savedClear;
+  }
+});
+
+it('console and display present identical asymmetric teams timeouts periods and clock states', () => {
+  const saved = {document:globalThis.document, requestAnimationFrame:globalThis.requestAnimationFrame, cancelAnimationFrame:globalThis.cancelAnimationFrame};
+  const element = () => ({textContent:'', innerHTML:'', style:{}, classList:{add(){}, remove(){}}, setAttribute(key,value){ this[key]=value; }});
+  const ids = Object.fromEntries(['displayHomeScore','displayAwayScore','displayHomeName','displayAwayName','displayHomeFouls','displayAwayFouls','displayPeriod','possessionHome','possessionAway','homeTimeoutDots','awayTimeoutDots','displayHomeTimeouts','displayAwayTimeouts','gameClockStatusBadge','shotClockStatusBadge','displayTimeoutClock'].map(id => [id,element()]));
+  const selectors = Object.fromEntries(['home-score','away-score','home-name','away-name','home-fouls','away-fouls','period','possession-home','possession-away','game-status','shot-status','timeout-clock'].map(name => ['.display-'+name,element()]));
+  globalThis.document = {getElementById:id => ids[id] || null, querySelectorAll:selector => selectors[selector] ? [selectors[selector]] : [], querySelector:()=>null};
+  const frames = [];
+  const renderClocks = () => { frames.splice(0).forEach(frame => frame()); };
+  globalThis.requestAnimationFrame = frame => { frames.push(frame); return 1; };
+  globalThis.cancelAnimationFrame = () => {};
+  let consoleBinding, displayBinding;
+  try {
+    consoleBinding = initScoreboardConsole({sessionId:'fixture'});
+    displayBinding = initScoreboardDisplay({sessionId:'fixture'});
+    const snapshot = {id:'fixture',status:'active',server_time_ms:Date.now(),state:{revision:1,period:{type:'regulation',number:3},possession:'away',home:{name:'Tim A',score:17,team_fouls:2,timeouts_used:1},away:{name:'Tim B',score:8,team_fouls:4,timeouts_used:3},game_clock:{remaining_ms:90000,running:false},shot_clock:{remaining_ms:14000,running:false,display_enabled:true},timeout_clock:{remaining_ms:0,running:false}}};
+    consoleBinding.client.absorbSnapshot(snapshot);
+    displayBinding.client.absorbSnapshot(snapshot);
+    renderClocks();
+    for (const [id,selector] of [['displayHomeScore','home-score'],['displayAwayScore','away-score'],['displayHomeName','home-name'],['displayAwayName','away-name'],['displayHomeFouls','home-fouls'],['displayAwayFouls','away-fouls'],['displayPeriod','period']]) {
+      assert.equal(ids[id].textContent, selectors['.display-'+selector].textContent);
+    }
+    assert.equal(ids.homeTimeoutDots.innerHTML, ids.displayHomeTimeouts.innerHTML);
+    assert.equal(ids.awayTimeoutDots.innerHTML, ids.displayAwayTimeouts.innerHTML);
+    assert.match(ids.displayHomeTimeouts.innerHTML, /1 \/ 5/);
+    assert.match(ids.displayAwayTimeouts.innerHTML, /3 \/ 5/);
+    assert.match(ids.displayHomeTimeouts.innerHTML, /background:/);
+    assert.equal(selectors['.display-game-status'].textContent, 'STOP');
+    assert.equal(selectors['.display-shot-status'].textContent, 'STOP');
+    assert.equal(selectors['.display-timeout-clock'].textContent, '0');
+    assert.equal(ids.possessionHome.style.visibility, selectors['.display-possession-home'].style.visibility);
+    assert.equal(ids.possessionAway.style.visibility, 'visible');
+    const live = structuredClone(snapshot);
+    live.state.revision++;
+    live.state.period = {type:'overtime',number:1};
+    live.state.game_clock.running = true;
+    live.state.timeout_clock = {remaining_ms:30000,running:true};
+    for (const binding of [consoleBinding,displayBinding]) binding.client.absorbSnapshot(live);
+    renderClocks();
+    assert.equal(ids.displayPeriod.textContent, 'OT 1');
+    assert.equal(selectors['.display-period'].textContent, 'OT 1');
+    assert.equal(selectors['.display-game-status'].textContent, 'RUN');
+    assert.equal(selectors['.display-timeout-clock'].textContent, '30');
+    live.state.revision++;
+    live.state.shot_clock.display_enabled = false;
+    displayBinding.client.absorbSnapshot(live);
+    renderClocks();
+    assert.equal(selectors['.display-shot-status'].textContent, 'BLANK');
+  } finally {
+    consoleBinding?.destroy(); displayBinding?.destroy();
+    Object.assign(globalThis,saved);
+  }
 });
 
 it('same revision older sample cannot rewind clocks', () => {
