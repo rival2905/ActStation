@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 return [
     'enabled' => (bool) env('AGENT_OFFICE_ENABLED', false),
+    'social_relay_enabled' => (bool) env('AGENT_OFFICE_SOCIAL_RELAY_ENABLED', false),
+    'social_relay_accounts' => ['actstationcontinent'],
     'allow_loopback_http' => (bool) env('AGENT_OFFICE_LOOPBACK_HTTP', false),
     // Dedicated final proxy only; no implicit CDN, tunnel or framework proxy trust.
     'trusted_proxies' => array_values(array_filter(explode(',', (string) env('AGENT_OFFICE_TRUSTED_PROXIES', '')))),

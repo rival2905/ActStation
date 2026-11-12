@@ -20,6 +20,77 @@ import {
   initScoreboardDisplay
 } from '../../resources/js/scoreboard.js';
 
+it('horns use distinct sustained dual tones for game and shot expiry without clipping', () => {
+  const manager = new ScoreboardSignalManager();
+  manager.audioEnabled = true;
+  const oscillators = [], gains = [];
+  const param = () => ({events:[], setValueAtTime(value,time) {this.events.push(['set',value,time]);}, linearRampToValueAtTime(value,time) {this.events.push(['ramp',value,time]);}});
+  manager.audioContext = {currentTime:10,destination:{},
+    createOscillator() {const o={frequency:param(),connect(){},start(){},stop(time){this.stopped=time;}};oscillators.push(o);return o;},
+    createGain() {const g={gain:param(),connect(){}};gains.push(g);return g;}
+  };
+  manager.processSignal({signal_id:'game',kind:'game_expired',duration_ms:2000,expires_at_ms:5000},1000);
+  const game = oscillators.splice(0);
+  const gameEnd = game[0].stopped;
+  manager.processSignal({signal_id:'shot',kind:'shot_expired',duration_ms:2000,expires_at_ms:5000},1000);
+  const shot = oscillators.splice(0);
+  assert.equal(game.length,2); assert.equal(shot.length,2);
+  assert.ok(game[0].frequency.events[0][1] > shot[0].frequency.events[0][1]);
+  assert.ok(gameEnd > shot[0].stopped);
+  assert.ok(gains.every(g=>Math.max(...g.gain.events.map(e=>e[1])) <= 0.45));
+  assert.ok(gains.every(g=>g.gain.events.some(e=>e[0]==='set' && e[1]>0 && e[2]>10.1)), 'horn sustains before release');
+});
+
+it('personal client uses personal API and retains authoritative trial metadata', async () => {
+  const saved = globalThis.fetch;
+  const client = new ScoreboardClient({sessionId:'trial', personal:true, silent:true});
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, '/api/v1/scoreboard/personal/sessions/trial');
+    assert.equal(options.credentials, 'same-origin');
+    return {ok:true,json:async()=>({data:{id:'trial',status:'active',server_time_ms:Date.now(),state:{revision:0},trial:{limited:true,starts_remaining:0}}})};
+  };
+  try { await client.fetchLatestSnapshot(); assert.equal(client.session.trial.starts_remaining, 0); }
+  finally {globalThis.fetch=saved;}
+});
+
+it('personal commands and finish never call community APIs', async () => {
+  const saved = globalThis.fetch;
+  const calls = [];
+  const snapshot = {id:'trial',status:'active',server_time_ms:Date.now(),state:{revision:0,authority_epoch:1,schema_version:'basketball.v1'}};
+  const client = new ScoreboardClient({sessionId:'trial',personal:true,initialSession:snapshot,silent:true});
+  globalThis.fetch = async (url, options) => {
+    calls.push(url);
+    assert.ok(url.startsWith('/api/v1/scoreboard/personal/sessions/trial/'));
+    const payload = JSON.parse(options.body);
+    if (url.endsWith('/commands')) return {ok:true,json:async()=>({data:{status:'applied',snapshot:{...snapshot,state:{...snapshot.state,revision:1}}}})};
+    assert.equal(payload.record_result, false);
+    return {ok:true,json:async()=>({data:{...snapshot,status:'finished',state:{revision:2}}})};
+  };
+  try {
+    await client.sendCommand('game_clock.stop');
+    await client.finishSession({recordResult:false});
+    assert.equal(calls.length, 2); assert.equal(client.isFinished(), true);
+  } finally {globalThis.fetch=saved;}
+});
+
+it('Horn click activates audio before command and updates audio button', async () => {
+  const saved = {document:globalThis.document,window:globalThis.window,requestAnimationFrame:globalThis.requestAnimationFrame,cancelAnimationFrame:globalThis.cancelAnimationFrame};
+  const handlers = {};
+  const audio = {addEventListener(type, fn){handlers.audio=fn;}, innerHTML:'',className:''};
+  const horn = {getAttribute(name){return name==='data-scoreboard-cmd'?'horn.trigger':null;},addEventListener(type,fn){handlers.horn=fn;}};
+  let resumed=0, binding;
+  globalThis.window = {AudioContext:class {constructor(){this.state='suspended';} resume(){resumed++;this.state='running';return Promise.resolve();}}};
+  globalThis.document = {getElementById:id=>id==='btnEnableAudio'?audio:null,querySelectorAll:selector=>selector==='[data-scoreboard-cmd]'?[horn]:[],querySelector:()=>null};
+  globalThis.requestAnimationFrame=()=>1;globalThis.cancelAnimationFrame=()=>{};
+  try {
+    binding=initScoreboardConsole({sessionId:'horn'});
+    let sent=0;
+    binding.client.sendCommand=async type=>{assert.equal(type,'horn.trigger');assert.equal(binding.client.signalManager.isAudioActive(),true);assert.equal(resumed,1);sent++;};
+    await handlers.horn();
+    assert.equal(sent,1);assert.match(audio.innerHTML,/Audio Aktif/);
+  } finally {binding?.destroy();Object.assign(globalThis,saved);}
+});
+
 it('client without confirmed snapshot never enables commands', () => {
   assert.equal(new ScoreboardClient({sessionId:'demo'}).canAcceptCommands(), false);
 });

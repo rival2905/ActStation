@@ -69,6 +69,7 @@
                         <a class="btn btn-primary border-2 rounded-pill btn-lg fs-9 py-2 px-4 shadow-sm" href="{{ route('events.index') }}">
                             Jelajahi Turnamen <span class="fas fa-play ms-2" data-fa-transform="shrink-6 down-1"></span>
                         </a>
+                        <a class="btn btn-outline-light border-2 rounded-pill btn-lg fs-9 py-2 px-4" href="{{ route('scoreboard.public.index') }}">Coba Scoreboard</a>
                         @auth
                             @if(Auth::user()->hasRole('organizer') || Auth::user()->hasRole('superadmin'))
                                 <a class="btn btn-outline-light border-2 rounded-pill btn-lg fs-9 py-2 px-4" href="{{ route('panel.organizer.events.create') }}">

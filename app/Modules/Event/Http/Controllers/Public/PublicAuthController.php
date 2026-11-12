@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Spatie\Permission\Models\Role;
 
@@ -92,6 +93,13 @@ class PublicAuthController extends Controller
         $eventDestination = app(EventRegistrationReturn::class)->publicDestinationFromIntended($request);
         if ($eventDestination !== null) {
             return redirect()->to($eventDestination)->with('success', 'Akun siap. Silakan lanjutkan pendaftaran event.');
+        }
+
+        $scoreboard = $request->session()->pull('scoreboard_registration_return');
+        if (is_string($scoreboard) && Str::isUuid($scoreboard)
+            && $request->session()->get('scoreboard_trial_id') === $scoreboard
+            && is_string($request->session()->get('scoreboard_trial_token'))) {
+            return redirect()->route('scoreboard.public.show', $scoreboard);
         }
 
         return redirect()

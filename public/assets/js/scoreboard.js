@@ -145,22 +145,30 @@ export class ScoreboardSignalManager {
     return false;
   }
 
-  playHornPulse(durationMs = 2000) {
+  playHornPulse(durationMs = 2000, kind = 'horn_manual') {
     if (!this.isAudioActive() || !this.audioContext) return;
     try {
       const ctx = this.audioContext;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(420, ctx.currentTime);
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (durationMs / 1000));
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + (durationMs / 1000));
+      const game = kind === 'game_expired';
+      const seconds = Math.min(Math.max(Number(durationMs) || 2000, 100), game ? 2000 : (kind === 'shot_expired' ? 800 : 1200)) / 1000;
+      const start = ctx.currentTime, end = start + seconds;
+      // Sustain two tones; summed gain stays below full scale, not a device-volume override.
+      this.hornVoices?.forEach(voice => { try { voice.stop(start); } catch {} });
+      this.hornVoices = (game ? [330, 440] : [220, 277]).map(frequency => {
+        const osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(frequency, start);
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.42, start + 0.015);
+        gain.gain.setValueAtTime(0.42, end - 0.04);
+        gain.gain.linearRampToValueAtTime(0, end);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+        osc.start(start); osc.stop(end);
+        return osc;
+      });
     } catch {
-      // Ignore audio synthesis errors
+      // Ignore audio synthesis errors; scoreboard controls must remain usable.
     }
   }
 
@@ -177,7 +185,7 @@ export class ScoreboardSignalManager {
 
     const duration = signal.duration_ms || 2000;
     if (!this.isSilent && this.audioEnabled) {
-      this.playHornPulse(duration);
+      this.playHornPulse(duration, signal.kind);
       return { deduped: false, played: true, signal };
     }
     return { deduped: false, played: false, signal };
@@ -190,8 +198,12 @@ export class ScoreboardClient {
   constructor(options = {}) {
     this.sessionId = options.sessionId;
     this.communityId = options.communityId;
-    this.apiBaseUrl = options.apiBaseUrl || '/api/v1/scoreboard';
+    this.apiBaseUrl = options.apiBaseUrl || (options.personal ? '/api/v1/scoreboard/personal' : '/api/v1/scoreboard');
     this.snapshotUrl = options.snapshotUrl || null;
+    this.commandUrl = options.commandUrl || null;
+    this.receiptUrl = options.receiptUrl || null;
+    this.shotGuest = Boolean(options.shotGuest);
+    this.accessExpired = false;
     this.csrfToken = options.csrfToken || '';
     this.session = options.initialSession || null;
     this.state = null;
@@ -216,12 +228,21 @@ export class ScoreboardClient {
       update: new Set(),
       status: new Set(),
       conflict: new Set(),
+      expiry: new Set(),
       error: new Set()
     };
 
     if (options.initialSession) {
       this.absorbSnapshot(options.initialSession, Date.now());
     }
+  }
+
+  expireAccess(status = 410) {
+    if (this.accessExpired) return;
+    this.accessExpired = true;
+    this.stopPolling();
+    this.notify('expiry', {status, message: 'Akses shot clock sudah berakhir. Minta link baru kepada operator utama.'});
+    this.notify('status', {canAcceptCommands:false, inFlight:this.inFlight});
   }
 
   isStale() {
@@ -233,7 +254,7 @@ export class ScoreboardClient {
   }
 
   canAcceptCommands() {
-    return Boolean(this.state) && !this.inFlight && !this.isStale() && !this.isOffline && !this.isFinished();
+    return !this.accessExpired && Boolean(this.state) && !this.inFlight && !this.isStale() && !this.isOffline && !this.isFinished();
   }
 
   on(event, callback) {
@@ -348,6 +369,7 @@ export class ScoreboardClient {
   }
 
   async fetchSnapshot() {
+    if (this.accessExpired) return;
     try {
       const res = await fetch(this.snapshotUrl || `${this.apiBaseUrl}/sessions/${this.sessionId}`, {
         credentials: this.snapshotUrl ? 'omit' : 'same-origin',
@@ -357,6 +379,7 @@ export class ScoreboardClient {
           'X-Requested-With': 'XMLHttpRequest'
         }
       });
+      if (this.shotGuest && [403,410].includes(res.status)) { this.expireAccess(res.status); return; }
       if (res.ok) {
         const body = await res.json();
         const data = body.data || body;
@@ -373,6 +396,7 @@ export class ScoreboardClient {
    * Send single in-flight command with revision lock and lost ACK recovery.
    */
   async sendCommand(type, payload = {}) {
+    if (this.accessExpired) throw new Error('Akses shot clock sudah berakhir. Minta link baru kepada operator utama.');
     if (!this.state) throw new Error('Snapshot belum tersedia');
     if (this.inFlight) {
       throw new Error('Command in-flight: another command is pending');
@@ -410,8 +434,10 @@ export class ScoreboardClient {
     let ackResult = null;
 
     try {
-      const res = await fetch(`${this.apiBaseUrl}/sessions/${this.sessionId}/commands`, {
+      const res = await fetch(this.commandUrl || `${this.apiBaseUrl}/sessions/${this.sessionId}/commands`, {
         method: 'POST',
+        credentials: this.shotGuest ? 'omit' : 'same-origin',
+        cache: 'no-store',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -424,6 +450,9 @@ export class ScoreboardClient {
       if (res.ok) {
         const body = await res.json();
         ackResult = body.data || body;
+      } else if (this.shotGuest && [403,410].includes(res.status)) {
+        this.expireAccess(res.status);
+        throw Object.assign(new Error('Akses shot clock sudah berakhir. Minta link baru kepada operator utama.'), {http:true});
       } else if (res.status === 409) {
         // Revision conflict - fetch fresh snapshot
         await this.fetchLatestSnapshot();
@@ -443,21 +472,28 @@ export class ScoreboardClient {
       }
       // Network interruption - attempt lost ACK retrieval using command receipt
       try {
-        const receiptRes = await fetch(`${this.apiBaseUrl}/sessions/${this.sessionId}/commands/${command.command_id}`, {
+        const receiptRes = await fetch(this.receiptUrl || `${this.apiBaseUrl}/sessions/${this.sessionId}/commands/${command.command_id}`, {
+          credentials: this.shotGuest ? 'omit' : 'same-origin', cache:'no-store',
           headers: {
+            ...(this.shotGuest ? {'X-Scoreboard-Command':command.command_id} : {}),
             'Accept': 'application/json',
             'X-Requested-With': 'XMLHttpRequest'
           }
         });
+        if (this.shotGuest && [403,410].includes(receiptRes.status)) {
+          this.expireAccess(receiptRes.status);
+          throw new Error('Akses shot clock sudah berakhir. Minta link baru kepada operator utama.');
+        }
         if (receiptRes.ok) {
           const receiptBody = await receiptRes.json();
           ackResult = receiptBody.data || receiptBody;
         } else {
           throw networkErr;
         }
-      } catch {
+      } catch (receiptError) {
         this.inFlight = false;
         this.inFlightCommandId = null;
+        if (this.accessExpired) throw receiptError;
         this.isOffline = true;
         this.notify('error', { command, error: networkErr });
         throw networkErr;
@@ -689,7 +725,10 @@ export function initScoreboardConsole(options) {
   client.on('status', (status) => {
     const connBadge = document.getElementById('connectionStatusBadge');
     if (connBadge) {
-      if (status.isOffline) {
+      if (client.accessExpired) {
+        connBadge.textContent = 'Akses berakhir';
+        connBadge.className = 'badge bg-danger';
+      } else if (status.isOffline) {
         connBadge.textContent = 'Terputus';
         connBadge.className = 'badge bg-danger';
       } else if (status.isStale) {
@@ -703,7 +742,10 @@ export function initScoreboardConsole(options) {
 
     const commandStatusBadge = document.getElementById('commandStatusBadge');
     if (commandStatusBadge) {
-      if (status.inFlight) {
+      if (client.accessExpired) {
+        commandStatusBadge.textContent = 'Terkunci';
+        commandStatusBadge.className = 'badge bg-danger';
+      } else if (status.inFlight) {
         commandStatusBadge.textContent = 'Mengirim...';
         commandStatusBadge.className = 'badge bg-info';
       } else if (status.lastAck?.status === 'rejected') {
@@ -748,6 +790,7 @@ export function initScoreboardConsole(options) {
         }
       }
       try {
+        if (type === 'horn.trigger' && !client.signalManager.isSilent) activateAudio();
         await client.sendCommand(type, payload);
       } catch (err) {
         showAlert(err.message || 'Gagal mengirim perintah');
@@ -757,16 +800,17 @@ export function initScoreboardConsole(options) {
 
   // Audio activation button
   const audioBtn = document.getElementById('btnEnableAudio');
-  if (audioBtn) {
-    audioBtn.addEventListener('click', () => {
+  const activateAudio = () => {
       if (client.signalManager.enableAudio()) {
-        audioBtn.innerHTML = '<span class="fas fa-volume-up me-1"></span>Audio Aktif';
-        audioBtn.className = 'btn btn-sm btn-success';
+        if (audioBtn) {
+          audioBtn.innerHTML = '<span class="fas fa-volume-up me-1"></span>Audio Aktif';
+          audioBtn.className = 'btn btn-sm btn-success';
+        }
       } else {
         showAlert('Tidak dapat mengaktifkan audio pada browser ini.');
       }
-    });
-  }
+  };
+  audioBtn?.addEventListener('click', activateAudio);
 
   // Fullscreen button
   const fsBtn = document.getElementById('btnToggleFullscreen');
@@ -950,7 +994,7 @@ export function initScoreboardPage() {
   const root = document.getElementById('scoreboard-page');
   if (!root) return null;
   const readonly = root.dataset.readonly === 'true';
-  const options = {sessionId: root.dataset.session, snapshotUrl: root.dataset.snapshotUrl, communityId: Number(root.dataset.community), csrfToken: document.querySelector('meta[name="csrf-token"]')?.content || '', silent: readonly || root.dataset.view === 'shot'};
+  const options = {personal: root.dataset.personal === 'true', sessionId: root.dataset.session, snapshotUrl: root.dataset.snapshotUrl, commandUrl: root.dataset.commandUrl, receiptUrl: root.dataset.receiptUrl, shotGuest: root.dataset.shotGuest === 'true', communityId: Number(root.dataset.community), csrfToken: document.querySelector('meta[name="csrf-token"]')?.content || '', silent: readonly || root.dataset.view === 'shot'};
   const binding = readonly ? initScoreboardDisplay(options) : initScoreboardConsole(options);
   const { client } = binding;
   const message = document.getElementById('sb-message');
@@ -961,6 +1005,13 @@ export function initScoreboardPage() {
     report('Perubahan tersimpan.');
     return ack;
   };
+  const trialStatus = root.querySelector('[data-trial-status]');
+  client.on('update', () => {
+    if (trialStatus && client.session?.trial?.limited) {
+      const remaining = client.session.trial.starts_remaining;
+      trialStatus.textContent = remaining > 0 ? `Percobaan: tersisa ${remaining} kali Start game. Stop selalu tersedia.` : 'Percobaan selesai. Daftar akun untuk melanjutkan scoreboard ini.';
+    }
+  });
   client.on('update', () => { if (client.isFinished()) report(readonly ? 'Sesi selesai.' : (client.session.result ? 'Sesi selesai. Hasil privat tercatat.' : 'Sesi selesai tanpa pencatatan histori.')); });
   if (!readonly) {
     const controls = document.getElementById('sb-control-fields');
@@ -990,6 +1041,7 @@ export function initScoreboardPage() {
     const finishForm = document.getElementById('sb-finish-form');
     let reviewRevision;
     root.querySelectorAll('[data-finish]').forEach(button => button.addEventListener('click', guard(async () => {
+      if (root.dataset.personal === 'true' && client.session?.trial?.limited) throw new Error('Daftar akun untuk menyimpan dan menyelesaikan sesi ini.');
       if (!client.canAcceptCommands()) throw new Error('Sinkronkan sesi dahulu.');
       if (['game_clock','shot_clock','timeout_clock'].some(key => client.state[key].running)) {
         if (!confirm('Hentikan & Tinjau: semua clocks akan dihentikan. Lanjutkan?')) return;

@@ -29,6 +29,51 @@ export function periodRows(state) {
 export function initFocusControls(binding) {
   const {client} = binding;
   const root = document.getElementById('scoreboard-page');
+  const shareForm = document.getElementById('sb-shot-share-form');
+  let sharing = false;
+  const shareStatus = document.getElementById('sb-shot-share-status');
+  const shareUrl = document.getElementById('sb-shot-share-url');
+  const shareCopy = document.getElementById('sb-shot-copy');
+  const renderShare = () => {
+    if (!shareForm) return;
+    shareForm.querySelector('fieldset').disabled = sharing || !client.session || client.isFinished();
+    const expiry = client.session?.shot_access?.expires_at;
+    if (!sharing) shareStatus.textContent = expiry && Date.parse(expiry) > client.getServerEstimatedTime()
+      ? `Akses aktif sampai ${new Date(expiry).toLocaleString('id-ID')}.` : 'Tidak ada akses aktif.';
+  };
+  const copyShare = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl.value);
+      shareStatus.textContent = 'Link disalin. Bagikan hanya kepada petugas.';
+    } catch {
+      shareUrl.focus(); shareUrl.select();
+      shareStatus.textContent = 'Link siap. Salin isian link secara manual.';
+    }
+  };
+  shareCopy?.addEventListener('click', copyShare);
+  const manageShare = async method => {
+    if (sharing || !client.session || client.isFinished()) return;
+    sharing = true; renderShare();
+    try {
+      const response = await fetch(`/api/v1/scoreboard/sessions/${root.dataset.session}/shot-access`, {
+        method, credentials:'same-origin', cache:'no-store', headers:{'Accept':'application/json','Content-Type':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]')?.content || ''},
+        body:JSON.stringify({panel_community_id:Number(root.dataset.community), ...(method === 'POST' ? {hours:Number(shareForm.elements.hours.value)} : {})})
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.message || 'Akses gagal diubah.');
+      const data = body.data || body;
+      shareUrl.value = data.url || ''; shareCopy.disabled = !data.url;
+      await client.fetchLatestSnapshot();
+      if (data.url) await copyShare(); else shareStatus.textContent = 'Akses dicabut. Link lama tidak bisa digunakan.';
+    } catch (err) { shareStatus.textContent = err.message; }
+    finally { sharing = false; shareForm.querySelector('fieldset').disabled = !client.session || client.isFinished(); }
+  };
+  shareForm?.addEventListener('submit', event => { event.preventDefault(); manageShare('POST'); });
+  document.getElementById('sb-shot-revoke')?.addEventListener('click', () => {
+    if (confirm('Cabut akses kontrol shot clock? Device penerima tidak bisa mengirim perintah lagi. Timer tidak dihentikan.')) manageShare('DELETE');
+  });
+  client.on('update', renderShare);
+  renderShare();
   const timeForm = document.getElementById('sb-time-form');
   let editorRevision, periodRevision, periodDraft, busy = false, promptedKey;
   const periodForm = document.getElementById('sb-period');

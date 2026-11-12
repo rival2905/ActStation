@@ -34,6 +34,110 @@ beforeEach(function (): void {
     ], $extra));
 });
 
+test('shot sharing grants expire rotate revoke and only permit scoped commands', function (): void {
+    $this->freezeTime();
+    $s = ($this->createQuick)()->assertCreated()->json('data');
+    $base = '/api/v1/scoreboard/sessions/'.$s['id'];
+    $manage = ['panel_community_id' => $this->community->id, 'hours' => 2];
+    $grant = $this->postJson($base.'/shot-access', $manage)->assertCreated()->json('data');
+    expect($grant['url'])->toContain('expires=');
+    auth()->forgetGuards();
+    $this->flushSession();
+    $this->get($grant['url'])->assertOk()->assertDontSee('navbar-vertical', false);
+    $snap = $this->getJson($grant['snapshot_url'])->assertOk()->assertJsonMissingPath('data.state.shot_access')->assertJsonMissingPath('data.community_id')->json('data');
+    $bad = scoreboardCommand($s, 'score.adjust', ['team' => 'home', 'delta' => 1]);
+    $this->postJson($grant['command_url'], $bad)->assertForbidden();
+    $command = scoreboardCommand($s, 'shot_clock.reset', ['duration_ms' => 12000]);
+    $response = $this->postJson($grant['command_url'], $command)->assertOk()->assertJsonPath('data.status', 'applied')->assertJsonPath('data.snapshot.state.shot_clock.remaining_ms', 12000)->assertJsonMissingPath('data.snapshot.state.period_changes');
+    $this->postJson($grant['command_url'], $command)->assertExactJson($response->json());
+    $this->withHeader('X-Scoreboard-Command', $command['command_id'])->getJson($grant['receipt_url'])->assertExactJson($response->json());
+    $this->flushHeaders();
+    $this->getJson(str_replace($s['id'], (string) Str::uuid(), $grant['snapshot_url']))->assertForbidden();
+    $this->travel(2)->hours();
+    $this->postJson($grant['command_url'], $command)->assertStatus(410);
+    $this->travel(1)->seconds();
+    $this->postJson($grant['command_url'], $command)->assertForbidden();
+    $this->actingAs($this->owner)->withSession(['current_community_id' => $this->community->id]);
+    $new = $this->postJson($base.'/shot-access', $manage)->assertCreated()->json('data');
+    $this->getJson($grant['snapshot_url'])->assertForbidden();
+    $this->deleteJson($base.'/shot-access', ['panel_community_id' => $this->community->id])->assertOk();
+    $this->getJson($new['snapshot_url'])->assertStatus(410);
+    expect(ScoreboardSession::findOrFail($s['id'])->state['home']['score'])->toBe(0);
+});
+
+test('guest shot controls synchronize with main console and revocation leaves clocks running', function (): void {
+    $this->freezeTime();
+    $s = ($this->createQuick)()->assertCreated()->json('data');
+    $base = '/api/v1/scoreboard/sessions/'.$s['id'];
+    $s = $this->postJson($base.'/commands', scoreboardCommand($s, 'game_clock.start'))->assertOk()->json('data.snapshot');
+    $grant = $this->postJson($base.'/shot-access', ['panel_community_id' => $this->community->id, 'hours' => 2])->assertCreated()->json('data');
+    auth()->forgetGuards();
+    $this->flushSession();
+    $s = $this->postJson($grant['command_url'], scoreboardCommand($s, 'shot_clock.start'))->assertOk()->assertJsonPath('data.status', 'applied')->json('data.snapshot');
+    $s['community_id'] = $this->community->id;
+    $this->postJson($grant['command_url'], scoreboardCommand($s, 'shot_clock.adjust', ['delta_ms' => -1000]))->assertOk()->assertJsonPath('data.status', 'applied')->assertJsonPath('data.snapshot.state.shot_clock.remaining_ms', 23000);
+    $this->actingAs($this->owner)->withSession(['current_community_id' => $this->community->id]);
+    $this->getJson($base)->assertOk()->assertJsonPath('data.state.shot_clock.remaining_ms', 23000)->assertJsonPath('data.state.shot_clock.running', true)->assertJsonPath('data.state.game_clock.running', true);
+    $this->deleteJson($base.'/shot-access', ['panel_community_id' => $this->community->id])->assertOk();
+    $this->getJson($grant['snapshot_url'])->assertStatus(410);
+    $this->getJson($base)->assertOk()->assertJsonPath('data.state.shot_clock.running', true)->assertJsonPath('data.state.game_clock.running', true);
+});
+
+test('shot sharing management keeps community authorization and grant secrecy', function (): void {
+    $s = ($this->createQuick)()->assertCreated()->json('data');
+    $base = '/api/v1/scoreboard/sessions/'.$s['id'];
+    $manage = ['panel_community_id' => $this->community->id, 'hours' => '2'];
+    $grant = $this->postJson($base.'/shot-access', $manage)->assertCreated()->json('data');
+    $this->getJson($base)->assertOk()->assertJsonMissingPath('data.state.shot_access')->assertJsonPath('data.shot_access.expires_at', $grant['expires_at']);
+    $public = URL::signedRoute('scoreboard.sessions.display-snapshot', ['session' => $s['id']]);
+    $this->getJson($public)->assertOk()->assertJsonMissingPath('data.shot_access')->assertJsonMissingPath('data.state.shot_access');
+    $this->postJson($base.'/shot-access', array_replace($manage, ['panel_community_id' => 999999]))->assertUnprocessable();
+    $this->actingAs(User::factory()->create(['is_active' => true]));
+    $this->postJson($base.'/shot-access', $manage)->assertForbidden();
+    $this->deleteJson($base.'/shot-access', $manage)->assertForbidden();
+    auth()->forgetGuards();
+    $this->flushSession();
+    $this->postJson($base.'/shot-access', $manage)->assertUnauthorized();
+    $this->deleteJson($base.'/shot-access', $manage)->assertUnauthorized();
+    $this->getJson($grant['snapshot_url'])->assertOk();
+});
+
+test('shot grants reject old links private receipts forged commands and finished sessions', function (): void {
+    $this->freezeTime();
+    $s = ($this->createQuick)()->assertCreated()->json('data');
+    $base = '/api/v1/scoreboard/sessions/'.$s['id'];
+    $params = ['panel_community_id' => $this->community->id, 'hours' => 1];
+    $this->postJson($base.'/shot-access', array_replace($params, ['hours' => 9]))->assertUnprocessable();
+    $private = scoreboardCommand($s, 'horn.trigger');
+    $s = $this->postJson($base.'/commands', $private)->assertOk()->json('data.snapshot');
+    $first = $this->postJson($base.'/shot-access', $params)->assertCreated()->json('data');
+    $grant = $this->postJson($base.'/shot-access', $params)->assertCreated()->json('data');
+    auth()->forgetGuards();
+    $this->flushSession();
+    $this->getJson($first['snapshot_url'])->assertStatus(410);
+    $this->withHeader('X-Scoreboard-Command', $private['command_id'])->getJson($grant['receipt_url'])->assertForbidden();
+    $this->flushHeaders();
+    foreach (['score.adjust', 'game_clock.start', 'period.set', 'session.reset', 'period.correct', 'shot_clock.set'] as $type) {
+        $this->postJson($grant['command_url'], scoreboardCommand($s, $type))->assertForbidden();
+    }
+    $bad = scoreboardCommand($s, 'shot_clock.reset', ['duration_ms' => 24000, 'score' => 999]);
+    $this->postJson($grant['command_url'], $bad)->assertOk()->assertJsonPath('data.status', 'rejected');
+    $valid = scoreboardCommand($s, 'shot_clock.reset', ['duration_ms' => 14000]);
+    $response = $this->postJson($grant['command_url'], $valid)->assertOk()->assertJsonPath('data.status', 'applied');
+    $audit = ScoreboardCommand::where('command_id', $valid['command_id'])->firstOrFail();
+    expect($audit->audit['source'])->toBe('shared-shot')->and($audit->actor_id)->toBe($this->owner->id);
+    $s = $response->json('data.snapshot') + ['community_id' => $this->community->id];
+    $this->postJson($grant['command_url'], scoreboardCommand($s, 'horn.trigger', []))->assertOk()->assertJsonPath('data.status', 'applied');
+    $this->postJson($grant['command_url'], scoreboardCommand($s, 'shot_clock.reset', ['duration_ms' => 24000]))->assertOk()->assertJsonPath('data.status', 'rejected');
+    $this->getJson($grant['snapshot_url'])->assertOk()->assertJsonMissingPath('data.shot_access')->assertJsonMissingPath('data.state.shot_access')->assertJsonMissingPath('data.state.period_history');
+    $this->actingAs($this->owner)->withSession(['current_community_id' => $this->community->id]);
+    $s = $this->getJson($base)->json('data');
+    $this->postJson($base.'/finish', ['panel_community_id' => $this->community->id, 'command_id' => (string) Str::uuid(), 'expected_revision' => $s['state']['revision'], 'record_result' => false])->assertOk();
+    $this->getJson($grant['snapshot_url'])->assertStatus(410);
+    $this->postJson($grant['command_url'], $valid)->assertStatus(410);
+    $this->postJson($base.'/shot-access', $params)->assertConflict();
+});
+
 test('manager creates a quick session without sports history or profile sport restriction', function (): void {
     $response = ($this->createQuick)()->assertCreated()->assertJsonPath('data.mode', 'quick')->assertJsonPath('data.result', null)
         ->assertJsonPath('data.state.schema_version', 'basketball.v1')->assertJsonPath('data.state.home.score', 0);
@@ -354,6 +458,43 @@ test('scoreboard renders all console and display modes without private deadlines
     $this->get('/panel/scoreboard?sport_category_id=')->assertOk();
 });
 
+test('ordinary and focus consoles share all tools and authoritative editor contracts', function (): void {
+    $s = ($this->createQuick)()->assertCreated()->json('data');
+    $base = '/panel/scoreboard/sessions/'.$s['id'];
+    foreach (['main', 'shot'] as $mode) {
+        $pages = [];
+        foreach (['', '&focus=1'] as $focus) {
+            $html = $this->get($base.'?console='.$mode.$focus)->assertOk()->getContent();
+            expect($html)->toContain('initFocusControls(initScoreboardPage())');
+            $dom = new DOMDocument;
+            @$dom->loadHTML($html);
+            $xpath = new DOMXPath($dom);
+            $tools = $xpath->query('//*[@data-console-tools]');
+            expect($tools->length)->toBe(1);
+            $commands = [];
+            foreach ($xpath->query('//*[@data-scoreboard-cmd]') as $node) {
+                $payload = json_decode($node->getAttribute('data-scoreboard-payload') ?: '{}', true);
+                ksort($payload);
+                $commands[] = $node->getAttribute('data-scoreboard-cmd').json_encode($payload);
+            }
+            sort($commands);
+            $pages[] = [$dom->saveHTML($tools->item(0)), $commands];
+            expect($xpath->query('//form[@data-clock-form="game_clock.set"]')->length)->toBe(0);
+            expect($xpath->query('//form[@id="sb-period" and @data-focus-period]')->length)->toBe(1);
+            expect($xpath->query('//*[@data-reset="team_fouls.reset"]')->length)->toBe(0);
+            if ($mode === 'main') {
+                expect($xpath->query('//button[@data-focus-open="sb-time"]//*[@id="displayGameClock"]')->length)->toBe(1);
+            }
+            $ids = [];
+            foreach ($xpath->query('//*[@id]') as $node) {
+                expect($ids)->not->toContain($node->getAttribute('id'));
+                $ids[] = $node->getAttribute('id');
+            }
+        }
+        expect($pages[0])->toBe($pages[1]);
+    }
+});
+
 test('focus console keeps protected controls and optional tools without panel chrome', function (): void {
     $s = ($this->createQuick)()->assertCreated()->json('data');
     $base = '/panel/scoreboard/sessions/'.$s['id'];
@@ -363,6 +504,7 @@ test('focus console keeps protected controls and optional tools without panel ch
         ->assertSee('id="sb-control-fields" disabled', false)
         ->assertSee('id="sb-review"', false)->assertSee('data-scoreboard-cmd="game_clock.stop"', false)
         ->assertDontSee('navbar-vertical', false)->getContent();
+    expect($html)->toContain('id="sb-shot-share-form"', 'Bagikan Kontrol', 'Cabut Akses');
     expect($html)->not->toContain('data-reset="team_fouls.reset"');
     expect($html)->toContain('class="clock-reset" data-focus-open="sb-time"');
     expect($html)->toContain('data-period-step="1"', 'id="sb-duration-form"', 'id="sb-period-history"', 'data-time-reset');

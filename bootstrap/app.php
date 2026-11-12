@@ -32,6 +32,9 @@ return Application::configure(basePath: dirname(__DIR__))
             Route::prefix('api/v1/internal/agent-office')
                 ->middleware(AgentOfficeGateway::class)
                 ->group(app_path('Modules/Report/Routes/api.php'));
+            Route::prefix('api/v1/internal/agent-office/social-relay')
+                ->middleware(AgentOfficeGateway::class)
+                ->group(app_path('Modules/Communication/Routes/social_relay.php'));
 
             Route::middleware('web')
                 ->group(base_path('routes/admin.php'));

@@ -39,6 +39,18 @@ test('period ledger reopens points and fouls without changing total and uses con
     expect($s['period_history'])->toBe([])->and($s['home']['score'])->toBe(5)->and($s['away']['score'])->toBe(1)->and($s['period_active']['home']['score'])->toBe(5);
 });
 
+test('shot preset twelve and one second adjustment preserve running state', function (): void {
+    $e = new BasketballEngine;
+    $s = $e->initial('fixture', 'H', 'A', 0);
+    $s = $e->apply($s, 'shot_clock.reset', ['duration_ms' => 12000], 0);
+    expect($s['shot_clock']['remaining_ms'])->toBe(12000);
+    $s = $e->apply($s, 'game_clock.start', [], 0);
+    $s = $e->apply($s, 'shot_clock.start', [], 0);
+    $s = $e->apply($s, 'shot_clock.adjust', ['delta_ms' => 1000], 1000);
+    expect($s['shot_clock']['remaining_ms'])->toBe(12000)->and($s['shot_clock']['running'])->toBeTrue()->and($s['shot_clock']['deadline_ms'])->toBe(13000);
+    expect(fn () => $e->apply($s, 'shot_clock.adjust', ['delta_ms' => 2000], 1000))->toThrow(ValidationException::class);
+});
+
 test('restored first period converts legacy baseline into editable active points', function (): void {
     $e = new BasketballEngine;
     $s = $e->initial('fixture', 'Home', 'Away', 0);
@@ -128,7 +140,7 @@ test('basketball rejects malformed unsafe and out of range commands', function (
     ['score.adjust', ['team' => 'home', 'delta' => '2']],
     ['score.adjust', ['team' => [], 'delta' => 2]],
     ['score.adjust', ['team' => 'home', 'delta' => 2, 'extra' => true]],
-    ['shot_clock.start', []], ['shot_clock.reset', ['duration_ms' => 12000]],
+    ['shot_clock.start', []], ['shot_clock.reset', ['duration_ms' => 13000]],
     ['shot_clock.set', ['remaining_ms' => 99001]], ['game_clock.set', ['remaining_ms' => -1]],
     ['shot_clock.display.set', ['enabled' => 'false']], ['period.set', ['type' => 'regulation', 'number' => 5]],
     ['period.set', ['type' => 'overtime', 'number' => 0]], ['session.reset', ['confirmed' => false, 'reason' => 'Reset']],

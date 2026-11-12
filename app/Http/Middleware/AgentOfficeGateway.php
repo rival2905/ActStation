@@ -30,7 +30,13 @@ class AgentOfficeGateway
         $keyId = null;
         $status = 403;
         $code = 'gateway_forbidden';
+        $relayAction = $request->route()?->defaults['relay_action'] ?? null;
+        $relay = in_array($relayAction, ['publish', 'pull', 'ack'], true);
+        $action = $relay ? 'social-relay/'.$relayAction : 'system-health';
         try {
+            if ($relay && ! config('agent_office.social_relay_enabled')) {
+                return $this->failure($id, 403, $code);
+            }
             if (! config('agent_office.enabled')) {
                 return $this->failure($id, $status, $code);
             }
@@ -52,10 +58,11 @@ class AgentOfficeGateway
             $target = (string) $request->server('REQUEST_URI');
             $lengths = $request->headers->all('Content-Length');
             $headerBytes = json_encode($request->headers->all());
-            if (strlen((string) $request->server('QUERY_STRING')) > 1024 || $headerBytes === false || strlen($headerBytes) > 8192 || ($lengths !== [] && $lengths !== ['0'])) {
+            if (strlen((string) $request->server('QUERY_STRING')) > 1024 || $headerBytes === false || strlen($headerBytes) > 8192 || (! $relay && $lengths !== [] && $lengths !== ['0']) || ($relay && (strlen($request->getContent()) > 262144 || ($lengths !== [] && $lengths !== [(string) strlen($request->getContent())])))) {
                 return $this->failure($id, $status, $code);
             }
-            if ($request->method() !== 'GET' || $request->getContent() !== '' || $request->headers->has('Idempotency-Key') || $request->headers->has('Transfer-Encoding') || strlen($target) > 2048 || $target !== $request->getRequestUri() || ! preg_match('~^/api/v1/internal/agent-office/system-health(?:\?[^#\s]*)?$~D', $target)) {
+            $expectedTarget = '/api/v1/internal/agent-office/'.$action;
+            if (($relay ? ($request->method() !== 'POST' || $target !== $expectedTarget || $request->header('Content-Type') !== 'application/json') : ($request->method() !== 'GET' || $request->getContent() !== '' || $request->headers->has('Idempotency-Key') || ! preg_match('~^/api/v1/internal/agent-office/system-health(?:\?[^#\s]*)?$~D', $target))) || $request->headers->has('Transfer-Encoding') || strlen($target) > 2048 || $target !== $request->getRequestUri()) {
                 return $this->failure($id, $status, $code);
             }
             $values = [];
@@ -69,6 +76,14 @@ class AgentOfficeGateway
             if ($values['Accept'] !== 'application/json' || ! preg_match('/^Bearer ([1-9][0-9]*\|[A-Za-z0-9]{40,128})$/D', $values['Authorization'], $match) || ! preg_match('/^[A-Za-z0-9_-]{1,64}$/D', $values['X-Agent-Key-Id']) || ! preg_match('/^[0-9]{10}$/D', $values['X-Agent-Timestamp']) || abs(time() - (int) $values['X-Agent-Timestamp']) > 60 || ! preg_match('/^[a-f0-9]{64}$/D', $values['X-Agent-Nonce']) || ! preg_match('/^[a-f0-9]{64}$/D', $values['X-Agent-Signature'])) {
                 return $this->failure($id, $status, $code);
             }
+            $idempotency = '';
+            if ($relay) {
+                $ids = $request->headers->all('Idempotency-Key');
+                if (count($ids) !== 1 || ! preg_match('/^[a-f0-9-]{36}$/D', $ids[0])) {
+                    return $this->failure($id, 403, $code);
+                }
+                $idempotency = $ids[0];
+            }
             $token = $match[1];
             $keyId = $values['X-Agent-Key-Id'];
             try {
@@ -76,7 +91,7 @@ class AgentOfficeGateway
             } catch (\RuntimeException) {
                 return $this->failure($id, $status, $code);
             }
-            $expected = $security->signature('GET', $target, $values['X-Agent-Timestamp'], $values['X-Agent-Nonce'], $keyId, $token, '', '', $key['secret']);
+            $expected = $security->signature($request->method(), $target, $values['X-Agent-Timestamp'], $values['X-Agent-Nonce'], $keyId, $token, $relay ? $request->getContent() : '', $idempotency, $key['secret']);
             if (! hash_equals($expected, $values['X-Agent-Signature'])) {
                 return $this->failure($id, $status, $code);
             }
@@ -92,18 +107,35 @@ class AgentOfficeGateway
             }
             $principal = $accessToken->tokenable;
             $principalId = $principal->getKey();
-            if (! $principal->enabled || $principalId !== $key['principal_id'] || ! is_array($accessToken->abilities) || in_array('*', $accessToken->abilities, true) || ! in_array('agent:health-read', $accessToken->abilities, true)) {
+            if (! $principal->enabled || $principalId !== $key['principal_id'] || ! is_array($accessToken->abilities) || in_array('*', $accessToken->abilities, true) || ($relay ? count(array_intersect(['agent:social-collector', 'agent:social-office', 'agent:social-sender'], $accessToken->abilities)) !== 1 || count($accessToken->abilities) !== 1 : ! in_array('agent:health-read', $accessToken->abilities, true))) {
                 return $this->failure($id, $status, $code);
             }
             if (! $state->hit('principal:'.$principalId, 60, 60)) {
                 return $this->failure($id, 429, 'gateway_rate_limited');
             }
             $request->setUserResolver(fn () => $principal->withAccessToken($accessToken));
+            if ($relay) {
+                $body = json_decode($request->getContent(), true, 32, JSON_THROW_ON_ERROR);
+                if (! is_array($body) || ! str_starts_with(ltrim($request->getContent()), '{')) {
+                    return $this->failure($id, 422, 'relay_payload_invalid');
+                }
+                $request->replace($body);
+            }
             $response = $next($request);
+            if ($relay && $response->getStatusCode() >= 500) {
+                $response = response()->json(['message' => 'relay_unavailable'], 503);
+            }
             $status = $response->getStatusCode();
             $code = $status === 200 ? 'gateway_ok' : 'gateway_unavailable';
-            if (! $this->audit(['request_id' => $id, 'principal_id' => $principalId, 'key_id' => $keyId, 'action' => 'system-health', 'status' => $status, 'code' => $code, 'at' => gmdate('c')])) {
+            if (! $this->audit(['request_id' => $id, 'principal_id' => $principalId, 'key_id' => $keyId, 'action' => $action, 'status' => $status, 'code' => $code, 'at' => gmdate('c')])) {
                 return $this->failure($id, 503, 'gateway_unavailable');
+            }
+
+            if ($relay) {
+                $ts = (string) time();
+                $nonce = bin2hex(random_bytes(32));
+                $canonical = implode("\n", ['office-response-v1', (string) $status, $values['X-Agent-Nonce'], $ts, $nonce, hash('sha256', (string) $response->getContent())]);
+                $response->headers->add(['X-Office-Key-Id' => $keyId, 'X-Office-Timestamp' => $ts, 'X-Office-Nonce' => $nonce, 'X-Office-Request-Nonce' => $values['X-Agent-Nonce'], 'X-Office-Signature' => hash_hmac('sha256', $canonical, $key['secret'])]);
             }
 
             return $response->header('Cache-Control', 'no-store, private')->header('X-Request-Id', $id);

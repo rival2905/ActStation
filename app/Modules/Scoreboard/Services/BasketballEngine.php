@@ -17,7 +17,7 @@ class BasketballEngine
         return ['schema_version' => 'basketball.v1', 'sport' => 'basketball', 'session_id' => $sessionId,
             'revision' => 0, 'authority_epoch' => 1, 'authority' => 'virtual_server',
             'ruleset_id' => 'basketball-5x5-training', 'ruleset_version' => 1,
-            'ruleset' => ['regulation_periods' => 4, 'period_ms' => 600000, 'overtime_ms' => 300000, 'shot_presets_ms' => [24000, 14000], 'timeouts_max' => 5, 'training_only' => true],
+            'ruleset' => ['regulation_periods' => 4, 'period_ms' => 600000, 'overtime_ms' => 300000, 'shot_presets_ms' => [24000, 14000, 12000], 'timeouts_max' => 5, 'training_only' => true],
             'home' => $team($home), 'away' => $team($away), 'period' => ['type' => 'regulation', 'number' => 1],
             'period_history' => [],
             'period_active' => [
@@ -70,6 +70,7 @@ class BasketballEngine
         $allowed = match ($type) {
             'score.adjust', 'team_fouls.adjust', 'timeouts_used.adjust' => ['team', 'delta'],
             'game_clock.set', 'shot_clock.set' => ['remaining_ms'],
+            'shot_clock.adjust' => ['delta_ms'],
             'shot_clock.reset', 'timeout_clock.start', 'period.duration.set' => ['duration_ms'],
             'shot_clock.display.set' => ['enabled'], 'possession.set' => ['team'],
             'period.set' => ['type', 'number'], 'team_fouls.reset', 'session.reset' => ['confirmed', 'reason'],
@@ -151,11 +152,19 @@ class BasketballEngine
                 $s[$key]['remaining_ms'] = $this->integer($p['remaining_ms'], 0, $key === 'game_clock' ? 5999000 : 99000);
                 break;
             case 'shot_clock.reset':
-                if (! in_array($p['duration_ms'], [24000, 14000], true)) {
-                    $this->invalid('Preset shot hanya 24 atau 14 detik.');
+                if (! in_array($p['duration_ms'], [24000, 14000, 12000], true)) {
+                    $this->invalid('Preset shot hanya 24, 14, atau 12 detik.');
                 }
                 $s['shot_clock']['remaining_ms'] = $p['duration_ms'];
                 $s['shot_clock']['deadline_ms'] = $s['shot_clock']['running'] ? $nowMs + $p['duration_ms'] : null;
+                break;
+            case 'shot_clock.adjust':
+                if (! in_array($p['delta_ms'], [-1000, 1000], true)) {
+                    $this->invalid('Koreksi shot hanya tambah atau kurang satu detik.');
+                }
+                $remaining = $this->integer($s['shot_clock']['remaining_ms'] + $p['delta_ms'], 0, 99000);
+                $s['shot_clock']['remaining_ms'] = $remaining;
+                $s['shot_clock']['deadline_ms'] = $s['shot_clock']['running'] ? $nowMs + $remaining : null;
                 break;
             case 'shot_clock.display.set':
                 if (! is_bool($p['enabled'])) {

@@ -14,12 +14,17 @@ use App\Modules\Event\Http\Controllers\Public\PublicResultController;
 use App\Modules\Event\Http\Controllers\Public\PublicScheduleController;
 use App\Modules\Event\Http\Controllers\Public\PublicTicketPurchaseController;
 use App\Modules\Event\Http\Controllers\Public\PublicTournamentController;
+use App\Modules\Scoreboard\Http\Controllers\PublicScoreboardController;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 // Landing Page Publik (Falcon Theme)
 Route::get('/', [PublicEventController::class, 'landing'])->name('landing');
+Route::get('scoreboard', [PublicScoreboardController::class, 'index'])->name('scoreboard.public.index');
+Route::get('scoreboard/sessions/{session}', [PublicScoreboardController::class, 'show'])->whereUuid('session')->name('scoreboard.public.show');
+Route::get('scoreboard/sessions/{session}/auth/{action}', [PublicScoreboardController::class, 'authenticate'])
+    ->whereUuid('session')->whereIn('action', ['register', 'login'])->middleware('throttle:20,1')->name('scoreboard.public.auth');
 Route::get('panduan-event', fn () => view('public.panduan'))->name('panduan.event');
 Route::get('sitemap.xml', [PublicEventController::class, 'sitemap'])->name('sitemap');
 
