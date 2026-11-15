@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Models\AgentOfficePrincipal;
 use App\Services\AgentOfficeSecurity;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 test('operator rejects stale publication and preserves encrypted effective version', function (): void {
     $f = gatewayFixture();
@@ -59,6 +60,57 @@ test('invalid provisioning never queries database or writes output', function ()
         expect(AgentOfficePrincipal::whereKey($f['principal']->id)->exists())->toBeTrue();
     } finally {
         DB::disableQueryLog();
+        gatewayCleanup($f);
+    }
+});
+
+test('provisioning defaults to health read and rejects unknown or wildcard abilities before database', function (): void {
+    $f = gatewayFixture();
+    try {
+        $this->artisan('agent-office:provision', ['--name' => 'Health default', '--cidr' => ['127.0.0.1/32'], '--output' => $f['dir'].'/health.json'])->assertSuccessful();
+        $health = json_decode(file_get_contents($f['dir'].'/health.json'), true, 8, JSON_THROW_ON_ERROR);
+        expect($health['abilities'])->toBe(['agent:health-read'])
+            ->and(AgentOfficePrincipal::findOrFail($health['principal_id'])->tokens()->sole()->abilities)->toBe(['agent:health-read']);
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        foreach (['*', 'agent:admin', 'agent:social-collector,agent:social-sender', ' agent:social-sender', ''] as $i => $ability) {
+            $this->artisan('agent-office:provision', ['--name' => 'Bad ability', '--ability' => $ability, '--cidr' => ['127.0.0.1/32'], '--output' => $f['dir']."/bad-$i.json"])->assertFailed();
+            expect(is_file($f['dir']."/bad-$i.json"))->toBeFalse();
+        }
+        expect(DB::getQueryLog())->toBe([]);
+    } finally {
+        DB::disableQueryLog();
+        gatewayCleanup($f);
+    }
+});
+
+test('provisioned relay principal holds exactly one social ability and passes the real relay gateway', function (): void {
+    $f = gatewayFixture();
+    try {
+        config(['agent_office.social_relay_enabled' => true]);
+        $this->artisan('agent-office:provision', ['--name' => 'n8n collector', '--ability' => 'agent:social-collector', '--cidr' => ['127.0.0.1/32'], '--output' => $f['dir'].'/collector.json'])->assertSuccessful();
+        $c = json_decode(file_get_contents($f['dir'].'/collector.json'), true, 8, JSON_THROW_ON_ERROR);
+        expect($c['abilities'])->toBe(['agent:social-collector'])
+            ->and(AgentOfficePrincipal::findOrFail($c['principal_id'])->tokens()->sole()->abilities)->toBe(['agent:social-collector'])
+            ->and(substr(sprintf('%o', fileperms($f['dir'].'/collector.json')), -4))->toBeIn(['0600', '0666']);
+        $call = function (string $action, array $payload) use ($c) {
+            $target = '/api/v1/internal/agent-office/social-relay/'.$action;
+            $body = json_encode($payload, JSON_THROW_ON_ERROR);
+            $ts = (string) time();
+            $nonce = bin2hex(random_bytes(32));
+            $idem = (string) Str::uuid();
+            $sig = app(AgentOfficeSecurity::class)->signature('POST', $target, $ts, $nonce, $c['key_id'], $c['token'], $body, $idem, base64_decode($c['secret'], true));
+
+            return $this->call('POST', $target, [], [], [], ['REMOTE_ADDR' => '127.0.0.1', 'CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json',
+                'HTTP_AUTHORIZATION' => 'Bearer '.$c['token'], 'HTTP_X_AGENT_KEY_ID' => $c['key_id'], 'HTTP_X_AGENT_TIMESTAMP' => $ts, 'HTTP_X_AGENT_NONCE' => $nonce,
+                'HTTP_IDEMPOTENCY_KEY' => $idem, 'HTTP_X_AGENT_SIGNATURE' => $sig], $body);
+        };
+        $comment = ['account_ref' => 'actstationcontinent', 'platform' => 'instagram', 'media' => ['id' => '123', 'permalink' => 'https://www.instagram.com/p/synthetic/', 'published_at' => now()->subHour()->toIso8601String()],
+            'comments' => [['id' => '456', 'text' => 'synthetic', 'timestamp' => now()->subMinute()->toIso8601String()]], 'page' => 1];
+        $call('publish', ['channel' => 'comments', 'account_ref' => 'actstationcontinent', 'delivery_id' => (string) Str::uuid(), 'payload' => $comment])->assertCreated();
+        // Role matrix still applies: a collector cannot pull dispatch.
+        $call('pull', ['channel' => 'dispatch', 'account_ref' => 'actstationcontinent'])->assertForbidden();
+    } finally {
         gatewayCleanup($f);
     }
 });

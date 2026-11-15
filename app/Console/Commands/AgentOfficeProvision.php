@@ -12,11 +12,14 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
-#[Signature('agent-office:provision {--name=} {--cidr=*} {--output=} {--days=30} {--disable}')]
+#[Signature('agent-office:provision {--name=} {--ability=agent:health-read} {--cidr=*} {--output=} {--days=30} {--disable}')]
 #[Description('Provision or disable Agent Office machine credentials and security registry')]
 class AgentOfficeProvision extends Command
 {
-    protected $signature = 'agent-office:provision {--name=} {--cidr=*} {--output=} {--days=30} {--disable}';
+    // One ability per token; the gateway rejects relay tokens holding anything else.
+    private const ABILITIES = ['agent:health-read', 'agent:social-collector', 'agent:social-office', 'agent:social-sender'];
+
+    protected $signature = 'agent-office:provision {--name=} {--ability=agent:health-read} {--cidr=*} {--output=} {--days=30} {--disable}';
 
     protected $description = 'Provision or disable Agent Office machine credentials and security registry';
 
@@ -49,6 +52,13 @@ class AgentOfficeProvision extends Command
             return self::FAILURE;
         }
         $name = trim($name);
+
+        $ability = $this->option('ability');
+        if (! is_string($ability) || ! in_array($ability, self::ABILITIES, true)) {
+            $this->error('Invalid ability.');
+
+            return self::FAILURE;
+        }
 
         $daysOpt = $this->option('days');
         if (! is_numeric($daysOpt) || (string) (int) $daysOpt !== (string) $daysOpt) {
@@ -253,7 +263,7 @@ class AgentOfficeProvision extends Command
                 'enabled' => true,
             ]);
 
-            $tokenResult = $principal->createToken('agent-office', ['agent:health-read'], $tokenExpiry);
+            $tokenResult = $principal->createToken('agent-office', [$ability], $tokenExpiry);
             $plainToken = $tokenResult->plainTextToken;
 
             $newKeyEntry = [
@@ -295,7 +305,7 @@ class AgentOfficeProvision extends Command
                 'key_id' => $keyId,
                 'secret' => $secretBase64,
                 'token' => $plainToken,
-                'abilities' => ['agent:health-read'],
+                'abilities' => [$ability],
                 'expires_at' => $tokenExpiry->toIso8601String(),
                 'cidrs' => $validatedCidrs,
             ];
