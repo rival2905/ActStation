@@ -14,6 +14,6 @@ return [
     'admin_mfa_path' => storage_path('app/private/agent-office/admin-mfa.enc'),
     'registry_path' => storage_path('app/private/agent-office/registry.enc'),
     'state_path' => storage_path('app/private/agent-office/state.json'),
-    'audit_path' => storage_path('logs/agent-office.jsonl'),
+    'audit_path' => storage_path('app/private/agent-office/audit.jsonl'),
     'master_key' => env('AGENT_OFFICE_MASTER_KEY'),
 ];

@@ -75,7 +75,7 @@ class AgentOfficeSecurity
         $path = self::privatePath('agent_office.registry_path');
         $ciphertext = $this->cipher()->encryptString(json_encode($snapshot, JSON_THROW_ON_ERROR));
         $lock = fopen($path.'.lock', 'c+b');
-        if ($lock === false) {
+        if ($lock === false || ! chmod($path.'.lock', 0600)) {
             throw new RuntimeException('registry_lock_failed');
         }
         $temp = $path.'.'.bin2hex(random_bytes(8));
@@ -150,7 +150,7 @@ class AgentOfficeSecurity
         // Server filesystem authority only. Never decrypt registry or reset replay state.
         $path = self::privatePath('agent_office.registry_path').'.disabled';
         $lock = @fopen(substr($path, 0, -9).'.lock', 'c+b');
-        if ($lock === false || ! flock($lock, LOCK_EX)) {
+        if ($lock === false || ! chmod(substr($path, 0, -9).'.lock', 0600) || ! flock($lock, LOCK_EX)) {
             throw new RuntimeException('registry_lock_failed');
         }
         try {
@@ -198,7 +198,7 @@ class AgentOfficeSecurity
     {
         $path = self::privatePath('agent_office.registry_path');
         $f = fopen($path.'.lock', 'c+b');
-        if ($f === false) {
+        if ($f === false || ! chmod($path.'.lock', 0600)) {
             throw new RuntimeException('registry_lock_failed');
         }
         try {
@@ -276,7 +276,7 @@ class AgentOfficeSecurity
             throw new RuntimeException('audit_unavailable');
         }
         try {
-            if (! flock($f, LOCK_EX) || fstat($f)['size'] >= 10 * 1024 * 1024 || fwrite($f, $line) !== strlen($line) || ! fflush($f) || ! fsync($f)) {
+            if (! chmod($path, 0600) || ! flock($f, LOCK_EX) || fstat($f)['size'] >= 10 * 1024 * 1024 || fwrite($f, $line) !== strlen($line) || ! fflush($f) || ! fsync($f)) {
                 throw new RuntimeException('audit_unavailable');
             }
         } finally {

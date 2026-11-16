@@ -114,3 +114,10 @@ test('provisioned relay principal holds exactly one social ability and passes th
         gatewayCleanup($f);
     }
 });
+
+test('default audit lives in the private registry directory, never in shared logs', function (): void {
+    $config = require base_path('config/agent_office.php');
+    expect(dirname($config['audit_path']))->toBe(dirname($config['registry_path']))
+        ->and(dirname($config['state_path']))->toBe(dirname($config['registry_path']))
+        ->and(str_replace('\\', '/', $config['audit_path']))->not->toContain('storage/logs');
+});

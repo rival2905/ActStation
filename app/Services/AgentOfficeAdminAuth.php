@@ -94,7 +94,7 @@ class AgentOfficeAdminAuth
         }
         $cipher = new Encrypter($key, 'AES-256-GCM');
         $lock = @fopen($path.'.lock', 'c+b');
-        if ($lock === false) {
+        if ($lock === false || ! chmod($path.'.lock', 0600)) {
             throw new RuntimeException('mfa_store_unavailable');
         }
         $temp = $path.'.'.bin2hex(random_bytes(8));

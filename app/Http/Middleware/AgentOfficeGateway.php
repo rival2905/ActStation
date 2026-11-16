@@ -172,7 +172,12 @@ class AgentOfficeGateway
             return false;
         }
         $f = @fopen($path, 'ab');
-        if ($f === false) {
+        // Created files inherit umask (often 0644 on POSIX); the private directory check denies anything wider than 0600.
+        if ($f === false || ! chmod($path, 0600)) {
+            if ($f !== false) {
+                fclose($f);
+            }
+
             return false;
         }
         try {
