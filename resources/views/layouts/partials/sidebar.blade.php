@@ -636,6 +636,14 @@
                     </a>
                 </li>
                 <li class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('admin.social-relay.*') ? 'active' : '' }}" href="{{ route('admin.social-relay.index') }}" role="button">
+                        <div class="d-flex align-items-center">
+                            <span class="nav-link-icon"><span class="fas fa-comments"></span></span>
+                            <span class="nav-link-text ps-1">Monitoring Balas Komentar</span>
+                        </div>
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a class="nav-link {{ request()->routeIs('admin.settings.email*') ? 'active' : '' }}" href="{{ route('admin.settings.email') }}" role="button">
                         <div class="d-flex align-items-center">
                             <span class="nav-link-icon"><span class="fas fa-envelope"></span></span>

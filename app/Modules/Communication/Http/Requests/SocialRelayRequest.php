@@ -152,9 +152,11 @@ final class SocialRelayRequest extends FormRequest
         }
 
         if ($channel === 'dispatch') {
+            // Scheduled dispatch: Office hands over an approved reply with its send time; no expiry while waiting.
             return $publishBase + [
-                'expires_at' => ['required', 'string', 'date', 'regex:/(?:Z|[+-][0-9]{2}:[0-9]{2})$/D', 'same:payload.lease_expires_at'],
-                'payload' => ['required', 'array:item_id,account_ref,platform,account_id,comment_id,media_id,lane,reply_text,dm_text,lease_token,lease_expires_at'],
+                'expires_at' => ['prohibited'],
+                'not_before' => ['required', 'string', 'date', 'regex:/(?:Z|[+-][0-9]{2}:[0-9]{2})$/D'],
+                'payload' => ['required', 'array:item_id,account_ref,platform,account_id,comment_id,media_id,lane,reply_text,dm_text,lease_token'],
                 'payload.item_id' => ['required', 'string', 'uuid'],
                 'payload.account_ref' => ['required', 'string', 'max:80', 'regex:/^[a-z0-9_-]+$/D', Rule::in($accounts)],
                 'payload.platform' => ['required', 'in:instagram'],
@@ -165,7 +167,6 @@ final class SocialRelayRequest extends FormRequest
                 'payload.reply_text' => ['required', 'string', 'max:8000'],
                 'payload.dm_text' => ['nullable', 'string', 'max:1000'],
                 'payload.lease_token' => ['required', 'string', 'regex:/^[a-f0-9]{64}$/D'],
-                'payload.lease_expires_at' => ['required', 'string', 'date', 'regex:/(?:Z|[+-][0-9]{2}:[0-9]{2})$/D'],
             ];
         }
 
@@ -182,7 +183,7 @@ final class SocialRelayRequest extends FormRequest
                 'pull' => ['channel', 'account_ref'],
                 'ack' => ['channel', 'account_ref', 'delivery_id', 'claim_token'],
                 'publish' => $channel === 'dispatch'
-                    ? ['channel', 'account_ref', 'delivery_id', 'payload', 'expires_at']
+                    ? ['channel', 'account_ref', 'delivery_id', 'payload', 'not_before']
                     : ['channel', 'account_ref', 'delivery_id', 'payload'],
                 default => [],
             };
@@ -200,7 +201,7 @@ final class SocialRelayRequest extends FormRequest
                 $allowedPayload = match ($channel) {
                     'comments' => ['account_ref', 'platform', 'media', 'comments', 'page'],
                     'receipts' => ['account_ref', 'item_id', 'lease_token', 'reply', 'dm', 'error_code'],
-                    'dispatch' => ['item_id', 'account_ref', 'platform', 'account_id', 'comment_id', 'media_id', 'lane', 'reply_text', 'dm_text', 'lease_token', 'lease_expires_at'],
+                    'dispatch' => ['item_id', 'account_ref', 'platform', 'account_id', 'comment_id', 'media_id', 'lane', 'reply_text', 'dm_text', 'lease_token'],
                     default => [],
                 };
 
@@ -275,25 +276,16 @@ final class SocialRelayRequest extends FormRequest
                         $validator->errors()->add('payload.dm_text', 'DM text exceeds 1000 bytes.');
                     }
 
-                    $now = Carbon::now();
-                    foreach (['expires_at', 'payload.lease_expires_at'] as $field) {
-                        $val = $this->input($field);
-                        if (is_string($val) && preg_match('/(?:Z|[+-][0-9]{2}:[0-9]{2})$/D', $val)) {
-                            try {
-                                $parsed = Carbon::parse($val);
-                                if ($parsed->lte($now)) {
-                                    $validator->errors()->add($field, 'Expiry must be in the future.');
-                                } elseif ($parsed->gt($now->copy()->addSeconds(120))) {
-                                    $validator->errors()->add($field, 'Expiry must not exceed 120 seconds in the future.');
-                                }
-                            } catch (\Throwable) {
-                                $validator->errors()->add($field, 'Invalid expiry timestamp.');
+                    // ponytail: schedule window 24 h either side (a retried handover may carry a past slot); widen only with a cancel action.
+                    $val = $this->input('not_before');
+                    if (is_string($val) && preg_match('/(?:Z|[+-][0-9]{2}:[0-9]{2})$/D', $val)) {
+                        try {
+                            if (abs(Carbon::parse($val)->diffInSeconds(Carbon::now())) > 86400) {
+                                $validator->errors()->add('not_before', 'Schedule must be within 24 hours.');
                             }
+                        } catch (\Throwable) {
+                            $validator->errors()->add('not_before', 'Invalid schedule timestamp.');
                         }
-                    }
-
-                    if ($this->input('expires_at') !== $this->input('payload.lease_expires_at')) {
-                        $validator->errors()->add('expires_at', 'expires_at must match payload.lease_expires_at.');
                     }
                 }
             }
