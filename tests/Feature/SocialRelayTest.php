@@ -156,6 +156,52 @@ test('scheduled dispatch waits without expiry, releases when due, keeps a 45 sec
     }
 });
 
+test('reply_dm dispatch carries the DM to the sender and a sent DM receipt traces as terkirim', function () {
+    $f = relayFixture();
+    try {
+        $body = relayDispatch();
+        $body['payload']['lane'] = 'reply_dm';
+        $body['payload']['dm_text'] = 'Perkenalkan, saya Kenari dari ActStation Continent. Request rumahmu sudah kami catat.';
+        relayCall($this, $f, 'office', 'publish', $body)->assertCreated();
+        $dispatch = ['channel' => 'dispatch', 'account_ref' => 'actstationcontinent'];
+        $claim = relayCall($this, $f, 'sender', 'pull', $dispatch)->assertOk()->json('data');
+        expect($claim['payload'])->toMatchArray(['lane' => 'reply_dm', 'dm_text' => $body['payload']['dm_text']]);
+        relayCall($this, $f, 'sender', 'ack', $dispatch + ['delivery_id' => $body['delivery_id'], 'claim_token' => $claim['claim_token']])->assertOk();
+        relayCall($this, $f, 'sender', 'publish', ['channel' => 'receipts', 'account_ref' => 'actstationcontinent', 'delivery_id' => (string) Str::uuid(),
+            'payload' => ['account_ref' => 'actstationcontinent', 'item_id' => $body['payload']['item_id'], 'lease_token' => $body['payload']['lease_token'],
+                'reply' => ['state' => 'sent', 'id' => '789'], 'dm' => ['state' => 'sent', 'receipt_present' => true]]])->assertCreated();
+        expect(DB::table('social_relay_traces')->where('comment_id', '456')->first())->status->toBe('terkirim')->dm_state->toBe('sent')->lane->toBe('reply_dm');
+        Http::assertNothingSent();
+    } finally {
+        relayCleanup($f);
+    }
+});
+
+test('sircuan has its own mailbox: comments and dispatch never cross accounts, unknown accounts are refused', function () {
+    $f = relayFixture();
+    try {
+        $comment = array_replace(relayComment(), ['account_ref' => 'sircuan']);
+        relayCall($this, $f, 'collector', 'publish', ['channel' => 'comments', 'account_ref' => 'sircuan', 'delivery_id' => (string) Str::uuid(), 'payload' => $comment])->assertCreated();
+        relayCall($this, $f, 'office', 'pull', ['channel' => 'comments', 'account_ref' => 'actstationcontinent'])->assertNoContent();
+        expect(relayCall($this, $f, 'office', 'pull', ['channel' => 'comments', 'account_ref' => 'sircuan'])->assertOk()->json('data.payload.account_ref'))->toBe('sircuan');
+        $body = relayDispatch('457');
+        $body['account_ref'] = $body['payload']['account_ref'] = 'sircuan';
+        $body['payload']['account_id'] = '17841467588692125';
+        relayCall($this, $f, 'office', 'publish', $body)->assertCreated();
+        relayCall($this, $f, 'sender', 'pull', ['channel' => 'dispatch', 'account_ref' => 'actstationcontinent'])->assertNoContent();
+        expect(relayCall($this, $f, 'sender', 'pull', ['channel' => 'dispatch', 'account_ref' => 'sircuan'])->assertOk()->json('data.payload.comment_id'))->toBe('457')
+            ->and(DB::table('social_relay_traces')->where('comment_id', '457')->value('account_ref'))->toBe('sircuan');
+        relayCall($this, $f, 'collector', 'publish', ['channel' => 'comments', 'account_ref' => 'sir.cuan', 'delivery_id' => (string) Str::uuid(),
+            'payload' => array_replace(relayComment(), ['account_ref' => 'sir.cuan'])])->assertUnprocessable();
+        $mixed = relayDispatch('458');
+        $mixed['account_ref'] = 'sircuan';
+        relayCall($this, $f, 'office', 'publish', $mixed)->assertUnprocessable();
+        Http::assertNothingSent();
+    } finally {
+        relayCleanup($f);
+    }
+});
+
 test('relay permissions isolate collector office and sender and reject invalid signatures', function () {
     $f = relayFixture();
     try {
