@@ -5,8 +5,9 @@ declare(strict_types=1);
 return [
     'enabled' => (bool) env('AGENT_OFFICE_ENABLED', false),
     'social_relay_enabled' => (bool) env('AGENT_OFFICE_SOCIAL_RELAY_ENABLED', false),
-    // Instagram @actstationcontinent and @sir.cuan (account_ref "sircuan"); each account has its own mailbox and trace rows.
-    'social_relay_accounts' => ['actstationcontinent', 'sircuan'],
+    // Each platform account has its own mailbox and trace rows.
+    'social_relay_accounts' => ['actstationcontinent', 'sircuan', 'actstationcontinent-youtube'],
+    'social_relay_youtube_accounts' => ['actstationcontinent-youtube' => 'UCAuz2caKezp1CVrJ0HRUpsA'],
     'allow_loopback_http' => (bool) env('AGENT_OFFICE_LOOPBACK_HTTP', false),
     // Dedicated final proxy only; no implicit CDN, tunnel or framework proxy trust.
     'trusted_proxies' => array_values(array_filter(explode(',', (string) env('AGENT_OFFICE_TRUSTED_PROXIES', '')))),

@@ -99,6 +99,174 @@ function relayDispatch(string $comment = '456', array $replace = []): array
     return array_replace(['channel' => 'dispatch', 'account_ref' => 'actstationcontinent', 'delivery_id' => (string) Str::uuid(), 'not_before' => now()->toIso8601String(), 'payload' => $payload], $replace);
 }
 
+function relayYoutubeComment(): array
+{
+    $payload = relayComment();
+    $payload['account_ref'] = 'actstationcontinent-youtube';
+    $payload['platform'] = 'youtube';
+    $payload['media']['id'] = 'AbCdeF0_-12';
+    $payload['media']['permalink'] = 'https://www.youtube.com/watch?v=AbCdeF0_-12';
+    $payload['comments'][0]['id'] = 'Ugx_SYN-1.reply_2';
+    $payload['comments'][0]['username'] = str_repeat('u', 80);
+    $payload['comments'][0]['sender_id'] = 'UCAuz2caKezp1CVrJ0HRUpsA';
+
+    return $payload;
+}
+
+function relayYoutubeDispatch(): array
+{
+    $body = relayDispatch('Ugx_SYN-1.reply_2');
+    $body['account_ref'] = $body['payload']['account_ref'] = 'actstationcontinent-youtube';
+    $body['payload']['platform'] = 'youtube';
+    $body['payload']['account_id'] = 'UCAuz2caKezp1CVrJ0HRUpsA';
+    $body['payload']['media_id'] = 'AbCdeF0_-12';
+
+    return $body;
+}
+
+test('youtube relay comments deduplicate and pull without crossing instagram accounts', function () {
+    $f = relayFixture();
+    try {
+        $body = ['channel' => 'comments', 'account_ref' => 'actstationcontinent-youtube', 'delivery_id' => (string) Str::uuid(), 'payload' => relayYoutubeComment()];
+        $body['payload']['comments'][] = ['id' => '456', 'text' => 'Same literal ID, separate account', 'timestamp' => now()->subMinute()->toIso8601String()];
+        relayCall($this, $f, 'collector', 'publish', $body)->assertCreated();
+        relayCall($this, $f, 'collector', 'publish', $body)->assertOk()->assertJsonPath('data.duplicate', true);
+        $instagram = array_replace($body, ['account_ref' => 'actstationcontinent', 'payload' => relayComment()]);
+        relayCall($this, $f, 'collector', 'publish', $instagram)->assertCreated();
+        expect(DB::table('social_relay_messages')->where('delivery_id', $body['delivery_id'])->count())->toBe(2)
+            ->and(DB::table('social_relay_traces')->where('comment_id', '456')->count())->toBe(2);
+        $query = ['channel' => 'comments', 'account_ref' => 'actstationcontinent-youtube'];
+        $claim = relayCall($this, $f, 'office', 'pull', $query)->assertOk()->json('data');
+        expect($claim['payload'])->toEqual($body['payload']);
+        relayCall($this, $f, 'office', 'ack', $query + ['delivery_id' => $body['delivery_id'], 'claim_token' => $claim['claim_token']])->assertOk();
+        relayCall($this, $f, 'office', 'pull', $query)->assertNoContent();
+        expect(relayCall($this, $f, 'office', 'pull', ['channel' => 'comments', 'account_ref' => 'actstationcontinent'])->assertOk()->json('data.payload.platform'))->toBe('instagram');
+        $body['payload']['comments'][0]['text'] = 'Changed';
+        relayCall($this, $f, 'collector', 'publish', $body)->assertConflict();
+        Http::assertNothingSent();
+    } finally {
+        relayCleanup($f);
+    }
+});
+
+test('youtube relay dispatch and nonnumeric receipt retain ids and reply only state', function () {
+    $f = relayFixture();
+    try {
+        $body = relayYoutubeDispatch();
+        relayCall($this, $f, 'collector', 'publish', $body)->assertForbidden();
+        relayCall($this, $f, 'office', 'publish', $body)->assertCreated();
+        relayCall($this, $f, 'office', 'publish', $body)->assertOk()->assertJsonPath('data.duplicate', true);
+        relayCall($this, $f, 'sender', 'pull', ['channel' => 'dispatch', 'account_ref' => 'actstationcontinent'])->assertNoContent();
+        $query = ['channel' => 'dispatch', 'account_ref' => 'actstationcontinent-youtube'];
+        $claim = relayCall($this, $f, 'sender', 'pull', $query)->assertOk()->json('data');
+        expect($claim['payload'])->toEqual($body['payload']);
+        relayCall($this, $f, 'sender', 'ack', $query + ['delivery_id' => $body['delivery_id'], 'claim_token' => $claim['claim_token']])->assertOk();
+        $receipt = ['channel' => 'receipts', 'account_ref' => 'actstationcontinent-youtube', 'delivery_id' => (string) Str::uuid(),
+            'payload' => ['account_ref' => 'actstationcontinent-youtube', 'item_id' => $body['payload']['item_id'], 'lease_token' => $body['payload']['lease_token'],
+                'reply' => ['state' => 'sent', 'id' => str_repeat('R', 78).'_-'], 'dm' => ['state' => 'skipped', 'receipt_present' => false]]];
+        relayCall($this, $f, 'sender', 'publish', $receipt)->assertCreated();
+        relayCall($this, $f, 'sender', 'publish', $receipt)->assertOk()->assertJsonPath('data.duplicate', true);
+        $trace = DB::table('social_relay_traces')->where('account_ref', 'actstationcontinent-youtube')->where('item_id', $body['payload']['item_id'])->first();
+        expect($trace)->status->toBe('terkirim')->reply_id->toBe($receipt['payload']['reply']['id'])->dm_state->toBe('skipped')->platform->toBe('youtube');
+        relayCall($this, $f, 'office', 'pull', ['channel' => 'receipts', 'account_ref' => 'actstationcontinent'])->assertNoContent();
+        $query = ['channel' => 'receipts', 'account_ref' => 'actstationcontinent-youtube'];
+        $claim = relayCall($this, $f, 'office', 'pull', $query)->assertOk()->json('data');
+        expect($claim['payload'])->toEqual($receipt['payload']);
+        relayCall($this, $f, 'office', 'ack', $query + ['delivery_id' => $receipt['delivery_id'], 'claim_token' => $claim['claim_token']])->assertOk();
+        Http::assertNothingSent();
+    } finally {
+        relayCleanup($f);
+    }
+});
+
+test('youtube relay rejects mismatched comments platform account video url and invalid identifiers', function () {
+    $f = relayFixture();
+    try {
+        $body = ['channel' => 'comments', 'account_ref' => 'actstationcontinent-youtube', 'delivery_id' => (string) Str::uuid(), 'payload' => relayYoutubeComment()];
+        foreach ([
+            ['platform', 'instagram'], ['account_ref', 'actstationcontinent'],
+            ['media.id', 'AbCdeF0_-1'], ['media.id', "AbCdeF0_-12\n"],
+            ['media.permalink', 'https://www.youtube.com/watch?v=AbCdeF0_-13'],
+            ['media.permalink', 'https://youtu.be/AbCdeF0_-12'],
+            ['media.permalink', 'https://www.youtube.com/watch?v=AbCdeF0_-12&feature=share'],
+            ['media.permalink', "https://www.youtube.com/watch?v=AbCdeF0_-12\n"],
+            ['comments.0.id', str_repeat('x', 81)], ['comments.0.id', 'Ugx+bad'], ['comments.0.id', "Ugx_valid\n"],
+            ['comments.0.sender_id', '17841480919882521'], ['comments.0.sender_id', "UCAuz2caKezp1CVrJ0HRUpsA\n"],
+            ['comments.0.username', str_repeat('u', 81)],
+        ] as [$field, $value]) {
+            $bad = $body;
+            data_set($bad['payload'], $field, $value);
+            relayCall($this, $f, 'collector', 'publish', $bad)->assertUnprocessable()->assertJsonValidationErrors('payload.'.$field);
+        }
+        $body['payload']['comments'][0]['id'] = str_repeat('C', 78).'_-';
+        unset($body['payload']['comments'][0]['sender_id']);
+        relayCall($this, $f, 'collector', 'publish', $body)->assertCreated();
+        $instagram = ['channel' => 'comments', 'account_ref' => 'actstationcontinent', 'delivery_id' => (string) Str::uuid(), 'payload' => relayComment()];
+        $instagram['payload']['platform'] = 'youtube';
+        relayCall($this, $f, 'collector', 'publish', $instagram)->assertUnprocessable()->assertJsonValidationErrors('payload.platform');
+        Http::assertNothingSent();
+    } finally {
+        relayCleanup($f);
+    }
+});
+
+test('youtube relay rejects mismatched dispatch platform channel ids and dm requests', function () {
+    $f = relayFixture();
+    try {
+        $body = relayYoutubeDispatch();
+        foreach ([
+            ['platform', 'instagram'], ['account_ref', 'sircuan'], ['account_id', 'UC0000000000000000000000'],
+            ['account_id', "UCAuz2caKezp1CVrJ0HRUpsA\n"], ['media_id', '123'], ['media_id', "AbCdeF0_-12\n"],
+            ['comment_id', str_repeat('x', 81)], ['comment_id', 'Ugx+bad'], ['comment_id', "Ugx_valid\n"],
+            ['lane', 'reply_dm'], ['dm_text', 'No YouTube DM'],
+        ] as [$field, $value]) {
+            $bad = $body;
+            $bad['payload'][$field] = $value;
+            relayCall($this, $f, 'office', 'publish', $bad)->assertUnprocessable()->assertJsonValidationErrors('payload.'.$field);
+        }
+        unset($body['payload']['dm_text']);
+        relayCall($this, $f, 'office', 'publish', $body)->assertUnprocessable()->assertJsonValidationErrors('payload.dm_text');
+        $instagram = relayDispatch();
+        $instagram['payload']['platform'] = 'youtube';
+        relayCall($this, $f, 'office', 'publish', $instagram)->assertUnprocessable()->assertJsonValidationErrors('payload.platform');
+        Http::assertNothingSent();
+    } finally {
+        relayCleanup($f);
+    }
+});
+
+test('youtube relay receipt derives id rules from account and refuses dm evidence', function () {
+    $f = relayFixture();
+    try {
+        $body = ['channel' => 'receipts', 'account_ref' => 'actstationcontinent-youtube', 'delivery_id' => (string) Str::uuid(),
+            'payload' => ['account_ref' => 'actstationcontinent-youtube', 'item_id' => (string) Str::uuid(), 'lease_token' => str_repeat('a', 64),
+                'reply' => ['state' => 'sent', 'id' => 'Ugx_REPLY-1.2'], 'dm' => ['state' => 'skipped', 'receipt_present' => false]]];
+        foreach ([
+            ['reply.id', str_repeat('x', 81)], ['reply.id', 'Ugx+bad'], ['reply.id', "Ugx_valid\n"],
+            ['dm.state', 'sent'], ['dm.state', 'failed'], ['dm.state', 'unknown'],
+            ['dm.receipt_present', true], ['dm.receipt_present', 0], ['dm.receipt_present', '0'],
+            ['account_ref', 'actstationcontinent'], ['platform', 'youtube'], ['error_code', 'untrusted_vendor_detail'],
+            ['error_code', 'meta_rejected'], ['error_code', 'meta_rate_limited'],
+        ] as [$field, $value]) {
+            $bad = $body;
+            data_set($bad['payload'], $field, $value);
+            relayCall($this, $f, 'sender', 'publish', $bad)->assertUnprocessable()->assertJsonValidationErrors($field === 'platform' ? 'payload' : 'payload.'.$field);
+        }
+        foreach (['youtube_rejected', 'youtube_rate_limited', 'transport_timeout', 'readback_mismatch', 'transport_failed'] as $code) {
+            $body['delivery_id'] = (string) Str::uuid();
+            $body['payload']['reply'] = ['state' => 'failed'];
+            $body['payload']['error_code'] = $code;
+            relayCall($this, $f, 'sender', 'publish', $body)->assertCreated();
+        }
+        $body['account_ref'] = $body['payload']['account_ref'] = 'actstationcontinent';
+        $body['payload']['reply'] = ['state' => 'sent', 'id' => 'Ugx_REPLY-1.2'];
+        relayCall($this, $f, 'sender', 'publish', $body)->assertUnprocessable()->assertJsonValidationErrors('payload.reply.id');
+        Http::assertNothingSent();
+    } finally {
+        relayCleanup($f);
+    }
+});
+
 test('relay claimed dispatch never redelivers after expiry or lost acknowledgement', function () {
     $f = relayFixture();
     try {

@@ -89,6 +89,12 @@ final class SocialRelayRequest extends FormRequest
     public function rules(): array
     {
         $accounts = (array) config('agent_office.social_relay_accounts', []);
+        $youtubeAccounts = (array) config('agent_office.social_relay_youtube_accounts', []);
+        $accountRef = $this->input('account_ref');
+        $youtube = is_string($accountRef) && array_key_exists($accountRef, $youtubeAccounts);
+        $platform = $youtube ? 'youtube' : 'instagram';
+        $commentId = $youtube ? 'regex:/^[A-Za-z0-9_.-]{1,80}$/D' : 'regex:/^[0-9]+$/D';
+        $mediaId = $youtube ? 'regex:/^[A-Za-z0-9_-]{11}$/D' : 'regex:/^[0-9]+$/D';
         $action = $this->action();
         $channel = $this->input('channel');
 
@@ -118,18 +124,18 @@ final class SocialRelayRequest extends FormRequest
                 'expires_at' => ['prohibited'],
                 'payload' => ['required', 'array:account_ref,platform,media,comments,page'],
                 'payload.account_ref' => ['required', 'string', 'max:80', 'regex:/^[a-z0-9_-]+$/D', Rule::in($accounts)],
-                'payload.platform' => ['required', 'in:instagram'],
+                'payload.platform' => ['required', 'in:'.$platform],
                 'payload.media' => ['required', 'array:id,permalink,published_at'],
-                'payload.media.id' => ['required', 'string', 'max:80', 'regex:/^[0-9]+$/D'],
-                'payload.media.permalink' => ['required', 'string', 'max:300', 'regex:~^https://www\.instagram\.com/(?:p|reel)/[A-Za-z0-9_-]+/$~D'],
+                'payload.media.id' => ['required', 'string', 'max:80', $mediaId],
+                'payload.media.permalink' => ['required', 'string', 'max:300', $youtube ? 'regex:~^https://www\.youtube\.com/watch\?v=[A-Za-z0-9_-]{11}$~D' : 'regex:~^https://www\.instagram\.com/(?:p|reel)/[A-Za-z0-9_-]+/$~D'],
                 'payload.media.published_at' => ['required', 'date', 'before_or_equal:now', 'regex:/(?:Z|[+-][0-9]{2}:[0-9]{2})$/D'],
                 'payload.comments' => ['present', 'array', 'list', 'max:200'],
                 'payload.comments.*' => ['required', 'array:id,text,timestamp,username,sender_id'],
-                'payload.comments.*.id' => ['required', 'string', 'max:80', 'distinct:strict', 'regex:/^[0-9]+$/D'],
+                'payload.comments.*.id' => ['required', 'string', 'max:80', 'distinct:strict', $commentId],
                 'payload.comments.*.text' => ['present', 'string', 'max:10000'],
                 'payload.comments.*.timestamp' => ['required', 'date', 'before_or_equal:now', 'regex:/(?:Z|[+-][0-9]{2}:[0-9]{2})$/D'],
                 'payload.comments.*.username' => ['sometimes', 'nullable', 'string', 'max:80'],
-                'payload.comments.*.sender_id' => ['sometimes', 'nullable', 'string', 'max:80', 'regex:/^[0-9]+$/D'],
+                'payload.comments.*.sender_id' => ['sometimes', 'nullable', 'string', 'max:80', $youtube ? 'regex:/^UC[A-Za-z0-9_-]{22}$/D' : 'regex:/^[0-9]+$/D'],
                 'payload.page' => ['required', 'integer', 'min:1', 'max:10000'],
             ];
         }
@@ -143,11 +149,11 @@ final class SocialRelayRequest extends FormRequest
                 'payload.lease_token' => ['required', 'string', 'regex:/^[a-f0-9]{64}$/D'],
                 'payload.reply' => ['required', 'array:state,id'],
                 'payload.reply.state' => ['required', 'in:sent,failed,unknown,skipped'],
-                'payload.reply.id' => ['required_if:payload.reply.state,sent', 'prohibited_unless:payload.reply.state,sent', 'string', 'max:80', 'regex:/^[0-9]+$/D'],
+                'payload.reply.id' => ['required_if:payload.reply.state,sent', 'prohibited_unless:payload.reply.state,sent', 'string', 'max:80', $commentId],
                 'payload.dm' => ['required', 'array:state,receipt_present'],
-                'payload.dm.state' => ['required', 'in:sent,failed,unknown,skipped'],
+                'payload.dm.state' => ['required', $youtube ? 'in:skipped' : 'in:sent,failed,unknown,skipped'],
                 'payload.dm.receipt_present' => ['required', 'boolean'],
-                'payload.error_code' => ['sometimes', 'nullable', 'in:meta_rejected,meta_rate_limited,transport_timeout,readback_mismatch,transport_failed'],
+                'payload.error_code' => ['sometimes', 'nullable', $youtube ? 'in:youtube_rejected,youtube_rate_limited,transport_timeout,readback_mismatch,transport_failed' : 'in:meta_rejected,meta_rate_limited,transport_timeout,readback_mismatch,transport_failed'],
             ];
         }
 
@@ -159,13 +165,13 @@ final class SocialRelayRequest extends FormRequest
                 'payload' => ['required', 'array:item_id,account_ref,platform,account_id,comment_id,media_id,lane,reply_text,dm_text,lease_token'],
                 'payload.item_id' => ['required', 'string', 'uuid'],
                 'payload.account_ref' => ['required', 'string', 'max:80', 'regex:/^[a-z0-9_-]+$/D', Rule::in($accounts)],
-                'payload.platform' => ['required', 'in:instagram'],
-                'payload.account_id' => ['required', 'string', 'max:80', 'regex:/^[0-9]+$/D'],
-                'payload.comment_id' => ['required', 'string', 'max:80', 'regex:/^[0-9]+$/D'],
-                'payload.media_id' => ['required', 'string', 'max:80', 'regex:/^[0-9]+$/D'],
-                'payload.lane' => ['required', 'in:reply_dm,reply_only'],
+                'payload.platform' => ['required', 'in:'.$platform],
+                'payload.account_id' => ['required', 'string', 'max:80', $youtube ? Rule::in([$youtubeAccounts[$accountRef]]) : 'regex:/^[0-9]+$/D'],
+                'payload.comment_id' => ['required', 'string', 'max:80', $commentId],
+                'payload.media_id' => ['required', 'string', 'max:80', $mediaId],
+                'payload.lane' => ['required', $youtube ? 'in:reply_only' : 'in:reply_dm,reply_only'],
                 'payload.reply_text' => ['required', 'string', 'max:8000'],
-                'payload.dm_text' => ['nullable', 'string', 'max:1000'],
+                'payload.dm_text' => [$youtube ? 'present' : 'sometimes', 'nullable', 'string', 'max:1000'],
                 'payload.lease_token' => ['required', 'string', 'regex:/^[a-f0-9]{64}$/D'],
             ];
         }
@@ -178,6 +184,8 @@ final class SocialRelayRequest extends FormRequest
         return [function (Validator $validator): void {
             $action = $this->action();
             $channel = $this->input('channel');
+            $accountRef = $this->input('account_ref');
+            $youtube = is_string($accountRef) && array_key_exists($accountRef, (array) config('agent_office.social_relay_youtube_accounts', []));
 
             $allowedRoot = match ($action) {
                 'pull' => ['channel', 'account_ref'],
@@ -214,6 +222,10 @@ final class SocialRelayRequest extends FormRequest
                 }
 
                 if ($channel === 'comments') {
+                    $mediaId = $this->input('payload.media.id');
+                    if ($youtube && is_string($mediaId) && $this->input('payload.media.permalink') !== 'https://www.youtube.com/watch?v='.$mediaId) {
+                        $validator->errors()->add('payload.media.permalink', 'YouTube permalink must match media ID exactly.');
+                    }
                     if (is_array($media = $this->input('payload.media'))) {
                         if (array_diff(array_keys($media), ['id', 'permalink', 'published_at'])) {
                             $validator->errors()->add('payload.media', 'Unknown media fields.');
@@ -241,6 +253,10 @@ final class SocialRelayRequest extends FormRequest
                     $dmState = $this->input('payload.dm.state');
                     $dmReceipt = $this->input('payload.dm.receipt_present');
                     $replyState = $this->input('payload.reply.state');
+
+                    if ($youtube && $dmReceipt !== false) {
+                        $validator->errors()->add('payload.dm.receipt_present', 'YouTube DM receipt must be false.');
+                    }
 
                     if ($dmState === 'sent') {
                         if ($dmReceipt !== true) {
